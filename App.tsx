@@ -1,0 +1,21 @@
+/**
+ * @fileoverview Moodly - Daily Mood Tracker
+ * iOS-inspired design with floating navigation
+ */
+
+import React from 'react';
+import { StatusBar } from 'expo-status-bar';
+import { NavigationContainer } from '@react-navigation/native';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { RootNavigator } from './src/navigation';
+
+export default function App() {
+  return (
+    <SafeAreaProvider>
+      <NavigationContainer>
+        <StatusBar style="dark" />
+        <RootNavigator />
+      </NavigationContainer>
+    </SafeAreaProvider>
+  );
+}

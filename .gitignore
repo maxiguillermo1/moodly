@@ -1,0 +1,39 @@
+# Expo
+.expo/
+dist/
+web-build/
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-error.log*
+
+# Native builds (if ejected)
+ios/
+android/
+
+# macOS
+.DS_Store
+*.pem
+
+# Environment
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Testing
+coverage/
+
+# TypeScript
+*.tsbuildinfo
+
+# Temporary files
+*.log
