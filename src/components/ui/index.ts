@@ -7,4 +7,5 @@ export { Button } from './Button';
 export { Card } from './Card';
 export { Badge } from './Badge';
 export { ScreenHeader } from './ScreenHeader';
+export { LiquidGlass } from './LiquidGlass';
 export { GroupedSection, GroupedRow } from './GroupedList';

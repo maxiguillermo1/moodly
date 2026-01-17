@@ -35,6 +35,11 @@ export const sizing = {
   tabBarPadding: 34,
   floatingNavHeight: 64,
   floatingNavWidth: 200,
+
+  // iOS "capsule" controls (Calendar-style)
+  // Visual height is ~36pt, but we keep touch targets >= 44 via hitSlop in components.
+  capsuleHeight: 36,
+  capsuleRadius: 18,
   
   // List items
   rowHeight: 44,

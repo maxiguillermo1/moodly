@@ -8,6 +8,7 @@ import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { colors, spacing, typography, sizing } from '../../theme';
+import { LiquidGlass } from './LiquidGlass';
 
 interface ScreenHeaderProps {
   title: string;
@@ -24,14 +25,22 @@ export function ScreenHeader({ title, showSettings = true, onPressSettings }: Sc
       
       {showSettings && (
         <TouchableOpacity
-          style={styles.settingsButton}
+          style={styles.settingsPill}
           onPress={() => (onPressSettings ? onPressSettings() : navigation.navigate('Settings'))}
-          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
         >
+          <LiquidGlass
+            style={StyleSheet.absoluteFill}
+            radius={sizing.capsuleRadius}
+            // Small pills: keep shadow very subtle
+            shadow={false}
+          >
+            {null}
+          </LiquidGlass>
           <Ionicons
             name="settings-outline"
-            size={sizing.settingsIcon}
-            color={colors.system.secondaryLabel}
+            size={20}
+            color={colors.system.label}
           />
         </TouchableOpacity>
       )}
@@ -52,10 +61,13 @@ const styles = StyleSheet.create({
     ...typography.largeTitle,
     color: colors.system.label,
   },
-  settingsButton: {
-    width: sizing.minTouchTarget,
-    height: sizing.minTouchTarget,
+  settingsPill: {
+    height: sizing.capsuleHeight,
+    minWidth: sizing.capsuleHeight,
+    paddingHorizontal: 10,
     alignItems: 'center',
     justifyContent: 'center',
+    borderRadius: sizing.capsuleRadius,
+    overflow: 'hidden',
   },
 });

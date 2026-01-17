@@ -89,6 +89,26 @@ export const moodBackground: Record<MoodGrade, string> = {
   'F':  'rgba(255, 69, 58, 0.3)',
 } as const;
 
+/** "Liquid Glass" material tokens (theme-aware) */
+export const glass = {
+  light: {
+    // Used even without blur to keep a frosted feel
+    background: 'rgba(255, 255, 255, 0.62)',
+    // Hairline stroke similar to iOS Calendar pills
+    border: 'rgba(60, 60, 67, 0.18)',
+    // Specular highlight overlay (top-left)
+    highlight: 'rgba(255, 255, 255, 0.70)',
+    // Soft shadow (depth)
+    shadow: 'rgba(0, 0, 0, 0.22)',
+  },
+  dark: {
+    background: 'rgba(28, 28, 30, 0.45)',
+    border: 'rgba(255, 255, 255, 0.16)',
+    highlight: 'rgba(255, 255, 255, 0.22)',
+    shadow: 'rgba(0, 0, 0, 0.60)',
+  },
+} as const;
+
 /** Export unified colors object */
 export const colors = {
   system,
@@ -96,4 +116,5 @@ export const colors = {
   semantic,
   mood,
   moodBackground,
+  glass,
 } as const;

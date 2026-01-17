@@ -28,10 +28,10 @@ import Animated, {
 } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import { CalendarMoodStyle, MoodEntry, MoodGrade } from '../types';
-import { MonthGrid, MoodPicker, WeekdayRow } from '../components';
+import { LiquidGlass, MonthGrid, MoodPicker, WeekdayRow } from '../components';
 import { createEntry, getAllEntries, getEntry, getSettings, upsertEntry } from '../lib/storage';
 import { getMoodColor } from '../lib/constants/moods';
-import { colors, spacing, borderRadius, typography } from '../theme';
+import { colors, spacing, borderRadius, typography, sizing } from '../theme';
 import { buildMonthWindow, MonthItem, monthKey as monthKey2 } from '../lib/calendar/monthWindow';
 import { throttle } from '../lib/utils/throttle';
 
@@ -404,6 +404,13 @@ export default function CalendarScreen() {
           accessibilityRole="button"
           accessibilityLabel="Back to year view"
         >
+          <LiquidGlass
+            style={StyleSheet.absoluteFill}
+            radius={sizing.capsuleRadius}
+            shadow={false}
+          >
+            {null}
+          </LiquidGlass>
           <Ionicons name="chevron-back" size={20} color={colors.system.blue} />
           <Text style={styles.yearBackText}>{visibleMonth.y}</Text>
         </TouchableOpacity>
@@ -416,6 +423,13 @@ export default function CalendarScreen() {
             accessibilityRole="button"
             accessibilityLabel="Settings"
           >
+            <LiquidGlass
+              style={StyleSheet.absoluteFill}
+              radius={sizing.capsuleRadius}
+              shadow={false}
+            >
+              {null}
+            </LiquidGlass>
             <Ionicons name="settings-outline" size={20} color={colors.system.label} />
           </TouchableOpacity>
         </View>
@@ -583,9 +597,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    paddingVertical: 8,
-    paddingHorizontal: 6,
-    borderRadius: borderRadius.md,
+    height: sizing.capsuleHeight,
+    paddingHorizontal: 12,
+    borderRadius: sizing.capsuleRadius,
+    overflow: 'hidden',
   },
   yearBackText: {
     ...typography.subhead,
@@ -598,11 +613,13 @@ const styles = StyleSheet.create({
     gap: spacing[2],
   },
   iconButton: {
-    width: 40,
-    height: 40,
+    height: sizing.capsuleHeight,
+    minWidth: sizing.capsuleHeight,
+    paddingHorizontal: 10,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: borderRadius.full,
+    borderRadius: sizing.capsuleRadius,
+    overflow: 'hidden',
   },
   yearTitle: {
     ...typography.title2,

@@ -74,46 +74,42 @@ export default function TodayScreen() {
         >
           <ScreenHeader title="Today" />
 
-          {/* Date subtitle */}
-          <Text style={styles.dateText}>{formatDateForDisplay(today)}</Text>
+          {/* Journal-style edit sheet UI */}
+          <View style={styles.sheet}>
+            <View style={styles.sheetHeader}>
+              <Text style={styles.sheetTitle}>{formatDateForDisplay(today)}</Text>
+              <TouchableOpacity
+                onPress={handleSave}
+                disabled={!mood || isSaving}
+                activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel="Save"
+              >
+                <Text style={[styles.sheetSave, (!mood || isSaving) && styles.sheetSaveDisabled]}>
+                  {isSaving ? 'Saving…' : 'Save'}
+                </Text>
+              </TouchableOpacity>
+            </View>
 
-          {/* Mood Picker Card */}
-          <View style={styles.card}>
-            <Text style={styles.sectionLabel}>Mood</Text>
-            <MoodPicker selectedMood={mood} onSelect={setMood} compact />
+            <View style={styles.sheetContent}>
+              <MoodPicker selectedMood={mood} onSelect={setMood} />
+
+              <View style={styles.noteSection}>
+                <Text style={styles.noteLabel}>NOTE</Text>
+                <TextInput
+                  style={styles.noteInput}
+                  placeholder="What made today special?"
+                  placeholderTextColor={colors.system.tertiaryLabel}
+                  value={note}
+                  onChangeText={setNote}
+                  maxLength={200}
+                  multiline
+                />
+              </View>
+
+              {saveMessage ? <Text style={styles.saveMessage}>{saveMessage}</Text> : null}
+            </View>
           </View>
-
-          {/* Note Input Card */}
-          <View style={styles.card}>
-            <Text style={styles.sectionLabel}>Note</Text>
-            <TextInput
-              style={styles.noteInput}
-              placeholder="What made today special?"
-              placeholderTextColor={colors.system.tertiaryLabel}
-              value={note}
-              onChangeText={setNote}
-              maxLength={200}
-              multiline
-              numberOfLines={3}
-            />
-          </View>
-
-          {/* Save Button */}
-          <TouchableOpacity
-            style={[styles.saveButton, !mood && styles.saveButtonDisabled]}
-            onPress={handleSave}
-            disabled={!mood || isSaving}
-            activeOpacity={0.8}
-          >
-            <Text style={styles.saveButtonText}>
-              {isSaving ? 'Saving...' : isExisting ? 'Update Entry' : 'Save Entry'}
-            </Text>
-          </TouchableOpacity>
-
-          {/* Save Message */}
-          {saveMessage ? (
-            <Text style={styles.saveMessage}>{saveMessage}</Text>
-          ) : null}
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -131,56 +127,66 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingBottom: 120, // Space for floating nav
   },
-  dateText: {
-    ...typography.subhead,
-    color: colors.system.secondaryLabel,
-    paddingHorizontal: spacing[4],
-    marginBottom: spacing[4],
-  },
-  card: {
+
+  // Journal-style sheet container
+  sheet: {
+    marginHorizontal: spacing[4],
     backgroundColor: colors.system.secondaryBackground,
     borderRadius: borderRadius.xl,
-    marginHorizontal: spacing[4],
-    marginBottom: spacing[4],
-    padding: spacing[4],
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.system.separator,
+    overflow: 'hidden',
   },
-  sectionLabel: {
+  sheetHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: spacing[4],
+    paddingVertical: spacing[4],
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.system.separator,
+    backgroundColor: colors.system.secondaryBackground,
+  },
+  sheetTitle: {
+    ...typography.headline,
+    color: colors.system.label,
+  },
+  sheetSave: {
+    ...typography.body,
+    color: colors.system.blue,
+    fontWeight: '600',
+  },
+  sheetSaveDisabled: {
+    color: colors.system.secondaryLabel,
+  },
+  sheetContent: {
+    padding: spacing[4],
+  },
+
+  noteSection: {
+    marginTop: spacing[6],
+  },
+  noteLabel: {
     ...typography.footnote,
     color: colors.system.secondaryLabel,
     textTransform: 'uppercase',
-    marginBottom: spacing[3],
+    marginBottom: spacing[2],
   },
   noteInput: {
     ...typography.body,
     color: colors.system.label,
     backgroundColor: colors.system.background,
-    borderRadius: borderRadius.md,
-    padding: spacing[3],
-    minHeight: 80,
+    borderRadius: borderRadius.lg,
+    padding: spacing[4],
+    minHeight: 110,
     textAlignVertical: 'top',
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.system.separator,
-  },
-  saveButton: {
-    backgroundColor: colors.system.blue,
-    borderRadius: borderRadius.lg,
-    marginHorizontal: spacing[4],
-    paddingVertical: spacing[4],
-    alignItems: 'center',
-  },
-  saveButtonDisabled: {
-    backgroundColor: colors.system.gray3,
-  },
-  saveButtonText: {
-    ...typography.headline,
-    color: '#fff',
   },
   saveMessage: {
     ...typography.subhead,
     color: colors.system.green,
     textAlign: 'center',
-    marginTop: spacing[3],
+    marginTop: spacing[4],
   },
 });

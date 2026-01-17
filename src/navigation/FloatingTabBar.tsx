@@ -7,7 +7,8 @@ import React from 'react';
 import { View, TouchableOpacity, StyleSheet } from 'react-native';
 import { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { colors, spacing, borderRadius, shadows } from '../theme';
+import { colors, spacing, borderRadius, shadows, sizing } from '../theme';
+import { LiquidGlass } from '../components';
 
 const TAB_ICONS: Record<string, any> = {
   Calendar: 'calendar-outline',
@@ -18,7 +19,13 @@ const TAB_ICONS: Record<string, any> = {
 export function FloatingTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
   return (
     <View style={styles.container}>
-      <View style={styles.tabBar}>
+      <LiquidGlass
+        style={styles.tabBar}
+        radius={borderRadius.full}
+        intensity={60}
+        shadow
+        border
+      >
         {state.routes.map((route, index) => {
           const isFocused = state.index === index;
 
@@ -45,14 +52,14 @@ export function FloatingTabBar({ state, descriptors, navigation }: BottomTabBarP
             >
               <Ionicons
                 name={TAB_ICONS[route.name]}
-                size={22}
+                size={20}
                 color={isFocused ? colors.system.blue : colors.system.secondaryLabel}
               />
               <View style={[styles.indicator, isFocused && styles.indicatorActive]} />
             </TouchableOpacity>
           );
         })}
-      </View>
+      </LiquidGlass>
     </View>
   );
 }
@@ -67,26 +74,25 @@ const styles = StyleSheet.create({
   },
   tabBar: {
     flexDirection: 'row',
-    backgroundColor: 'rgba(255, 255, 255, 0.92)',
-    borderRadius: borderRadius.full,
-    paddingHorizontal: spacing[3],
-    paddingVertical: spacing[2],
-    ...shadows.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.system.separator,
+    // iOS Calendar-like capsule
+    height: 52,
+    paddingHorizontal: spacing[2],
+    paddingVertical: 0,
+    alignItems: 'center',
+    // LiquidGlass handles background/border/shadow. Keep layout-only props here.
   },
   tab: {
     flexDirection: 'column',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: spacing[5],
-    paddingVertical: spacing[2],
+    paddingHorizontal: spacing[4],
+    minHeight: sizing.minTouchTarget,
     borderRadius: borderRadius.full,
   },
   indicator: {
-    width: 4,
-    height: 4,
-    borderRadius: 2,
+    width: 3,
+    height: 3,
+    borderRadius: 1.5,
     marginTop: spacing[1],
     backgroundColor: 'transparent',
   },
