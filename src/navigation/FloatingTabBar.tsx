@@ -6,10 +6,10 @@
 import React from 'react';
 import { View, TouchableOpacity, StyleSheet } from 'react-native';
 import { BottomTabBarProps } from '@react-navigation/bottom-tabs';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { colors, spacing, borderRadius, shadows } from '../theme';
 
-const TAB_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
+const TAB_ICONS: Record<string, any> = {
   Calendar: 'calendar-outline',
   Today: 'sunny-outline',
   Journal: 'book-outline',

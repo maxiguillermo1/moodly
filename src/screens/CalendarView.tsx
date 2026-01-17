@@ -11,43 +11,17 @@ import {
   StyleSheet,
   FlatList,
   useWindowDimensions,
+  InteractionManager,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useNavigation, useRoute } from '@react-navigation/native';
+import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 
 import { MoodEntry, MoodGrade } from '../types';
-import { ScreenHeader } from '../components';
+import { MonthGrid, ScreenHeader, WeekdayRow } from '../components';
 import { getAllEntries, getSettings } from '../lib/storage';
-import { getMoodColor } from '../lib/constants/moods';
 import { colors, spacing, borderRadius, typography } from '../theme';
 
-const WEEKDAYS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-
-// Cache month matrices (year view creates many mini-months).
-const monthMatrixCache = new Map<string, (number | null)[][]>();
-
-function buildMonthMatrix(y: number, m: number): (number | null)[][] {
-  const first = new Date(y, m, 1).getDay();
-  const dim = new Date(y, m + 1, 0).getDate();
-  const days: (number | null)[] = [];
-  for (let i = 0; i < first; i++) days.push(null);
-  for (let d = 1; d <= dim; d++) days.push(d);
-  while (days.length % 7 !== 0) days.push(null);
-  while (days.length < 42) days.push(null);
-  const weeks: (number | null)[][] = [];
-  for (let i = 0; i < days.length; i += 7) weeks.push(days.slice(i, i + 7));
-  return weeks;
-}
-
-function getMonthMatrix(y: number, m: number) {
-  const key = `${y}-${m}`;
-  const cached = monthMatrixCache.get(key);
-  if (cached) return cached;
-  const computed = buildMonthMatrix(y, m);
-  monthMatrixCache.set(key, computed);
-  return computed;
-}
 
 type CalendarMoodStyle = 'dot' | 'fill';
 
@@ -57,13 +31,21 @@ export default function CalendarView() {
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
 
-  const initialYear = typeof route.params?.year === 'number' ? route.params.year : new Date().getFullYear();
+  /**
+   * Stabilize the initial year so we don't "boot" in the wrong year and then
+   * flicker when params arrive late.
+   */
+  const initialYearRef = useRef<number>(
+    typeof route.params?.year === 'number' ? route.params.year : new Date().getFullYear()
+  );
 
-  const [yearBase, setYearBase] = useState<number>(initialYear);
+  const [yearBase, setYearBase] = useState<number>(() => initialYearRef.current);
   const [entries, setEntries] = useState<Record<string, MoodEntry>>({});
   const [calendarMoodStyle, setCalendarMoodStyle] = useState<CalendarMoodStyle>('dot');
 
   const yearPagerRef = useRef<any>(null);
+  const [pagerReady, setPagerReady] = useState(false);
+  const lastRequestedYearRef = useRef<number | null>(null);
 
   /**
    * Performance + UX:
@@ -73,22 +55,27 @@ export default function CalendarView() {
    * Instead, use a stable year list (virtualized by FlatList) and only update the
    * header value based on scroll position.
    */
-  const yearsStartRef = useRef<number>(initialYear - 100);
+  const yearsStartRef = useRef<number>(initialYearRef.current - 100);
   const YEARS_COUNT = 201; // 100 years back + current + 100 years forward
   const years = useMemo(
     () => Array.from({ length: YEARS_COUNT }, (_, i) => yearsStartRef.current + i),
     []
   );
   const initialYearIndex = useMemo(() => {
-    const idx = initialYear - yearsStartRef.current;
+    const idx = initialYearRef.current - yearsStartRef.current;
     return Math.min(Math.max(idx, 0), YEARS_COUNT - 1);
-  }, [initialYear]);
+  }, []);
 
   // Bottom space so the grid never sits under the floating tab bar.
   const bottomOverlaySpace = insets.bottom + spacing[8] + 72;
 
   useEffect(() => {
-    load();
+    // Defer any heavier async work until after the navigation transition completes.
+    // This keeps the "Year" button + floating tab bar feeling native (no hitch).
+    const task = InteractionManager.runAfterInteractions(() => {
+      load();
+    });
+    return () => task.cancel();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -100,6 +87,26 @@ export default function CalendarView() {
   }, []);
 
   const openSettings = () => navigation.getParent()?.getParent()?.navigate('Settings');
+
+  const yearToIndex = useCallback((y: number) => {
+    const idx = y - yearsStartRef.current;
+    return Math.min(Math.max(idx, 0), YEARS_COUNT - 1);
+  }, []);
+
+  // If we navigate here with a specific year, jump there on focus (no flicker).
+  useFocusEffect(
+    useCallback(() => {
+      const y = route.params?.year;
+      if (typeof y !== 'number' || !Number.isFinite(y)) return;
+      if (lastRequestedYearRef.current === y) return;
+      lastRequestedYearRef.current = y;
+
+      const idx = yearToIndex(y);
+      setYearBase(y);
+      if (!pagerReady) return;
+      yearPagerRef.current?.scrollToIndex({ index: idx, animated: false });
+    }, [pagerReady, route.params?.year, yearToIndex])
+  );
 
   // Pixel-perfect centering: compute usable height and center the grid.
   // Header height is stable (one line). We use a tuned constant for iPhone 15 Pro.
@@ -115,57 +122,27 @@ export default function CalendarView() {
   const gridPadTop = gridPadBase + GRID_SHIFT_DOWN;
   const gridPadBottom = Math.max(0, gridPadBase - GRID_SHIFT_DOWN);
 
-  const getMoodForDate = (y: number, m: number, d: number): MoodGrade | null => {
-    const dateStr = `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-    return entries[dateStr]?.mood ?? null;
-  };
-
-  const renderMiniMonth = useCallback((y: number, mIdx: number, cardWidth: number, marginRight: number) => {
-    const weeks = getMonthMatrix(y, mIdx);
-    return (
+  const renderMiniMonth = useCallback(
+    (y: number, mIdx: number, cardWidth: number, marginRight: number) => (
       <TouchableOpacity
         key={`${y}-${mIdx}`}
         activeOpacity={0.7}
         style={[styles.miniMonth, { width: cardWidth, marginRight }]}
-        onPress={() => {
-          navigation.navigate('CalendarScreen', { year: y, month: mIdx });
-        }}
+        onPress={() => navigation.navigate('CalendarScreen', { year: y, month: mIdx })}
       >
         <Text style={styles.miniMonthTitle}>{MONTHS[mIdx]}</Text>
-        <View style={styles.miniWeekdays}>
-          {WEEKDAYS.map((d, idx) => (
-            // Keys must be unique; weekday letters repeat (S/T), so include index.
-            <Text key={`${y}-${mIdx}-wd${idx}`} style={styles.miniWeekdayText}>
-              {d}
-            </Text>
-          ))}
-        </View>
-        {weeks.map((week, wIdx) => (
-          <View key={`${y}-${mIdx}-w${wIdx}`} style={styles.miniWeekRow}>
-            {week.map((day, dIdx) => {
-              const mood = day ? getMoodForDate(y, mIdx, day) : null;
-              const moodColor = mood ? getMoodColor(mood) : null;
-              const isFill = calendarMoodStyle === 'fill' && moodColor;
-              return (
-                <View key={`${y}-${mIdx}-${wIdx}-${dIdx}`} style={styles.miniDayCell}>
-                  {day ? (
-                    <View style={[styles.miniDayPill, isFill && { backgroundColor: moodColor }]}>
-                      <Text style={[styles.miniDayText, isFill && styles.miniDayTextOnFill]}>
-                        {day}
-                      </Text>
-                      {!isFill && moodColor ? <View style={[styles.miniDot, { backgroundColor: moodColor }]} /> : null}
-                    </View>
-                  ) : (
-                    <View style={styles.miniDayPill} />
-                  )}
-                </View>
-              );
-            })}
-          </View>
-        ))}
+        <WeekdayRow variant="mini" />
+        <MonthGrid
+          year={y}
+          monthIndex0={mIdx}
+          variant="mini"
+          entries={entries}
+          calendarMoodStyle={calendarMoodStyle}
+        />
       </TouchableOpacity>
-    );
-  }, [calendarMoodStyle, navigation, entries]);
+    ),
+    [calendarMoodStyle, entries, navigation]
+  );
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -180,6 +157,12 @@ export default function CalendarView() {
         showsHorizontalScrollIndicator={false}
         initialScrollIndex={initialYearIndex}
         getItemLayout={(_, index) => ({ length: windowWidth, offset: windowWidth * index, index })}
+        onLayout={() => setPagerReady(true)}
+        removeClippedSubviews
+        initialNumToRender={1}
+        windowSize={2}
+        maxToRenderPerBatch={1}
+        updateCellsBatchingPeriod={50}
         onScrollToIndexFailed={(info) => {
           setTimeout(() => {
             yearPagerRef.current?.scrollToIndex({ index: info.index, animated: false });
@@ -235,53 +218,6 @@ const styles = StyleSheet.create({
     color: colors.system.secondaryLabel,
     fontWeight: '700',
     marginBottom: 2,
-  },
-  miniWeekdays: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 2,
-  },
-  miniWeekdayText: {
-    fontSize: 9,
-    lineHeight: 10,
-    color: colors.system.tertiaryLabel,
-    width: 14,
-    textAlign: 'center',
-    fontWeight: '600',
-  },
-  miniWeekRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  miniDayCell: {
-    width: 14,
-    height: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginVertical: 1,
-  },
-  miniDayPill: {
-    width: 14,
-    height: 14,
-    borderRadius: 7,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'transparent',
-  },
-  miniDayText: {
-    fontSize: 9,
-    lineHeight: 10,
-    color: colors.system.label,
-  },
-  miniDayTextOnFill: {
-    color: '#fff',
-    fontWeight: '700',
-  },
-  miniDot: {
-    width: 3,
-    height: 3,
-    borderRadius: 1.5,
-    marginTop: 1,
   },
 });
 

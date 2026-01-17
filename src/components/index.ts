@@ -8,3 +8,6 @@ export * from './ui';
 
 // Domain-specific components
 export * from './mood';
+
+// Calendar components
+export * from './calendar';

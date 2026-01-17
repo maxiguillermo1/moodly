@@ -9,55 +9,36 @@ import {
   Text,
   TouchableOpacity,
   StyleSheet,
-  ScrollView,
-  FlatList,
   useWindowDimensions,
   Modal,
   TextInput,
   Alert,
+  AccessibilityInfo,
 } from 'react-native';
+import { FlashList } from '@shopify/flash-list';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
+import Animated, {
+  Extrapolate,
+  interpolate,
+  useAnimatedScrollHandler,
+  useAnimatedStyle,
+  useSharedValue,
+} from 'react-native-reanimated';
+import * as Haptics from 'expo-haptics';
 import { CalendarMoodStyle, MoodEntry, MoodGrade } from '../types';
-import { MoodPicker } from '../components';
+import { MonthGrid, MoodPicker, WeekdayRow } from '../components';
 import { createEntry, getAllEntries, getEntry, getSettings, upsertEntry } from '../lib/storage';
 import { getMoodColor } from '../lib/constants/moods';
 import { colors, spacing, borderRadius, typography } from '../theme';
+import { buildMonthWindow, MonthItem, monthKey as monthKey2 } from '../lib/calendar/monthWindow';
+import { throttle } from '../lib/utils/throttle';
 
-const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const MONTHS = [
   'January', 'February', 'March', 'April', 'May', 'June',
   'July', 'August', 'September', 'October', 'November', 'December'
 ];
-
-// Cache month matrices to avoid recomputing on every render/scroll.
-const monthMatrixCache = new Map<string, (number | null)[][]>();
-
-function buildMonthMatrix(y: number, m: number): (number | null)[][] {
-  const first = new Date(y, m, 1).getDay();
-  const dim = new Date(y, m + 1, 0).getDate();
-
-  const days: (number | null)[] = [];
-  for (let i = 0; i < first; i++) days.push(null);
-  for (let d = 1; d <= dim; d++) days.push(d);
-  while (days.length % 7 !== 0) days.push(null);
-
-  const weeks: (number | null)[][] = [];
-  for (let i = 0; i < days.length; i += 7) {
-    weeks.push(days.slice(i, i + 7));
-  }
-  return weeks;
-}
-
-function getMonthMatrix(y: number, m: number): (number | null)[][] {
-  const key = `${y}-${m}`;
-  const cached = monthMatrixCache.get(key);
-  if (cached) return cached;
-  const computed = buildMonthMatrix(y, m);
-  monthMatrixCache.set(key, computed);
-  return computed;
-}
 
 function pad2(n: number) {
   return String(n).padStart(2, '0');
@@ -67,39 +48,77 @@ function toISODateString(date: Date) {
   return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
 }
 
-function monthKey(y: number, m: number) {
-  return `${y}-${pad2(m + 1)}`;
-}
+const WINDOW_CAP = 24;
+const WINDOW_EXTEND = 6;
+const WINDOW_NEAR_EDGE = 2;
 
-function addMonths(date: Date, delta: number) {
-  return new Date(date.getFullYear(), date.getMonth() + delta, 1);
-}
+const ESTIMATED_MONTH_ITEM_H = 440; // conservative; FlashList uses this for virtualization
 
 export default function CalendarScreen() {
   const { width: windowWidth } = useWindowDimensions();
   const insets = useSafeAreaInsets();
+  const navigation = useNavigation<any>();
+  const route = useRoute<any>();
+
+  /**
+   * Single source of truth for initial "anchor month" (computed once per mount).
+   * If params provide a valid year/month, use those. Otherwise use device today.
+   */
+  const initialAnchorDateRef = useRef<Date | null>(null);
+  const initialAnchorKeyRef = useRef<string | null>(null);
+  const initialSelectedDateRef = useRef<string | null>(null);
+  if (!initialAnchorDateRef.current) {
+    const y = route.params?.year;
+    const m = route.params?.month;
+    const hasValidParams =
+      typeof y === 'number' &&
+      Number.isFinite(y) &&
+      typeof m === 'number' &&
+      Number.isFinite(m) &&
+      m >= 0 &&
+      m <= 11;
+
+    const deviceToday = new Date(); // iOS device time (local timezone)
+    const anchor = hasValidParams ? new Date(y, m, 1) : new Date(deviceToday.getFullYear(), deviceToday.getMonth(), 1);
+
+    initialAnchorDateRef.current = anchor;
+    initialAnchorKeyRef.current = monthKey2(anchor.getFullYear(), anchor.getMonth());
+    // If we anchored from params, default selection to the first day of that month.
+    initialSelectedDateRef.current = hasValidParams
+      ? `${anchor.getFullYear()}-${pad2(anchor.getMonth() + 1)}-01`
+      : toISODateString(deviceToday);
+  }
+
   // Space to keep content visually centered above the floating bottom nav.
   // FloatingTabBar is positioned at bottom: spacing[8] and has its own height.
   // iPhone 15 Pro: keep enough room so the last row of months never sits under the floating tab bar.
   const bottomOverlaySpace = insets.bottom + spacing[8] + 72;
-  const [currentDate, setCurrentDate] = useState(new Date());
+  const [currentDate, setCurrentDate] = useState(() => initialAnchorDateRef.current as Date);
   const [entries, setEntries] = useState<Record<string, MoodEntry>>({});
-  const [mode, setMode] = useState<'month' | 'year'>('month');
+  const [entriesByMonthKey, setEntriesByMonthKey] = useState<Record<string, Record<string, MoodEntry>>>({});
   const [calendarMoodStyle, setCalendarMoodStyle] = useState<CalendarMoodStyle>('dot');
-  const [selectedDate, setSelectedDate] = useState<string>(toISODateString(new Date()));
+  const [selectedDate, setSelectedDate] = useState<string>(() => initialSelectedDateRef.current as string);
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [editMood, setEditMood] = useState<MoodGrade | null>(null);
   const [editNote, setEditNote] = useState('');
   const [isSaving, setIsSaving] = useState(false);
-  const [visibleMonth, setVisibleMonth] = useState<{ y: number; m: number }>({
-    y: new Date().getFullYear(),
-    m: new Date().getMonth(),
+  const [reduceMotion, setReduceMotion] = useState(false);
+  const [visibleMonth, setVisibleMonth] = useState<{ y: number; m: number }>(() => {
+    const d = initialAnchorDateRef.current as Date;
+    return { y: d.getFullYear(), m: d.getMonth() };
   });
 
-  const navigation = useNavigation<any>();
-  const route = useRoute<any>();
+  const [listReady, setListReady] = useState(false);
+  const recenterIndexRef = useRef<number | null>(null);
+
   const monthListRef = useRef<any>(null);
   const lastVisibleMonthKeyRef = useRef<string | null>(null);
+  const pendingMonthRef = useRef<{ y: number; m: number } | null>(null);
+  const isUserScrollingRef = useRef(false);
+
+  // Bounded window around the anchor month. Constant-cost list.
+  const [windowOffsets, setWindowOffsets] = useState(() => ({ start: -6, end: 10 }));
+  const lastWindowKeyRef = useRef<string>(`${windowOffsets.start}:${windowOffsets.end}`);
 
   // Year grid moved to `CalendarView` for performance.
 
@@ -110,19 +129,37 @@ export default function CalendarScreen() {
     }, [])
   );
 
-  // If navigated from CalendarView, accept requested month/year.
+  // Keep overlay month label in sync when we change the anchor (Today / params mount).
   useEffect(() => {
-    const y = route.params?.year;
-    const m = route.params?.month;
-    if (typeof y === 'number' && typeof m === 'number') {
-      setCurrentDate(new Date(y, m, 1));
-      setVisibleMonth({ y, m });
-    }
-  }, [route.params?.year, route.params?.month]);
+    setVisibleMonth({ y: currentDate.getFullYear(), m: currentDate.getMonth() });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentDate]);
+
+  // Reduce Motion support (updates rarely; safe in React state).
+  useEffect(() => {
+    let mounted = true;
+    AccessibilityInfo.isReduceMotionEnabled().then((v) => mounted && setReduceMotion(!!v));
+    // RN event typing varies; handle both patterns.
+    const sub: any = (AccessibilityInfo as any).addEventListener?.(
+      'reduceMotionChanged',
+      (v: boolean) => setReduceMotion(!!v)
+    );
+    return () => {
+      mounted = false;
+      sub?.remove?.();
+    };
+  }, []);
 
   async function loadEntries() {
     const data = await getAllEntries();
     setEntries(data);
+    // Group by YYYY-MM so updating one entry doesn't force passing a huge object to every month.
+    const grouped: Record<string, Record<string, MoodEntry>> = {};
+    Object.keys(data).forEach((iso) => {
+      const mk = iso.slice(0, 7); // YYYY-MM
+      (grouped[mk] ||= {})[iso] = data[iso]!;
+    });
+    setEntriesByMonthKey(grouped);
   }
 
   async function loadSettings() {
@@ -215,204 +252,250 @@ export default function CalendarScreen() {
     );
   };
 
-  const renderWeekdayRow = (isMini: boolean) => (
-    <View style={[styles.weekdayRow, isMini && styles.weekdayRowMini]}>
-      {WEEKDAYS.map((d) => (
-        <View key={d} style={[styles.weekdayCell, isMini && styles.weekdayCellMini]}>
-          <Text style={[styles.weekdayText, isMini && styles.weekdayTextMini]}>{d[0]}</Text>
-        </View>
-      ))}
-    </View>
+  const handlePressDate = useCallback(async (isoDate: string) => {
+    setSelectedDate(isoDate);
+    const existing = await getEntry(isoDate);
+    setEditMood(existing?.mood ?? null);
+    setEditNote(existing?.note ?? '');
+    setIsEditOpen(true);
+  }, []);
+
+  // ---------------------------------------------------------------------------
+  // Large Title Collapse (Reanimated, UI-thread scroll)
+  // ---------------------------------------------------------------------------
+  const COLLAPSE_RANGE = 90; // px over which title collapses (iOS-like)
+  const TITLE_TRANSLATE_Y = -16;
+  const TITLE_SCALE_MIN = 0.82;
+
+  const scrollY = useSharedValue(0);
+  const scrollHandler = useAnimatedScrollHandler({
+    onScroll: (event) => {
+      scrollY.value = event.contentOffset.y;
+    },
+  });
+
+  const largeTitleStyle = useAnimatedStyle(() => {
+    const t = Math.min(Math.max(scrollY.value / COLLAPSE_RANGE, 0), 1);
+    const opacity = 1 - t;
+    if (reduceMotion) return { opacity };
+    return {
+      opacity,
+      transform: [
+        { translateY: interpolate(t, [0, 1], [0, TITLE_TRANSLATE_Y], Extrapolate.CLAMP) },
+        { scale: interpolate(t, [0, 1], [1, TITLE_SCALE_MIN], Extrapolate.CLAMP) },
+      ],
+    };
+  }, [reduceMotion]);
+
+  // ----------------------------------------------------------------------------
+  // Month timeline (bounded window + FlashList)
+  // ----------------------------------------------------------------------------
+  const monthsData: MonthItem[] = useMemo(
+    () => buildMonthWindow(currentDate, windowOffsets.start, windowOffsets.end),
+    [currentDate, windowOffsets.end, windowOffsets.start]
   );
 
-  const renderMonthGrid = (y: number, m: number, isMini: boolean) => {
-    const weeks = getMonthMatrix(y, m);
-    const today = new Date();
+  const timelineKey = useMemo(
+    () => monthKey2(currentDate.getFullYear(), currentDate.getMonth()),
+    [currentDate]
+  );
 
-    return (
-      <View style={[styles.calendarGrid, isMini && styles.calendarGridMini]}>
-        {weeks.map((week, wIdx) => (
-          <View key={`${y}-${m}-w${wIdx}`} style={styles.weekRow}>
-            {week.map((d, dIdx) => {
-              const mood = d ? getMoodForDate(y, m, d) : null;
-              const isTodayCell =
-                !!d &&
-                d === today.getDate() &&
-                m === today.getMonth() &&
-                y === today.getFullYear();
+  const initialMonthIndex = useMemo(() => Math.max(0, -windowOffsets.start), [windowOffsets.start]);
 
-              return (
-                <View key={`${y}-${m}-w${wIdx}-d${dIdx}`} style={styles.weekCol}>
-                  {renderDayCell({ day: d, y, m, isTodayCell, mood, isMini })}
-                </View>
-              );
-            })}
-          </View>
-        ))}
-      </View>
-    );
-  };
+  const commitVisibleMonth = useCallback(
+    async (next: { y: number; m: number }) => {
+      setVisibleMonth(next);
+      if (!reduceMotion) {
+        try {
+          await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        } catch {}
+      }
+    },
+    [reduceMotion]
+  );
 
-  const monthsForTimeline = useMemo(() => {
-    // iOS-like: show a scrollable timeline of months around the anchor month.
-    // Keep it bounded but large enough to feel “infinite”.
-    const anchor = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
-    // Performance: fewer rendered months = smoother scrolling.
-    // Still feels “infinite” but avoids heavy initial render.
-    const rangePast = 12;
-    const rangeFuture = 18;
-    const months: { y: number; m: number; key: string }[] = [];
-    for (let i = -rangePast; i <= rangeFuture; i++) {
-      const d = addMonths(anchor, i);
-      months.push({ y: d.getFullYear(), m: d.getMonth(), key: monthKey(d.getFullYear(), d.getMonth()) });
-    }
-    return months;
-  }, [currentDate]);
+  const commitVisibleMonthThrottled = useMemo(
+    () => throttle((next: { y: number; m: number }) => void commitVisibleMonth(next), 200),
+    [commitVisibleMonth]
+  );
 
-  type MonthListItem =
-    | { type: 'header'; key: string; y: number; m: number }
-    | { type: 'month'; key: string; y: number; m: number };
-
-  const monthListData: MonthListItem[] = useMemo(() => {
-    const out: MonthListItem[] = [];
-    monthsForTimeline.forEach(({ y, m, key }) => {
-      out.push({ type: 'header', key: `${key}:h`, y, m });
-      out.push({ type: 'month', key: `${key}:m`, y, m });
+  const maybeRecenterAfterWindowChange = useCallback(() => {
+    if (!listReady) return;
+    const idx = recenterIndexRef.current;
+    if (idx == null) return;
+    recenterIndexRef.current = null;
+    requestAnimationFrame(() => {
+      monthListRef.current?.scrollToIndex({ index: idx, animated: false });
     });
-    return out;
-  }, [monthsForTimeline]);
+  }, [listReady]);
 
-  const stickyHeaderIndices = useMemo(() => {
-    // Every header is at an even index (0,2,4...) since we push header+month pairs.
-    return monthListData
-      .map((it, idx) => (it.type === 'header' ? idx : -1))
-      .filter((idx) => idx >= 0);
-  }, [monthListData]);
-
-  // Fix: deterministic month jump (prevents Jan 2026 showing Jan/Feb 2025).
-  // We scroll by index instead of relying on measured layout offsets (which can drift).
   useEffect(() => {
-    if (mode !== 'month') return;
-    const targetKey = monthKey(currentDate.getFullYear(), currentDate.getMonth());
-    const targetIndex = monthListData.findIndex(
-      (it) => it.type === 'month' && it.key === `${targetKey}:m`
-    );
-    if (targetIndex < 0) return;
+    maybeRecenterAfterWindowChange();
+  }, [maybeRecenterAfterWindowChange, monthsData.length]);
 
-    // Align large title immediately.
-    setVisibleMonth({ y: currentDate.getFullYear(), m: currentDate.getMonth() });
+  const onViewableItemsChanged = useCallback(
+    ({ viewableItems }: { viewableItems: Array<{ item: MonthItem; index: number | null }> }) => {
+      const first = viewableItems.find((v) => typeof v.index === 'number' && v.index != null);
+      if (!first || first.index == null) return;
 
-    const t = setTimeout(() => {
-      monthListRef.current?.scrollToIndex({
-        index: targetIndex,
-        animated: false,
-        viewOffset: 16,
-      });
-    }, 0);
+      const it = first.item;
+      const k = it.key;
+      if (lastVisibleMonthKeyRef.current !== k) {
+        lastVisibleMonthKeyRef.current = k;
+        pendingMonthRef.current = { y: it.y, m: it.m };
+        if (!isUserScrollingRef.current) {
+          commitVisibleMonthThrottled({ y: it.y, m: it.m });
+        }
+      }
 
-    return () => clearTimeout(t);
-  }, [mode, currentDate, monthListData]);
+      // Bounded window extension near edges (rare).
+      const idx = first.index;
+      const len = monthsData.length;
+      if (idx <= WINDOW_NEAR_EDGE) {
+        const newStart = windowOffsets.start - WINDOW_EXTEND;
+        let newEnd = windowOffsets.end;
+        let newLen = newEnd - newStart + 1;
+        if (newLen > WINDOW_CAP) newEnd -= newLen - WINDOW_CAP;
+        const key2 = `${newStart}:${newEnd}`;
+        if (key2 !== lastWindowKeyRef.current) {
+          lastWindowKeyRef.current = key2;
+          recenterIndexRef.current = idx + WINDOW_EXTEND;
+          setWindowOffsets({ start: newStart, end: newEnd });
+        }
+      } else if (idx >= len - 1 - WINDOW_NEAR_EDGE) {
+        let newStart = windowOffsets.start;
+        const newEnd = windowOffsets.end + WINDOW_EXTEND;
+        let newLen = newEnd - newStart + 1;
+        let trimmed = 0;
+        if (newLen > WINDOW_CAP) {
+          trimmed = newLen - WINDOW_CAP;
+          newStart += trimmed;
+        }
+        const key2 = `${newStart}:${newEnd}`;
+        if (key2 !== lastWindowKeyRef.current) {
+          lastWindowKeyRef.current = key2;
+          recenterIndexRef.current = idx - trimmed;
+          setWindowOffsets({ start: newStart, end: newEnd });
+        }
+      }
+    },
+    [
+      commitVisibleMonthThrottled,
+      monthsData.length,
+      listReady,
+      windowOffsets.end,
+      windowOffsets.start,
+    ]
+  );
+
+  const AnimatedFlashList = useMemo(
+    () => Animated.createAnimatedComponent(FlashList) as any,
+    []
+  );
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      {mode === 'month' ? (
-        <>
-          {/* iOS Calendar-style top bar */}
-          <View style={styles.topBar}>
-            <TouchableOpacity
-              style={styles.yearBack}
-              onPress={() => navigation.navigate('CalendarView', { year: visibleMonth.y })}
-              activeOpacity={0.7}
-            >
-              <Ionicons name="chevron-back" size={20} color={colors.system.blue} />
-              <Text style={styles.yearBackText}>{visibleMonth.y}</Text>
-            </TouchableOpacity>
+      {/* iOS Calendar-style top bar */}
+      <View style={styles.topBar}>
+        <TouchableOpacity
+          style={styles.yearBack}
+          onPress={() => navigation.navigate('CalendarView', { year: visibleMonth.y })}
+          activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel="Back to year view"
+        >
+          <Ionicons name="chevron-back" size={20} color={colors.system.blue} />
+          <Text style={styles.yearBackText}>{visibleMonth.y}</Text>
+        </TouchableOpacity>
 
-            <View style={styles.topBarRight}>
-              <TouchableOpacity style={styles.iconButton} onPress={() => Alert.alert('Search', 'Search coming next.')} activeOpacity={0.7}>
-                <Ionicons name="search" size={20} color={colors.system.label} />
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.iconButton}
-                onPress={async () => {
-                  const existing = await getEntry(selectedDate);
-                  setEditMood(existing?.mood ?? null);
-                  setEditNote(existing?.note ?? '');
-                  setIsEditOpen(true);
-                }}
-                activeOpacity={0.7}
-              >
-                <Ionicons name="add" size={24} color={colors.system.label} />
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.iconButton} onPress={() => navigation.navigate('Settings')} activeOpacity={0.7}>
-                <Ionicons name="settings-outline" size={20} color={colors.system.label} />
-              </TouchableOpacity>
-            </View>
-          </View>
-
-          {/* Large month title (iOS Large Title style) */}
-          <Text style={styles.largeMonthTitle}>{MONTHS[visibleMonth.m]}</Text>
-
-          {/* Month timeline with sticky month headers (like iOS) */}
-          <FlatList
-            ref={monthListRef}
-            data={monthListData}
-            keyExtractor={(item) => item.key}
-            showsVerticalScrollIndicator={false}
-            stickyHeaderIndices={stickyHeaderIndices}
-            contentContainerStyle={styles.monthTimeline}
-            onViewableItemsChanged={({ viewableItems }) => {
-              const firstMonth = viewableItems.find((v) => (v.item as MonthListItem).type === 'month');
-              if (firstMonth?.item && (firstMonth.item as MonthListItem).type === 'month') {
-                const it = firstMonth.item as Extract<MonthListItem, { type: 'month' }>;
-                const k = monthKey(it.y, it.m);
-                if (lastVisibleMonthKeyRef.current !== k) {
-                  lastVisibleMonthKeyRef.current = k;
-                  setVisibleMonth({ y: it.y, m: it.m });
-                }
-              }
-            }}
-            viewabilityConfig={{ itemVisiblePercentThreshold: 20 }}
-            removeClippedSubviews
-            initialNumToRender={6}
-            windowSize={7}
-            maxToRenderPerBatch={6}
-            updateCellsBatchingPeriod={50}
-            onScrollToIndexFailed={(info) => {
-              setTimeout(() => {
-                monthListRef.current?.scrollToIndex({
-                  index: info.index,
-                  animated: false,
-                  viewOffset: 16,
-                });
-              }, 50);
-            }}
-            renderItem={({ item }) => {
-              if (item.type === 'header') {
-                return (
-                  <View style={styles.stickyHeader}>
-                    <Text style={styles.monthSectionTitle}>{MONTHS[item.m]} {item.y}</Text>
-                  </View>
-                );
-              }
-              // month
-              return (
-                <View style={styles.monthSection}>
-                  <View style={styles.calendarCard}>
-                    {renderWeekdayRow(false)}
-                    {renderMonthGrid(item.y, item.m, false)}
-                  </View>
-                </View>
-              );
-            }}
-          />
-
-          {/* Today pill (like iOS) */}
-          <TouchableOpacity style={styles.todayPill} onPress={goToToday} activeOpacity={0.8}>
-            <Text style={styles.todayPillText}>Today</Text>
+        <View style={styles.topBarRight}>
+          <TouchableOpacity
+            style={styles.iconButton}
+            onPress={() => navigation.navigate('Settings')}
+            activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel="Settings"
+          >
+            <Ionicons name="settings-outline" size={20} color={colors.system.label} />
           </TouchableOpacity>
-        </>
-      ) : null}
+        </View>
+      </View>
+
+      {/* Large month title container (fixed height; prevents layout jump) */}
+      <View style={styles.largeTitleContainer}>
+        <Animated.View style={largeTitleStyle}>
+          <Text style={styles.largeMonthTitle} allowFontScaling>
+            {MONTHS[visibleMonth.m]}
+          </Text>
+        </Animated.View>
+      </View>
+
+      {/* Month timeline (months only; overlay header handles month label) */}
+      <AnimatedFlashList
+        // Key remount keeps initialScrollIndex deterministic when we reset the anchor (Today).
+        key={timelineKey}
+        ref={monthListRef}
+        data={monthsData}
+        keyExtractor={(item: MonthItem) => item.key}
+        estimatedItemSize={ESTIMATED_MONTH_ITEM_H}
+        estimatedListSize={{ width: windowWidth, height: 800 }}
+        drawDistance={800}
+        onLayout={() => setListReady(true)}
+        initialScrollIndex={initialMonthIndex}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.monthTimeline}
+        onScrollBeginDrag={() => {
+          isUserScrollingRef.current = true;
+        }}
+        onMomentumScrollBegin={() => {
+          isUserScrollingRef.current = true;
+        }}
+        onScrollEndDrag={() => {
+          isUserScrollingRef.current = false;
+          const next = pendingMonthRef.current;
+          if (next && (next.y !== visibleMonth.y || next.m !== visibleMonth.m)) {
+            commitVisibleMonthThrottled(next);
+          }
+        }}
+        onMomentumScrollEnd={() => {
+          isUserScrollingRef.current = false;
+          const next = pendingMonthRef.current;
+          if (next && (next.y !== visibleMonth.y || next.m !== visibleMonth.m)) {
+            commitVisibleMonthThrottled(next);
+          }
+        }}
+        onScroll={scrollHandler}
+        scrollEventThrottle={16}
+        viewabilityConfig={{ itemVisiblePercentThreshold: 20 }}
+        onViewableItemsChanged={onViewableItemsChanged as any}
+        renderItem={({ item }: { item: MonthItem }) => {
+          const monthEntries = entriesByMonthKey[item.key] ?? {};
+          const selectedForThisMonth = selectedDate.startsWith(item.key) ? selectedDate : undefined;
+          return (
+            <View style={styles.monthSection}>
+              <Text style={styles.monthSectionTitle} allowFontScaling>
+                {MONTHS[item.m]} {item.y}
+              </Text>
+              <View style={styles.calendarCard}>
+                <WeekdayRow variant="full" />
+                <MonthGrid
+                  year={item.y}
+                  monthIndex0={item.m}
+                  variant="full"
+                  entries={monthEntries}
+                  calendarMoodStyle={calendarMoodStyle}
+                  selectedDate={selectedForThisMonth}
+                  onPressDate={handlePressDate}
+                  reduceMotion={reduceMotion}
+                  onHapticSelect={() => {
+                    Haptics.selectionAsync().catch(() => {});
+                  }}
+                />
+              </View>
+            </View>
+          );
+        }}
+      />
 
       {/* Quick edit modal (tap a day or +) */}
       <Modal visible={isEditOpen} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setIsEditOpen(false)}>
@@ -430,9 +513,24 @@ export default function CalendarScreen() {
                 }
                 setIsSaving(true);
                 try {
-                  await upsertEntry(createEntry(selectedDate, editMood, editNote));
-                  await loadEntries();
+                  const next = createEntry(selectedDate, editMood, editNote);
+                  await upsertEntry(next);
+                  // Update local state without reloading everything (keeps scroll smooth).
+                  setEntries((prev) => ({ ...prev, [selectedDate]: next }));
+                  setEntriesByMonthKey((prev) => {
+                    const mk = selectedDate.slice(0, 7);
+                    const monthMap = prev[mk] ?? {};
+                    return { ...prev, [mk]: { ...monthMap, [selectedDate]: next } };
+                  });
+                  if (!reduceMotion) {
+                    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+                  }
                   setIsEditOpen(false);
+                } catch (e) {
+                  if (!reduceMotion) {
+                    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
+                  }
+                  throw e;
                 } finally {
                   setIsSaving(false);
                 }
@@ -518,24 +616,23 @@ const styles = StyleSheet.create({
     paddingTop: spacing[2],
     paddingBottom: spacing[3],
   },
-  monthTimeline: {
-    paddingBottom: 140, // space for floating nav + Today pill
+  largeTitleContainer: {
+    height: 56, // fixed height prevents layout jump while collapsing
+    justifyContent: 'flex-end',
   },
-  stickyHeader: {
-    paddingHorizontal: spacing[4],
-    paddingTop: spacing[2],
-    paddingBottom: spacing[2],
-    backgroundColor: colors.system.background,
+  monthTimeline: {
+    paddingBottom: 96, // space for floating nav
   },
   monthSection: {
     paddingHorizontal: spacing[4],
     paddingBottom: spacing[8], // more air between months (closer to iOS)
   },
   monthSectionTitle: {
-    ...typography.footnote,
-    color: colors.system.secondaryLabel,
-    marginBottom: spacing[2],
-    letterSpacing: 0.3,
+    ...typography.headline,
+    color: colors.system.label,
+    fontWeight: '800',
+    marginBottom: spacing[3],
+    letterSpacing: -0.2,
   },
   calendarCard: {
     backgroundColor: colors.system.secondaryBackground,
@@ -659,22 +756,6 @@ const styles = StyleSheet.create({
     color: colors.system.secondaryLabel,
     fontWeight: '700',
     marginBottom: 2,
-  },
-
-  todayPill: {
-    position: 'absolute',
-    left: spacing[4],
-    bottom: 92,
-    backgroundColor: colors.system.secondaryBackground,
-    borderRadius: borderRadius.full,
-    paddingHorizontal: spacing[4],
-    paddingVertical: spacing[3],
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.system.separator,
-  },
-  todayPillText: {
-    ...typography.headline,
-    color: colors.system.label,
   },
 
   // Modal
