@@ -3,7 +3,7 @@
  * @module screens/JournalScreen
  */
 
-import React, { useState, useCallback } from 'react';
+import React, { useMemo, useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -23,7 +23,6 @@ import {
   upsertEntry,
   deleteEntry,
 } from '../lib/storage';
-import { getMoodConfig } from '../lib/constants/moods';
 import { getRelativeDayLabel, formatDateForDisplay } from '../lib/utils/date';
 import { colors, spacing, borderRadius, typography } from '../theme';
 
@@ -33,24 +32,24 @@ export default function JournalScreen() {
   const [editMood, setEditMood] = useState<MoodGrade | null>(null);
   const [editNote, setEditNote] = useState('');
 
+  const loadEntries = useCallback(async () => {
+    const sorted = await getEntriesSortedDesc();
+    setEntries(sorted);
+  }, []);
+
   useFocusEffect(
     useCallback(() => {
       loadEntries();
     }, [])
   );
 
-  async function loadEntries() {
-    const sorted = await getEntriesSortedDesc();
-    setEntries(sorted);
-  }
-
-  function handleTapEntry(entry: MoodEntry) {
+  const handleTapEntry = useCallback((entry: MoodEntry) => {
     setEditingEntry(entry);
     setEditMood(entry.mood);
     setEditNote(entry.note);
-  }
+  }, []);
 
-  function handleLongPressEntry(entry: MoodEntry) {
+  const handleLongPressEntry = useCallback((entry: MoodEntry) => {
     Alert.alert(
       'Delete Entry',
       `Delete your entry for ${formatDateForDisplay(entry.date)}?`,
@@ -66,9 +65,9 @@ export default function JournalScreen() {
         },
       ]
     );
-  }
+  }, [loadEntries]);
 
-  async function handleSaveEdit() {
+  const handleSaveEdit = useCallback(async () => {
     if (!editingEntry || !editMood) return;
 
     await upsertEntry({
@@ -80,11 +79,11 @@ export default function JournalScreen() {
 
     setEditingEntry(null);
     loadEntries();
-  }
+  }, [editMood, editNote, editingEntry, loadEntries]);
 
-  function renderEntry({ item, index }: { item: MoodEntry; index: number }) {
-    const config = getMoodConfig(item.mood);
+  const keyExtractor = useCallback((item: MoodEntry) => item.date, []);
 
+  const renderEntry = useCallback(({ item }: { item: MoodEntry }) => {
     return (
       <TouchableOpacity
         style={styles.row}
@@ -102,9 +101,9 @@ export default function JournalScreen() {
         <MoodBadge grade={item.mood} size="sm" />
       </TouchableOpacity>
     );
-  }
+  }, [handleLongPressEntry, handleTapEntry]);
 
-  function renderEmptyState() {
+  const renderEmptyState = useCallback(() => {
     return (
       <View style={styles.emptyState}>
         <Text style={styles.emptyIcon}>📔</Text>
@@ -114,7 +113,12 @@ export default function JournalScreen() {
         </Text>
       </View>
     );
-  }
+  }, []);
+
+  const listContentStyle = useMemo(
+    () => [styles.listContent, entries.length === 0 && styles.emptyContainer],
+    [entries.length]
+  );
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -122,14 +126,16 @@ export default function JournalScreen() {
 
       <FlatList
         data={entries}
-        keyExtractor={(item) => item.date}
+        keyExtractor={keyExtractor}
         renderItem={renderEntry}
         ListEmptyComponent={renderEmptyState}
-        contentContainerStyle={[
-          styles.listContent,
-          entries.length === 0 && styles.emptyContainer,
-        ]}
+        contentContainerStyle={listContentStyle as any}
         showsVerticalScrollIndicator={false}
+        removeClippedSubviews
+        initialNumToRender={12}
+        windowSize={7}
+        maxToRenderPerBatch={12}
+        updateCellsBatchingPeriod={50}
       />
 
       {/* Edit Modal */}

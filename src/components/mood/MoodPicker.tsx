@@ -3,7 +3,7 @@
  * @module components/mood/MoodPicker
  */
 
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { MoodGrade } from '../../types';
 import { getAllMoodConfigs } from '../../lib/constants/moods';
@@ -22,7 +22,8 @@ export function MoodPicker({
   title = 'How was your day?',
   compact = false,
 }: MoodPickerProps) {
-  const moods = getAllMoodConfigs();
+  // Stable list (small), avoids recreating arrays on every render.
+  const moods = useMemo(() => getAllMoodConfigs(), []);
 
   if (compact) {
     // Minimal segmented-control style.
@@ -35,7 +36,8 @@ export function MoodPicker({
               key={mood.grade}
               style={[
                 styles.segment,
-                isSelected && { backgroundColor: colors.moodBackground[mood.grade] },
+                isSelected ? styles.segmentSelected : null,
+                isSelected ? { backgroundColor: colors.moodBackground[mood.grade] } : null,
               ]}
               onPress={() => onSelect(mood.grade)}
               activeOpacity={0.7}
@@ -68,9 +70,8 @@ export function MoodPicker({
               key={mood.grade}
               style={[
                 styles.moodButton,
-                isSelected
-                  ? { borderColor: mood.color, backgroundColor: colors.moodBackground[mood.grade] }
-                  : undefined,
+                isSelected ? styles.moodButtonSelected : null,
+                isSelected ? { borderColor: mood.color, backgroundColor: colors.moodBackground[mood.grade] } : null,
               ]}
               onPress={() => onSelect(mood.grade)}
               activeOpacity={0.7}
@@ -136,8 +137,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  segmentSelected: {
+    // Keep a stable style identity; the bgColor is still grade-specific.
+  },
   segmentText: {
     ...typography.subhead,
     fontWeight: '600',
+  },
+  moodButtonSelected: {
+    // Keep a stable style identity; color/bg are still grade-specific.
   },
 });

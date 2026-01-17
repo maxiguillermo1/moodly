@@ -12,6 +12,23 @@ import { MoodEntry, MoodEntriesRecord, MoodGrade } from '../../types';
 
 const STORAGE_KEY = 'moodly.entries';
 
+// In-memory cache for the session (performance-only; does not change semantics).
+let entriesCache: MoodEntriesRecord | null = null;
+let entriesLoadPromise: Promise<MoodEntriesRecord> | null = null;
+
+function setCache(next: MoodEntriesRecord) {
+  entriesCache = next;
+}
+
+/**
+ * Internal helper: persist a full entries record and update cache.
+ * Used by demo seeding and (optionally) dev tooling.
+ */
+export async function setAllEntries(next: MoodEntriesRecord): Promise<void> {
+  setCache(next);
+  await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+}
+
 // ============================================================================
 // CRUD Operations
 // ============================================================================
@@ -21,10 +38,22 @@ const STORAGE_KEY = 'moodly.entries';
  */
 export async function getAllEntries(): Promise<MoodEntriesRecord> {
   try {
-    const json = await AsyncStorage.getItem(STORAGE_KEY);
-    return json ? JSON.parse(json) : {};
+    if (entriesCache) return entriesCache;
+    if (entriesLoadPromise) return entriesLoadPromise;
+
+    entriesLoadPromise = (async () => {
+      const json = await AsyncStorage.getItem(STORAGE_KEY);
+      const parsed = json ? (JSON.parse(json) as MoodEntriesRecord) : {};
+      setCache(parsed);
+      return parsed;
+    })();
+
+    const res = await entriesLoadPromise;
+    entriesLoadPromise = null;
+    return res;
   } catch (error) {
     console.error('[moodStorage] Failed to load entries:', error);
+    entriesLoadPromise = null;
     return {};
   }
 }
@@ -34,6 +63,7 @@ export async function getAllEntries(): Promise<MoodEntriesRecord> {
  * @param date - Date string in YYYY-MM-DD format
  */
 export async function getEntry(date: string): Promise<MoodEntry | null> {
+  if (entriesCache) return entriesCache[date] ?? null;
   const entries = await getAllEntries();
   return entries[date] ?? null;
 }
@@ -54,6 +84,7 @@ export async function upsertEntry(entry: MoodEntry): Promise<void> {
       updatedAt: now,
     };
 
+    setCache(entries);
     await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
   } catch (error) {
     console.error('[moodStorage] Failed to save entry:', error);
@@ -68,6 +99,7 @@ export async function deleteEntry(date: string): Promise<void> {
   try {
     const entries = await getAllEntries();
     delete entries[date];
+    setCache(entries);
     await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
   } catch (error) {
     console.error('[moodStorage] Failed to delete entry:', error);
@@ -146,5 +178,7 @@ export function createEntry(
  * Clear all entries (use with caution!)
  */
 export async function clearAllEntries(): Promise<void> {
+  entriesCache = {};
+  entriesLoadPromise = null;
   await AsyncStorage.removeItem(STORAGE_KEY);
 }

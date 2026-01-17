@@ -5,13 +5,13 @@
  * Safe: will NOT overwrite real data.
  */
 
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { MoodEntry, MoodEntriesRecord, MoodGrade } from '../../types';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getAllEntries, setAllEntries } from './moodStorage';
 
-const ENTRIES_KEY = 'moodly.entries';
-const SEEDED_KEY = 'moodly.demoSeeded';
-
-const MOODS: MoodGrade[] = ['A+', 'A', 'B', 'C', 'D', 'F'];
+const SEEDED_KEY = 'moodly.demoSeeded'; // legacy
+const SEEDED_VERSION_KEY = 'moodly.demoSeedVersion';
+const SEEDED_VERSION = 'daily2025-v1';
 
 const NOTE_TEMPLATES = [
   'Went for a long walk and felt clear-headed.',
@@ -43,10 +43,36 @@ function hashString(s: string) {
   return h;
 }
 
+function pickMood(date: string): MoodGrade {
+  // Deterministic, "reasonable" distribution:
+  // mostly B/C, some A/D, rare A+/F.
+  const h = hashString(date);
+  const r = h % 100; // 0..99
+
+  if (r < 3) return 'A+';
+  if (r < 18) return 'A';
+  if (r < 55) return 'B';
+  if (r < 82) return 'C';
+  if (r < 96) return 'D';
+  return 'F';
+}
+
+function pickNote(date: string, mood: MoodGrade): string {
+  // 20% chance of empty note to look realistic.
+  const h = hashString(`${date}:${mood}`);
+  if (h % 5 === 0) return '';
+
+  const base = NOTE_TEMPLATES[h % NOTE_TEMPLATES.length]!;
+  // Light variation by mood.
+  if (mood === 'A+' || mood === 'A') return base;
+  if (mood === 'D' || mood === 'F') return base.replace('progress', 'grounding').replace('momentum', 'patience');
+  return base;
+}
+
 function makeEntry(date: string): MoodEntry {
   const h = hashString(date);
-  const mood = MOODS[h % MOODS.length]!;
-  const note = NOTE_TEMPLATES[h % NOTE_TEMPLATES.length]!;
+  const mood = pickMood(date);
+  const note = pickNote(date, mood);
 
   // Make timestamps look plausible (midday local time).
   const y = Number(date.slice(0, 4));
@@ -59,33 +85,37 @@ function makeEntry(date: string): MoodEntry {
 }
 
 /**
- * Seed demo entries for 2024 and 2025 only if there are currently zero entries.
+ * Ensure demo entries exist for every day in 2025.
+ * Safety:
+ * - Never overwrites an existing entry.
+ * - Only runs if storage is empty OR if we've already demo-seeded in the past.
  */
 export async function seedDemoEntriesIfEmpty(): Promise<void> {
   try {
-    const alreadySeeded = await AsyncStorage.getItem(SEEDED_KEY);
-    const raw = await AsyncStorage.getItem(ENTRIES_KEY);
-    const existing: MoodEntriesRecord = raw ? JSON.parse(raw) : {};
-    if (Object.keys(existing).length > 0) return;
-    if (alreadySeeded === '1') return;
+    const version = await AsyncStorage.getItem(SEEDED_VERSION_KEY);
+    const legacy = await AsyncStorage.getItem(SEEDED_KEY);
 
-    const seed: MoodEntriesRecord = {};
-    const years = [2024, 2025];
-    const daysPerMonth = [3, 10, 17, 24]; // enough density to make Calendar/Journals feel “alive”
+    const existing = await getAllEntries();
+    const hasAnyData = Object.keys(existing).length > 0;
+    const isDemoContext = legacy === '1' || !!version; // only mutate non-empty stores if it’s already demo-seeded
 
-    for (const year of years) {
-      for (let m = 0; m < 12; m++) {
-        const dim = daysInMonth(year, m);
-        for (const day of daysPerMonth) {
-          const d = Math.min(day, dim);
-          const date = `${year}-${pad2(m + 1)}-${pad2(d)}`;
-          seed[date] = makeEntry(date);
-        }
+    if (hasAnyData && !isDemoContext) return;
+    if (version === SEEDED_VERSION) return;
+
+    const next: MoodEntriesRecord = { ...existing };
+
+    // Fill every day in 2025 (do not overwrite).
+    for (let m = 0; m < 12; m++) {
+      const dim = daysInMonth(2025, m);
+      for (let d = 1; d <= dim; d++) {
+        const date = `2025-${pad2(m + 1)}-${pad2(d)}`;
+        if (!next[date]) next[date] = makeEntry(date);
       }
     }
 
-    await AsyncStorage.setItem(ENTRIES_KEY, JSON.stringify(seed));
-    await AsyncStorage.setItem(SEEDED_KEY, '1');
+    await setAllEntries(next);
+    await AsyncStorage.setItem(SEEDED_VERSION_KEY, SEEDED_VERSION);
+    if (!legacy) await AsyncStorage.setItem(SEEDED_KEY, '1');
   } catch (e) {
     // Non-fatal: app should still work without demo data.
     console.warn('[demoSeed] Failed to seed demo data:', e);

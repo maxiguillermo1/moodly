@@ -57,6 +57,7 @@ const DayCell = React.memo(function DayCell(props: {
   isFill: boolean;
   isSelected: boolean;
   isToday: boolean;
+  forceBold: boolean;
   sizes: Sizes;
   variant: 'mini' | 'full';
   reduceMotion: boolean;
@@ -71,6 +72,7 @@ const DayCell = React.memo(function DayCell(props: {
     isFill,
     isSelected,
     isToday,
+    forceBold,
     sizes,
     variant,
     reduceMotion,
@@ -78,6 +80,7 @@ const DayCell = React.memo(function DayCell(props: {
     onHapticSelect,
     a11yLabel,
   } = props;
+  const isBold = isFill || forceBold;
 
   const handlePress = useCallback(() => {
     onHapticSelect?.();
@@ -120,7 +123,7 @@ const DayCell = React.memo(function DayCell(props: {
               fontSize: sizes.dayFontSize,
               lineHeight: sizes.dayLineHeight,
               color: isFill ? '#fff' : colors.system.label,
-              fontWeight: isFill ? '700' : '400',
+              fontWeight: isBold ? '700' : '400',
               marginTop: sizes.textTopNudge,
             },
           ]}
@@ -163,14 +166,18 @@ export const MonthGrid = React.memo(function MonthGrid({
     return `${d.getFullYear()}-${mm}-${dd}`;
   }, []);
 
+  // Only affects CalendarView's mini grid when "Full color days" is enabled.
+  const forceBoldMiniWhenFillTheme = variant === 'mini' && calendarMoodStyle === 'fill';
+
   const sizes: Sizes = useMemo(() => {
     if (variant === 'mini') {
       return {
         cellH: 14,
         cellW: 14,
         vMargin: 1,
-        dayFontSize: 9,
-        dayLineHeight: 10,
+        // When theme is "fill", make numbers slightly smaller in the Year (mini) grid.
+        dayFontSize: calendarMoodStyle === 'fill' ? 7 : 9,
+        dayLineHeight: calendarMoodStyle === 'fill' ? 9 : 10,
         dotSize: 3,
         dotMarginTop: 1,
         textTopNudge: 0,
@@ -188,7 +195,7 @@ export const MonthGrid = React.memo(function MonthGrid({
       textTopNudge: 2,
       todayRingW: 3, // slightly stronger in full month view
     };
-  }, [variant]);
+  }, [calendarMoodStyle, variant]);
 
   const monthName = MONTHS_LONG[monthIndex0] ?? '';
 
@@ -231,6 +238,7 @@ export const MonthGrid = React.memo(function MonthGrid({
                 isFill={isFill}
                 isSelected={isSelected}
                 isToday={isToday}
+                forceBold={forceBoldMiniWhenFillTheme}
                 sizes={sizes}
                 variant={variant}
                 reduceMotion={reduceMotion}

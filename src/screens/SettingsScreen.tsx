@@ -3,18 +3,17 @@
  * @module screens/SettingsScreen
  */
 
-import React, { useState, useCallback } from 'react';
+import React, { useMemo, useState, useCallback } from 'react';
 import { View, Text, ScrollView, StyleSheet, Alert, Switch } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { useFocusEffect } from '@react-navigation/native';
 import { ScreenHeader, GroupedSection, GroupedRow, MoodBadge } from '../components';
-import { getAllEntries, clearAllEntries, getMoodCounts, getSettings, setCalendarMoodStyle } from '../lib/storage';
+import { getAllEntries, clearAllEntries, getSettings, setCalendarMoodStyle } from '../lib/storage';
 import { MOOD_GRADES, getMoodLabel } from '../lib/constants/moods';
 import { CalendarMoodStyle, MoodGrade } from '../types';
 import { colors, spacing, typography } from '../theme';
 
 export default function SettingsScreen() {
-  const navigation = useNavigation();
   const [totalEntries, setTotalEntries] = useState(0);
   const [moodCounts, setMoodCounts] = useState<Record<MoodGrade, number>>({
     'A+': 0, 'A': 0, 'B': 0, 'C': 0, 'D': 0, 'F': 0,
@@ -30,8 +29,12 @@ export default function SettingsScreen() {
 
   async function loadStats() {
     const entries = await getAllEntries();
-    const counts = await getMoodCounts();
     setTotalEntries(Object.keys(entries).length);
+    // Compute counts from the already-loaded entries (avoids an extra AsyncStorage pass).
+    const counts: Record<MoodGrade, number> = { 'A+': 0, 'A': 0, 'B': 0, 'C': 0, 'D': 0, 'F': 0 };
+    Object.values(entries).forEach((e) => {
+      counts[e.mood]++;
+    });
     setMoodCounts(counts);
   }
 
@@ -59,10 +62,11 @@ export default function SettingsScreen() {
     );
   }
 
-  // Calculate top mood
-  const topMood = MOOD_GRADES.reduce((a, b) =>
-    moodCounts[a] > moodCounts[b] ? a : b
-  );
+  // Calculate top mood (derived)
+  const topMood = useMemo(() => {
+    if (totalEntries === 0) return null;
+    return MOOD_GRADES.reduce((a, b) => (moodCounts[a] > moodCounts[b] ? a : b));
+  }, [moodCounts, totalEntries]);
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -84,7 +88,7 @@ export default function SettingsScreen() {
           <GroupedRow
             icon="🏆"
             label="Most Common Mood"
-            value={totalEntries > 0 ? `${topMood}` : '—'}
+            value={topMood ? `${topMood}` : '—'}
             showChevron={false}
             isLast
           />
