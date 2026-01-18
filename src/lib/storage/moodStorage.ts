@@ -16,8 +16,30 @@ const STORAGE_KEY = 'moodly.entries';
 let entriesCache: MoodEntriesRecord | null = null;
 let entriesLoadPromise: Promise<MoodEntriesRecord> | null = null;
 
+// Derived cache: entries grouped by YYYY-MM (used by CalendarScreen to avoid regrouping).
+export type EntriesByMonthKey = Record<string, MoodEntriesRecord>;
+let entriesByMonthCache: EntriesByMonthKey | null = null;
+
+function monthKeyFromIso(isoDate: string) {
+  // isoDate is YYYY-MM-DD
+  return isoDate.slice(0, 7);
+}
+
+function ensureEntriesByMonthCache(entries: MoodEntriesRecord): EntriesByMonthKey {
+  if (entriesByMonthCache) return entriesByMonthCache;
+  const grouped: EntriesByMonthKey = {};
+  Object.keys(entries).forEach((iso) => {
+    const mk = monthKeyFromIso(iso);
+    (grouped[mk] ||= {})[iso] = entries[iso]!;
+  });
+  entriesByMonthCache = grouped;
+  return grouped;
+}
+
 function setCache(next: MoodEntriesRecord) {
   entriesCache = next;
+  // Invalidate derived cache; it will be rebuilt lazily when requested.
+  entriesByMonthCache = null;
 }
 
 /**
@@ -59,6 +81,28 @@ export async function getAllEntries(): Promise<MoodEntriesRecord> {
 }
 
 /**
+ * Retrieve entries grouped by month key (YYYY-MM).
+ * Performance helper for CalendarScreen; does not change data semantics.
+ */
+export async function getEntriesByMonthKey(): Promise<EntriesByMonthKey> {
+  const entries = await getAllEntries();
+  return ensureEntriesByMonthCache(entries);
+}
+
+/**
+ * Retrieve both the full entries record and the month-grouped index in one call.
+ * Helps screens avoid duplicated work and extra regrouping on focus.
+ */
+export async function getAllEntriesWithMonthIndex(): Promise<{
+  entries: MoodEntriesRecord;
+  byMonthKey: EntriesByMonthKey;
+}> {
+  const entries = await getAllEntries();
+  const byMonthKey = ensureEntriesByMonthCache(entries);
+  return { entries, byMonthKey };
+}
+
+/**
  * Get a single entry by date
  * @param date - Date string in YYYY-MM-DD format
  */
@@ -78,11 +122,18 @@ export async function upsertEntry(entry: MoodEntry): Promise<void> {
     const now = Date.now();
     const existing = entries[entry.date];
 
-    entries[entry.date] = {
+    const next: MoodEntry = {
       ...entry,
       createdAt: existing?.createdAt ?? now,
       updatedAt: now,
     };
+    entries[entry.date] = next;
+
+    // Keep derived month index warm (low-risk perf win for CalendarScreen).
+    const mk = monthKeyFromIso(entry.date);
+    if (entriesByMonthCache) {
+      (entriesByMonthCache[mk] ||= {})[entry.date] = next;
+    }
 
     setCache(entries);
     await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
@@ -99,6 +150,16 @@ export async function deleteEntry(date: string): Promise<void> {
   try {
     const entries = await getAllEntries();
     delete entries[date];
+
+    if (entriesByMonthCache) {
+      const mk = monthKeyFromIso(date);
+      const monthMap = entriesByMonthCache[mk];
+      if (monthMap) {
+        delete monthMap[date];
+        if (Object.keys(monthMap).length === 0) delete entriesByMonthCache[mk];
+      }
+    }
+
     setCache(entries);
     await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
   } catch (error) {
@@ -180,5 +241,6 @@ export function createEntry(
 export async function clearAllEntries(): Promise<void> {
   entriesCache = {};
   entriesLoadPromise = null;
+  entriesByMonthCache = {};
   await AsyncStorage.removeItem(STORAGE_KEY);
 }

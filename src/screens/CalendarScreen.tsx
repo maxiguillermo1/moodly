@@ -29,8 +29,7 @@ import Animated, {
 import * as Haptics from 'expo-haptics';
 import { CalendarMoodStyle, MoodEntry, MoodGrade } from '../types';
 import { LiquidGlass, MonthGrid, MoodPicker, WeekdayRow } from '../components';
-import { createEntry, getAllEntries, getEntry, getSettings, upsertEntry } from '../lib/storage';
-import { getMoodColor } from '../lib/constants/moods';
+import { createEntry, getAllEntriesWithMonthIndex, getEntry, getSettings, upsertEntry } from '../lib/storage';
 import { colors, spacing, borderRadius, typography, sizing } from '../theme';
 import { buildMonthWindow, MonthItem, monthKey as monthKey2 } from '../lib/calendar/monthWindow';
 import { throttle } from '../lib/utils/throttle';
@@ -151,24 +150,16 @@ export default function CalendarScreen() {
   }, []);
 
   async function loadEntries() {
-    const data = await getAllEntries();
-    setEntries(data);
-    // Group by YYYY-MM so updating one entry doesn't force passing a huge object to every month.
-    const grouped: Record<string, Record<string, MoodEntry>> = {};
-    Object.keys(data).forEach((iso) => {
-      const mk = iso.slice(0, 7); // YYYY-MM
-      (grouped[mk] ||= {})[iso] = data[iso]!;
-    });
-    setEntriesByMonthKey(grouped);
+    const { entries: data, byMonthKey } = await getAllEntriesWithMonthIndex();
+    // Avoid pointless rerenders when focus fires but data is unchanged (cache hit).
+    setEntries((prev) => (prev === (data as any) ? prev : (data as any)));
+    setEntriesByMonthKey((prev) => (prev === (byMonthKey as any) ? prev : (byMonthKey as any)));
   }
 
   async function loadSettings() {
     const settings = await getSettings();
-    setCalendarMoodStyle(settings.calendarMoodStyle);
+    setCalendarMoodStyle((prev) => (prev === settings.calendarMoodStyle ? prev : settings.calendarMoodStyle));
   }
-
-  const year = currentDate.getFullYear();
-  const month = currentDate.getMonth();
 
   const goToToday = () => {
     const today = new Date();
@@ -178,79 +169,9 @@ export default function CalendarScreen() {
   };
 
   // (No year-mode behavior here anymore.)
-
-  const getMoodForDate = (y: number, m: number, d: number): MoodGrade | null => {
-    const dateStr = `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-    return entries[dateStr]?.mood ?? null;
-  };
-
-  // Check if day is today
-  const isToday = (day: number): boolean => {
-    const today = new Date();
-    return (
-      day === today.getDate() &&
-      month === today.getMonth() &&
-      year === today.getFullYear()
-    );
-  };
-
-  const renderDayCell = (opts: {
-    day: number | null;
-    y: number;
-    m: number;
-    isTodayCell: boolean;
-    mood: MoodGrade | null;
-    isMini?: boolean;
-  }) => {
-    const { day, y, m, mood, isTodayCell, isMini } = opts;
-    if (!day) return <View style={[styles.dayCell, isMini && styles.dayCellMini]} />;
-
-    const iso = `${y}-${pad2(m + 1)}-${pad2(day)}`;
-    const isSelected = iso === selectedDate;
-
-    const moodColor = mood ? getMoodColor(mood) : null;
-    const isFill = calendarMoodStyle === 'fill' && moodColor;
-
-    return (
-      <View style={[styles.dayCell, isMini && styles.dayCellMini]}>
-        <View
-          style={[
-            styles.dayContent,
-            isMini && styles.dayContentMini,
-            isFill && { backgroundColor: moodColor },
-            isTodayCell && styles.todayCell,
-            isSelected && styles.selectedCell,
-          ]}
-        >
-          <TouchableOpacity
-            style={styles.dayTapArea}
-            activeOpacity={0.7}
-            onPress={async () => {
-              setSelectedDate(iso);
-              const existing = await getEntry(iso);
-              setEditMood(existing?.mood ?? null);
-              setEditNote(existing?.note ?? '');
-              setIsEditOpen(true);
-            }}
-          >
-            <Text
-              style={[
-                styles.dayText,
-                isMini && styles.dayTextMini,
-                isFill && styles.dayTextOnFill,
-                isTodayCell && !isFill && styles.todayText,
-              ]}
-            >
-              {day}
-            </Text>
-            {!isFill && moodColor ? (
-              <View style={[styles.moodDot, isMini && styles.moodDotMini, { backgroundColor: moodColor }]} />
-            ) : null}
-          </TouchableOpacity>
-        </View>
-      </View>
-    );
-  };
+  const handleHapticSelect = useCallback(() => {
+    Haptics.selectionAsync().catch(() => {});
+  }, []);
 
   const handlePressDate = useCallback(async (isoDate: string) => {
     setSelectedDate(isoDate);
@@ -303,21 +224,16 @@ export default function CalendarScreen() {
   const initialMonthIndex = useMemo(() => Math.max(0, -windowOffsets.start), [windowOffsets.start]);
 
   const commitVisibleMonth = useCallback(
-    async (next: { y: number; m: number }) => {
+    (next: { y: number; m: number }) => {
       setVisibleMonth(next);
       if (!reduceMotion) {
-        try {
-          await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-        } catch {}
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
       }
     },
     [reduceMotion]
   );
 
-  const commitVisibleMonthThrottled = useMemo(
-    () => throttle((next: { y: number; m: number }) => void commitVisibleMonth(next), 200),
-    [commitVisibleMonth]
-  );
+  const commitVisibleMonthThrottled = useMemo(() => throttle(commitVisibleMonth, 200), [commitVisibleMonth]);
 
   const maybeRecenterAfterWindowChange = useCallback(() => {
     if (!listReady) return;
@@ -501,9 +417,7 @@ export default function CalendarScreen() {
                   selectedDate={selectedForThisMonth}
                   onPressDate={handlePressDate}
                   reduceMotion={reduceMotion}
-                  onHapticSelect={() => {
-                    Haptics.selectionAsync().catch(() => {});
-                  }}
+                  onHapticSelect={handleHapticSelect}
                 />
               </View>
             </View>

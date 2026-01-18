@@ -80,10 +80,10 @@ export default function CalendarView() {
   }, []);
 
   const load = useCallback(async () => {
-    const data = await getAllEntries();
-    setEntries(data);
-    const settings = await getSettings();
-    setCalendarMoodStyle(settings.calendarMoodStyle);
+    const [data, settings] = await Promise.all([getAllEntries(), getSettings()]);
+    // Avoid pointless rerenders when these are cache hits.
+    setEntries((prev) => (prev === (data as any) ? prev : (data as any)));
+    setCalendarMoodStyle((prev) => (prev === settings.calendarMoodStyle ? prev : settings.calendarMoodStyle));
   }, []);
 
   const openSettings = () => navigation.getParent()?.getParent()?.navigate('Settings');
