@@ -7,7 +7,7 @@ import React from 'react';
 import { View, TouchableOpacity, StyleSheet } from 'react-native';
 import { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { colors, spacing, borderRadius, shadows, sizing } from '../theme';
+import { colors, spacing, borderRadius, sizing } from '../theme';
 import { LiquidGlass } from '../components';
 
 const TAB_ICONS: Record<string, any> = {
@@ -16,7 +16,7 @@ const TAB_ICONS: Record<string, any> = {
   Journal: 'book-outline',
 };
 
-export function FloatingTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
+export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
   return (
     <View style={styles.container}>
       <LiquidGlass

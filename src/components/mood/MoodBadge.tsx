@@ -7,7 +7,7 @@ import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { MoodGrade } from '../../types';
 import { getMoodConfig } from '../../lib/constants/moods';
-import { colors, spacing, borderRadius, typography } from '../../theme';
+import { colors, spacing, borderRadius } from '../../theme';
 
 interface MoodBadgeProps {
   grade: MoodGrade;

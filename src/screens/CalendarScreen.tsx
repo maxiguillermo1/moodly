@@ -16,7 +16,7 @@ import {
   AccessibilityInfo,
 } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import Animated, {
@@ -29,7 +29,7 @@ import Animated, {
 import * as Haptics from 'expo-haptics';
 import { CalendarMoodStyle, MoodEntry, MoodGrade } from '../types';
 import { LiquidGlass, MonthGrid, MoodPicker, WeekdayRow } from '../components';
-import { createEntry, getAllEntriesWithMonthIndex, getEntry, getSettings, upsertEntry } from '../lib/storage';
+import { createEntry, getAllEntriesWithMonthIndex, getEntry, getSettings, upsertEntry } from '../data';
 import { colors, spacing, borderRadius, typography, sizing } from '../theme';
 import { buildMonthWindow, MonthItem, monthKey as monthKey2 } from '../lib/calendar/monthWindow';
 import { throttle } from '../lib/utils/throttle';
@@ -55,7 +55,6 @@ const ESTIMATED_MONTH_ITEM_H = 440; // conservative; FlashList uses this for vir
 
 export default function CalendarScreen() {
   const { width: windowWidth } = useWindowDimensions();
-  const insets = useSafeAreaInsets();
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
 
@@ -88,12 +87,7 @@ export default function CalendarScreen() {
       : toISODateString(deviceToday);
   }
 
-  // Space to keep content visually centered above the floating bottom nav.
-  // FloatingTabBar is positioned at bottom: spacing[8] and has its own height.
-  // iPhone 15 Pro: keep enough room so the last row of months never sits under the floating tab bar.
-  const bottomOverlaySpace = insets.bottom + spacing[8] + 72;
-  const [currentDate, setCurrentDate] = useState(() => initialAnchorDateRef.current as Date);
-  const [entries, setEntries] = useState<Record<string, MoodEntry>>({});
+  const [currentDate] = useState(() => initialAnchorDateRef.current as Date);
   const [entriesByMonthKey, setEntriesByMonthKey] = useState<Record<string, Record<string, MoodEntry>>>({});
   const [calendarMoodStyle, setCalendarMoodStyle] = useState<CalendarMoodStyle>('dot');
   const [selectedDate, setSelectedDate] = useState<string>(() => initialSelectedDateRef.current as string);
@@ -108,6 +102,7 @@ export default function CalendarScreen() {
   });
 
   const [listReady, setListReady] = useState(false);
+  const listReadyRef = useRef(false);
   const recenterIndexRef = useRef<number | null>(null);
 
   const monthListRef = useRef<any>(null);
@@ -121,17 +116,27 @@ export default function CalendarScreen() {
 
   // Year grid moved to `CalendarView` for performance.
 
+  const loadEntries = useCallback(async () => {
+    const { byMonthKey } = await getAllEntriesWithMonthIndex();
+    // Avoid pointless rerenders when focus fires but data is unchanged (cache hit).
+    setEntriesByMonthKey((prev) => (prev === (byMonthKey as any) ? prev : (byMonthKey as any)));
+  }, []);
+
+  const loadSettings = useCallback(async () => {
+    const settings = await getSettings();
+    setCalendarMoodStyle((prev) => (prev === settings.calendarMoodStyle ? prev : settings.calendarMoodStyle));
+  }, []);
+
   useFocusEffect(
     useCallback(() => {
       loadEntries();
       loadSettings();
-    }, [])
+    }, [loadEntries, loadSettings])
   );
 
   // Keep overlay month label in sync when we change the anchor (Today / params mount).
   useEffect(() => {
     setVisibleMonth({ y: currentDate.getFullYear(), m: currentDate.getMonth() });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentDate]);
 
   // Reduce Motion support (updates rarely; safe in React state).
@@ -149,24 +154,7 @@ export default function CalendarScreen() {
     };
   }, []);
 
-  async function loadEntries() {
-    const { entries: data, byMonthKey } = await getAllEntriesWithMonthIndex();
-    // Avoid pointless rerenders when focus fires but data is unchanged (cache hit).
-    setEntries((prev) => (prev === (data as any) ? prev : (data as any)));
-    setEntriesByMonthKey((prev) => (prev === (byMonthKey as any) ? prev : (byMonthKey as any)));
-  }
-
-  async function loadSettings() {
-    const settings = await getSettings();
-    setCalendarMoodStyle((prev) => (prev === settings.calendarMoodStyle ? prev : settings.calendarMoodStyle));
-  }
-
-  const goToToday = () => {
-    const today = new Date();
-    setCurrentDate(new Date(today.getFullYear(), today.getMonth(), 1));
-    const iso = toISODateString(today);
-    setSelectedDate(iso);
-  };
+  // loadEntries/loadSettings are memoized above (useCallback) for focus effect correctness.
 
   // (No year-mode behavior here anymore.)
   const handleHapticSelect = useCallback(() => {
@@ -175,9 +163,16 @@ export default function CalendarScreen() {
 
   const handlePressDate = useCallback(async (isoDate: string) => {
     setSelectedDate(isoDate);
-    const existing = await getEntry(isoDate);
-    setEditMood(existing?.mood ?? null);
-    setEditNote(existing?.note ?? '');
+    try {
+      const existing = await getEntry(isoDate);
+      setEditMood(existing?.mood ?? null);
+      setEditNote(existing?.note ?? '');
+    } catch (e) {
+      // Defensive: if storage read fails, still allow editing (user can re-save).
+      console.warn('[CalendarScreen] getEntry failed:', e);
+      setEditMood(null);
+      setEditNote('');
+    }
     setIsEditOpen(true);
   }, []);
 
@@ -236,18 +231,18 @@ export default function CalendarScreen() {
   const commitVisibleMonthThrottled = useMemo(() => throttle(commitVisibleMonth, 200), [commitVisibleMonth]);
 
   const maybeRecenterAfterWindowChange = useCallback(() => {
-    if (!listReady) return;
+    if (!listReadyRef.current) return;
     const idx = recenterIndexRef.current;
     if (idx == null) return;
     recenterIndexRef.current = null;
     requestAnimationFrame(() => {
       monthListRef.current?.scrollToIndex({ index: idx, animated: false });
     });
-  }, [listReady]);
+  }, []);
 
   useEffect(() => {
     maybeRecenterAfterWindowChange();
-  }, [maybeRecenterAfterWindowChange, monthsData.length]);
+  }, [listReady, maybeRecenterAfterWindowChange, monthsData.length]);
 
   const onViewableItemsChanged = useCallback(
     ({ viewableItems }: { viewableItems: Array<{ item: MonthItem; index: number | null }> }) => {
@@ -298,7 +293,6 @@ export default function CalendarScreen() {
     [
       commitVisibleMonthThrottled,
       monthsData.length,
-      listReady,
       windowOffsets.end,
       windowOffsets.start,
     ]
@@ -370,7 +364,10 @@ export default function CalendarScreen() {
         estimatedItemSize={ESTIMATED_MONTH_ITEM_H}
         estimatedListSize={{ width: windowWidth, height: 800 }}
         drawDistance={800}
-        onLayout={() => setListReady(true)}
+        onLayout={() => {
+          listReadyRef.current = true;
+          setListReady(true);
+        }}
         initialScrollIndex={initialMonthIndex}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.monthTimeline}
@@ -444,7 +441,6 @@ export default function CalendarScreen() {
                   const next = createEntry(selectedDate, editMood, editNote);
                   await upsertEntry(next);
                   // Update local state without reloading everything (keeps scroll smooth).
-                  setEntries((prev) => ({ ...prev, [selectedDate]: next }));
                   setEntriesByMonthKey((prev) => {
                     const mk = selectedDate.slice(0, 7);
                     const monthMap = prev[mk] ?? {};

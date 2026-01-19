@@ -16,10 +16,10 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 
-import { MoodEntry, MoodGrade } from '../types';
+import { MoodEntry } from '../types';
 import { MonthGrid, ScreenHeader, WeekdayRow } from '../components';
-import { getAllEntries, getSettings } from '../lib/storage';
-import { colors, spacing, borderRadius, typography } from '../theme';
+import { getAllEntries, getSettings } from '../data';
+import { colors, spacing, typography } from '../theme';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
@@ -69,6 +69,13 @@ export default function CalendarView() {
   // Bottom space so the grid never sits under the floating tab bar.
   const bottomOverlaySpace = insets.bottom + spacing[8] + 72;
 
+  const load = useCallback(async () => {
+    const [data, settings] = await Promise.all([getAllEntries(), getSettings()]);
+    // Avoid pointless rerenders when these are cache hits.
+    setEntries((prev) => (prev === (data as any) ? prev : (data as any)));
+    setCalendarMoodStyle((prev) => (prev === settings.calendarMoodStyle ? prev : settings.calendarMoodStyle));
+  }, []);
+
   useEffect(() => {
     // Defer any heavier async work until after the navigation transition completes.
     // This keeps the "Year" button + floating tab bar feeling native (no hitch).
@@ -76,15 +83,7 @@ export default function CalendarView() {
       load();
     });
     return () => task.cancel();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const load = useCallback(async () => {
-    const [data, settings] = await Promise.all([getAllEntries(), getSettings()]);
-    // Avoid pointless rerenders when these are cache hits.
-    setEntries((prev) => (prev === (data as any) ? prev : (data as any)));
-    setCalendarMoodStyle((prev) => (prev === settings.calendarMoodStyle ? prev : settings.calendarMoodStyle));
-  }, []);
+  }, [load]);
 
   const openSettings = () => navigation.getParent()?.getParent()?.navigate('Settings');
 

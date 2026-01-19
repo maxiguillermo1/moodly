@@ -9,7 +9,6 @@ import {
   Text,
   StyleSheet,
   ViewStyle,
-  TextStyle,
   ActivityIndicator,
 } from 'react-native';
 import { colors, spacing, borderRadius, typography, shadows } from '../../theme';

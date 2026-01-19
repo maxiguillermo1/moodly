@@ -6,18 +6,28 @@
 // Required by react-native-gesture-handler (safe in Expo).
 import 'react-native-gesture-handler';
 
+// Install production-safe, redacted console early.
+import { installSafeConsole } from './src/lib/logging/patchConsole';
+installSafeConsole();
+
 import React from 'react';
 import { useEffect } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { NavigationContainer } from '@react-navigation/native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { InteractionManager } from 'react-native';
 import { RootNavigator } from './src/navigation';
-import { seedDemoEntriesIfEmpty } from './src/lib/storage';
+import { seedDemoEntriesIfEmpty } from './src/data';
 
 export default function App() {
   useEffect(() => {
     // Seed demo data for 2024–2025 if storage is empty (safe: won't overwrite real data).
-    seedDemoEntriesIfEmpty();
+    const task = InteractionManager.runAfterInteractions(() => {
+      seedDemoEntriesIfEmpty().catch((e) => {
+        console.warn('[seedDemoEntriesIfEmpty] failed:', e);
+      });
+    });
+    return () => task.cancel();
   }, []);
 
   return (

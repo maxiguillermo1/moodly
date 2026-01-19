@@ -22,7 +22,7 @@ import {
   getEntriesSortedDesc,
   upsertEntry,
   deleteEntry,
-} from '../lib/storage';
+} from '../data';
 import { getRelativeDayLabel, formatDateForDisplay } from '../lib/utils/date';
 import { colors, spacing, borderRadius, typography } from '../theme';
 
@@ -34,13 +34,13 @@ export default function JournalScreen() {
 
   const loadEntries = useCallback(async () => {
     const sorted = await getEntriesSortedDesc();
-    setEntries(sorted);
+    setEntries((prev) => (prev === sorted ? prev : sorted));
   }, []);
 
   useFocusEffect(
     useCallback(() => {
       loadEntries();
-    }, [])
+    }, [loadEntries])
   );
 
   const handleTapEntry = useCallback((entry: MoodEntry) => {

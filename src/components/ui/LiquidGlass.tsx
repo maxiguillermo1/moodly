@@ -9,14 +9,13 @@
  */
 
 import React, { useMemo } from 'react';
-import { View, StyleSheet, useColorScheme, ViewStyle } from 'react-native';
+import { View, StyleSheet, useColorScheme, ViewStyle, StyleProp } from 'react-native';
 import { colors, sizing } from '../../theme';
 
 // Conditional import so the app still typechecks/runs even if expo-blur is not installed.
 // If the user installs expo-blur, BlurView will be used automatically.
 let BlurViewAny: any = null;
 try {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
   BlurViewAny = require('expo-blur')?.BlurView ?? null;
 } catch {
   BlurViewAny = null;
@@ -24,7 +23,7 @@ try {
 
 export type LiquidGlassProps = {
   children: React.ReactNode;
-  style?: ViewStyle;
+  style?: StyleProp<ViewStyle>;
   intensity?: number; // blur intensity default
   tint?: 'light' | 'dark' | 'default';
   border?: boolean;

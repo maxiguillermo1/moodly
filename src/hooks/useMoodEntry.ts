@@ -4,8 +4,8 @@
  */
 
 import { useState, useCallback } from 'react';
-import { MoodEntry, MoodGrade } from '../types';
-import { getEntry, upsertEntry, createEntry } from '../lib/storage';
+import { MoodGrade } from '../types';
+import { getEntry, upsertEntry, createEntry } from '../data';
 import { getToday } from '../lib/utils/date';
 
 interface UseMoodEntryOptions {
@@ -62,6 +62,10 @@ export function useMoodEntry(options: UseMoodEntryOptions = {}): UseMoodEntryRet
         setNote('');
         setIsExisting(false);
       }
+    } catch (e) {
+      // Defensive: storage issues should never crash the UI.
+      // Keep prior state if possible; otherwise reset to safe defaults.
+      console.warn('[useMoodEntry] load failed:', e);
     } finally {
       setIsLoading(false);
     }

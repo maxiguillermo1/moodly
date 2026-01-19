@@ -29,7 +29,6 @@ export default function TodayScreen() {
   const {
     mood,
     note,
-    isExisting,
     isSaving,
     setMood,
     setNote,

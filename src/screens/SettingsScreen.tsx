@@ -4,14 +4,14 @@
  */
 
 import React, { useMemo, useState, useCallback } from 'react';
-import { View, Text, ScrollView, StyleSheet, Alert, Switch } from 'react-native';
+import { ScrollView, StyleSheet, Alert, Switch } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
-import { ScreenHeader, GroupedSection, GroupedRow, MoodBadge } from '../components';
-import { getAllEntries, clearAllEntries, getSettings, setCalendarMoodStyle } from '../lib/storage';
+import { ScreenHeader, GroupedSection, GroupedRow } from '../components';
+import { getAllEntries, clearAllEntries, getSettings, setCalendarMoodStyle } from '../data';
 import { MOOD_GRADES, getMoodLabel } from '../lib/constants/moods';
 import { CalendarMoodStyle, MoodGrade } from '../types';
-import { colors, spacing, typography } from '../theme';
+import { colors, spacing } from '../theme';
 
 export default function SettingsScreen() {
   const [totalEntries, setTotalEntries] = useState(0);
@@ -20,14 +20,7 @@ export default function SettingsScreen() {
   });
   const [calendarMoodStyle, setCalendarMoodStyleState] = useState<CalendarMoodStyle>('dot');
 
-  useFocusEffect(
-    useCallback(() => {
-      loadStats();
-      loadTheme();
-    }, [])
-  );
-
-  async function loadStats() {
+  const loadStats = useCallback(async () => {
     const entries = await getAllEntries();
     setTotalEntries(Object.keys(entries).length);
     // Compute counts from the already-loaded entries (avoids an extra AsyncStorage pass).
@@ -36,12 +29,19 @@ export default function SettingsScreen() {
       counts[e.mood]++;
     });
     setMoodCounts(counts);
-  }
+  }, []);
 
-  async function loadTheme() {
+  const loadTheme = useCallback(async () => {
     const settings = await getSettings();
     setCalendarMoodStyleState(settings.calendarMoodStyle);
-  }
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadStats();
+      loadTheme();
+    }, [loadStats, loadTheme])
+  );
 
   function handleClearData() {
     Alert.alert(
