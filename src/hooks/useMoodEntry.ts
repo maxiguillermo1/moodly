@@ -62,10 +62,10 @@ export function useMoodEntry(options: UseMoodEntryOptions = {}): UseMoodEntryRet
         setNote('');
         setIsExisting(false);
       }
-    } catch (e) {
+    } catch {
       // Defensive: storage issues should never crash the UI.
       // Keep prior state if possible; otherwise reset to safe defaults.
-      console.warn('[useMoodEntry] load failed:', e);
+      console.warn('[useMoodEntry] load failed');
     } finally {
       setIsLoading(false);
     }

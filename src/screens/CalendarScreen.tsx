@@ -167,9 +167,9 @@ export default function CalendarScreen() {
       const existing = await getEntry(isoDate);
       setEditMood(existing?.mood ?? null);
       setEditNote(existing?.note ?? '');
-    } catch (e) {
+    } catch {
       // Defensive: if storage read fails, still allow editing (user can re-save).
-      console.warn('[CalendarScreen] getEntry failed:', e);
+      console.warn('[CalendarScreen] getEntry failed');
       setEditMood(null);
       setEditNote('');
     }

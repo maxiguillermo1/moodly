@@ -33,8 +33,18 @@ function isPlainObject(v: unknown): v is Record<string, unknown> {
 }
 
 function clampString(s: string, maxLen: number) {
-  if (s.length <= maxLen) return s;
-  return `${s.slice(0, maxLen)}…`;
+  // If it's "big", treat as sensitive by default (notes / serialized blobs).
+  if (s.length > maxLen) return `[REDACTED_STRING len=${s.length}]`;
+
+  const t = s.trimStart();
+  // Serialized payload hints (avoid leaking blobs in logs).
+  if ((t.startsWith('{') || t.startsWith('[')) && s.length > 60) {
+    return `[REDACTED_STRING len=${s.length}]`;
+  }
+  if (s.includes('"note"') || s.includes('"entries"') || s.includes('"mood"')) {
+    return `[REDACTED_STRING len=${s.length}]`;
+  }
+  return s;
 }
 
 function redactKey(k: string) {

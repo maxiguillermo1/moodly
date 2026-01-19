@@ -23,8 +23,8 @@ export default function App() {
   useEffect(() => {
     // Seed demo data for 2024–2025 if storage is empty (safe: won't overwrite real data).
     const task = InteractionManager.runAfterInteractions(() => {
-      seedDemoEntriesIfEmpty().catch((e) => {
-        console.warn('[seedDemoEntriesIfEmpty] failed:', e);
+      seedDemoEntriesIfEmpty().catch((_e) => {
+        console.warn('[seedDemoEntriesIfEmpty] failed');
       });
     });
     return () => task.cancel();

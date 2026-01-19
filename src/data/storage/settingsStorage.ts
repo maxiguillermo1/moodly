@@ -6,7 +6,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AppSettings, CalendarMoodStyle } from '../../types';
 import { devTimeAsync } from '../../lib/utils/devPerf';
-import { logger } from '../../lib/logging/logger';
+import { logger } from '../../lib/security/logger';
 
 const SETTINGS_KEY = 'moodly.settings';
 const CORRUPT_PREFIX = `${SETTINGS_KEY}.corrupt.`;

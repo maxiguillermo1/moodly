@@ -16,7 +16,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { MoodEntry, MoodEntriesRecord, MoodGrade } from '../../types';
 import { devTimeAsync, devWarn } from '../../lib/utils/devPerf';
-import { logger } from '../../lib/logging/logger';
+import { logger } from '../../lib/security/logger';
 
 const STORAGE_KEY = 'moodly.entries';
 const CORRUPT_PREFIX = `${STORAGE_KEY}.corrupt.`;
@@ -164,7 +164,7 @@ export async function getAllEntries(): Promise<MoodEntriesRecord> {
       entriesLoadPromise = null;
     }
   } catch (error) {
-    console.error('[moodStorage] Failed to load entries:', error);
+    logger.error('[moodStorage] Failed to load entries', error);
     entriesLoadPromise = null;
     return {};
   }
@@ -239,7 +239,7 @@ export async function upsertEntry(entry: MoodEntry): Promise<void> {
     setCache(entries);
     await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
   } catch (error) {
-    console.error('[moodStorage] Failed to save entry:', error);
+    logger.error('[moodStorage] Failed to save entry', error);
     throw error;
   }
 }
@@ -270,7 +270,7 @@ export async function deleteEntry(date: string): Promise<void> {
     setCache(entries);
     await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
   } catch (error) {
-    console.error('[moodStorage] Failed to delete entry:', error);
+    logger.error('[moodStorage] Failed to delete entry', error);
     throw error;
   }
 }
