@@ -17,10 +17,10 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { MoodEntry, MoodEntriesRecord, MoodGrade } from '../../types';
 import { devTimeAsync, devWarn } from '../../lib/utils/devPerf';
 import { logger } from '../../lib/security/logger';
+import { isValidISODateKey, normalizeNote, validateEntriesRecord, VALID_MOOD_SET, MAX_NOTE_LEN } from '../model/entry';
 
 const STORAGE_KEY = 'moodly.entries';
 const CORRUPT_PREFIX = `${STORAGE_KEY}.corrupt.`;
-const MAX_NOTE_LEN = 200;
 
 // In-memory cache for the session (performance-only; does not change semantics).
 let entriesCache: MoodEntriesRecord | null = null;
@@ -33,38 +33,9 @@ let entriesByMonthCache: EntriesByMonthKey | null = null;
 // Derived cache: sorted list for JournalScreen (newest first).
 let entriesSortedDescCache: MoodEntry[] | null = null;
 
-const VALID_MOODS: ReadonlySet<MoodGrade> = new Set(['A+', 'A', 'B', 'C', 'D', 'F']);
-
 function monthKeyFromIso(isoDate: string) {
   // isoDate is YYYY-MM-DD
   return isoDate.slice(0, 7);
-}
-
-function isValidISODateKey(date: string): boolean {
-  // YYYY-MM-DD
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return false;
-  const y = Number(date.slice(0, 4));
-  const m = Number(date.slice(5, 7));
-  const d = Number(date.slice(8, 10));
-  if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) return false;
-  if (m < 1 || m > 12) return false;
-  if (d < 1 || d > 31) return false;
-  const dt = new Date(y, m - 1, d);
-  return dt.getFullYear() === y && dt.getMonth() === m - 1 && dt.getDate() === d;
-}
-
-function isValidEntry(e: any): e is MoodEntry {
-  return (
-    !!e &&
-    typeof e === 'object' &&
-    typeof e.date === 'string' &&
-    isValidISODateKey(e.date) &&
-    typeof e.note === 'string' &&
-    typeof e.createdAt === 'number' &&
-    typeof e.updatedAt === 'number' &&
-    typeof e.mood === 'string' &&
-    VALID_MOODS.has(e.mood as MoodGrade)
-  );
 }
 
 type ParseResult<T> = { ok: true; value: T } | { ok: false; value: T };
@@ -73,15 +44,10 @@ function safeParseEntries(json: string | null): ParseResult<MoodEntriesRecord> {
   if (!json) return { ok: true, value: {} };
   try {
     const raw = JSON.parse(json) as any;
-    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { ok: false, value: {} };
-    const out: MoodEntriesRecord = {};
-    for (const k of Object.keys(raw)) {
-      const v = raw[k];
-      if (typeof k === 'string' && isValidISODateKey(k) && isValidEntry(v)) {
-        // Preserve stored semantics exactly; key is expected to equal entry.date.
-        out[k] = v;
-      }
-    }
+    const out = validateEntriesRecord(raw);
+    // If the raw value is an object but validation strips everything, treat as corrupt.
+    const ok = out && Object.keys(out).length > 0;
+    if (!ok && raw && typeof raw === 'object') return { ok: false, value: {} };
     return { ok: true, value: out };
   } catch {
     devWarn('[moodStorage] JSON parse failed; falling back to empty store');
@@ -216,11 +182,15 @@ export async function upsertEntry(entry: MoodEntry): Promise<void> {
       logger.warn('[moodStorage] upsertEntry called with invalid date', { date: entry.date });
       return;
     }
+    if (!VALID_MOOD_SET.has(entry.mood as MoodGrade)) {
+      logger.warn('[moodStorage] upsertEntry called with invalid mood', { mood: entry.mood });
+      return;
+    }
     const now = Date.now();
     const prev = await getAllEntries();
     const existing = prev[entry.date];
 
-    const safeNote = String(entry.note ?? '').trim().slice(0, MAX_NOTE_LEN);
+    const safeNote = normalizeNote(entry.note);
 
     const next: MoodEntry = {
       ...entry,
@@ -334,7 +304,7 @@ export function createEntry(
   return {
     date,
     mood,
-    note: note.trim().slice(0, MAX_NOTE_LEN),
+    note: normalizeNote(note).slice(0, MAX_NOTE_LEN),
     createdAt: now,
     updatedAt: now,
   };
