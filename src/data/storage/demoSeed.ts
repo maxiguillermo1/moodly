@@ -342,7 +342,7 @@ export async function seedDemoEntriesIfEmpty(): Promise<void> {
     if (!legacy) await AsyncStorage.setItem(SEEDED_KEY, '1');
   } catch {
     // Non-fatal: app should still work without demo data.
-    console.warn('[demoSeed] Failed to seed demo data'); // console is redacted/patched
+    console.warn('[demoSeed] Failed to seed demo data'); // metadata-only; console is redacted/patched
   }
 }
 

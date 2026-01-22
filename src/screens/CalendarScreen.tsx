@@ -33,6 +33,7 @@ import { createEntry, getAllEntriesWithMonthIndex, getEntry, getSettings, upsert
 import { colors, spacing, borderRadius, typography, sizing } from '../theme';
 import { buildMonthWindow, MonthItem, monthKey as monthKey2 } from '../lib/calendar/monthWindow';
 import { throttle } from '../lib/utils/throttle';
+import { logger } from '../lib/security/logger';
 
 const MONTHS = [
   'January', 'February', 'March', 'April', 'May', 'June',
@@ -169,7 +170,7 @@ export default function CalendarScreen() {
       setEditNote(existing?.note ?? '');
     } catch {
       // Defensive: if storage read fails, still allow editing (user can re-save).
-      console.warn('[CalendarScreen] getEntry failed');
+      logger.warn('[CalendarScreen] getEntry failed');
       setEditMood(null);
       setEditNote('');
     }

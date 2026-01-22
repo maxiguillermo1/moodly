@@ -7,6 +7,7 @@ import { useState, useCallback } from 'react';
 import { MoodGrade } from '../types';
 import { getEntry, upsertEntry, createEntry } from '../data';
 import { getToday } from '../lib/utils/date';
+import { logger } from '../lib/security/logger';
 
 interface UseMoodEntryOptions {
   date?: string;
@@ -65,7 +66,7 @@ export function useMoodEntry(options: UseMoodEntryOptions = {}): UseMoodEntryRet
     } catch {
       // Defensive: storage issues should never crash the UI.
       // Keep prior state if possible; otherwise reset to safe defaults.
-      console.warn('[useMoodEntry] load failed');
+      logger.warn('[useMoodEntry] load failed');
     } finally {
       setIsLoading(false);
     }

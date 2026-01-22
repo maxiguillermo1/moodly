@@ -41,5 +41,37 @@ module.exports = [
       'react-hooks/exhaustive-deps': 'warn',
     },
   },
+  // ---------------------------------------------------------------------------
+  // Module boundary guardrails (FAANG-style)
+  // ---------------------------------------------------------------------------
+  {
+    // UI layer must never touch persistence directly.
+    files: [
+      'src/screens/**/*.{ts,tsx,js,jsx}',
+      'src/components/**/*.{ts,tsx,js,jsx}',
+      'src/hooks/**/*.{ts,tsx,js,jsx}',
+    ],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [
+            {
+              name: '@react-native-async-storage/async-storage',
+              message:
+                'Do not import AsyncStorage in UI code. Use the `src/data/*` layer (e.g. `import { getEntry } from ../data`).',
+            },
+          ],
+          patterns: [
+            {
+              group: ['**/data/storage/**', '**/lib/storage/**'],
+              message:
+                'Do not import deep storage modules from UI code. Import via the `src/data` public surface instead.',
+            },
+          ],
+        },
+      ],
+    },
+  },
 ];
 
