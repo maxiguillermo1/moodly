@@ -85,7 +85,9 @@ export default function CalendarView() {
     return () => task.cancel();
   }, [load]);
 
-  const openSettings = () => navigation.getParent()?.getParent()?.navigate('Settings');
+  const openSettings = useCallback(() => {
+    navigation.getParent()?.getParent()?.navigate('Settings');
+  }, [navigation]);
 
   const yearToIndex = useCallback((y: number) => {
     const idx = y - yearsStartRef.current;
@@ -121,6 +123,28 @@ export default function CalendarView() {
   const gridPadTop = gridPadBase + GRID_SHIFT_DOWN;
   const gridPadBottom = Math.max(0, gridPadBase - GRID_SHIFT_DOWN);
 
+  const monthIndices = useMemo(() => Array.from({ length: 12 }, (_, i) => i), []);
+
+  const layout = useMemo(() => {
+    const horizontalPadding = spacing[4] * 2;
+    const colGap = spacing[2];
+    const available = windowWidth - horizontalPadding;
+    const cardWidth = Math.floor((available - colGap * 2) / 3);
+    return { horizontalPadding, colGap, cardWidth };
+  }, [windowWidth]);
+
+  const yearPageStyle = useMemo(
+    () => ({ width: windowWidth, paddingBottom: bottomOverlaySpace }),
+    [bottomOverlaySpace, windowWidth]
+  );
+
+  const gridWrapperPadStyle = useMemo(
+    () => ({ paddingTop: gridPadTop, paddingBottom: gridPadBottom }),
+    [gridPadBottom, gridPadTop]
+  );
+
+  const gridHorizontalPadStyle = useMemo(() => ({ paddingHorizontal: spacing[4] }), []);
+
   const renderMiniMonth = useCallback(
     (y: number, mIdx: number, cardWidth: number, marginRight: number) => (
       <TouchableOpacity
@@ -143,6 +167,36 @@ export default function CalendarView() {
     [calendarMoodStyle, entries, navigation]
   );
 
+  const keyExtractor = useCallback((y: number) => String(y), []);
+
+  const onMomentumScrollEnd = useCallback(
+    (e: any) => {
+      const idx = Math.round(e.nativeEvent.contentOffset.x / windowWidth);
+      const newYear = years[idx] ?? yearBase;
+      if (newYear !== yearBase) setYearBase(newYear);
+    },
+    [windowWidth, yearBase, years]
+  );
+
+  const renderYearPage = useCallback(
+    ({ item: y }: { item: number }) => {
+      const { colGap, cardWidth } = layout;
+      return (
+        <View style={yearPageStyle}>
+          <View style={[styles.gridWrapper, gridWrapperPadStyle]}>
+            <View style={[styles.grid, gridHorizontalPadStyle]}>
+              {monthIndices.map((mIdx) => {
+                const isEndOfRow = (mIdx + 1) % 3 === 0;
+                return renderMiniMonth(y, mIdx, cardWidth, isEndOfRow ? 0 : colGap);
+              })}
+            </View>
+          </View>
+        </View>
+      );
+    },
+    [gridHorizontalPadStyle, gridWrapperPadStyle, layout, monthIndices, renderMiniMonth, yearPageStyle]
+  );
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <ScreenHeader title={String(yearBase)} showSettings onPressSettings={openSettings} />
@@ -150,7 +204,7 @@ export default function CalendarView() {
       <FlatList
         ref={yearPagerRef}
         data={years}
-        keyExtractor={(y) => String(y)}
+        keyExtractor={keyExtractor}
         horizontal
         pagingEnabled
         showsHorizontalScrollIndicator={false}
@@ -167,29 +221,8 @@ export default function CalendarView() {
             yearPagerRef.current?.scrollToIndex({ index: info.index, animated: false });
           }, 50);
         }}
-        onMomentumScrollEnd={(e) => {
-          const idx = Math.round(e.nativeEvent.contentOffset.x / windowWidth);
-          const newYear = years[idx] ?? yearBase;
-          if (newYear !== yearBase) setYearBase(newYear);
-        }}
-        renderItem={({ item: y }) => {
-          const horizontalPadding = spacing[4] * 2;
-          const colGap = spacing[2];
-          const available = windowWidth - horizontalPadding;
-          const cardWidth = Math.floor((available - colGap * 2) / 3);
-          return (
-            <View style={{ width: windowWidth, paddingBottom: bottomOverlaySpace }}>
-              <View style={[styles.gridWrapper, { paddingTop: gridPadTop, paddingBottom: gridPadBottom }]}>
-                <View style={[styles.grid, { paddingHorizontal: spacing[4] }]}>
-                  {Array.from({ length: 12 }, (_, mIdx) => {
-                    const isEndOfRow = (mIdx + 1) % 3 === 0;
-                    return renderMiniMonth(y, mIdx, cardWidth, isEndOfRow ? 0 : colGap);
-                  })}
-                </View>
-              </View>
-            </View>
-          );
-        }}
+        onMomentumScrollEnd={onMomentumScrollEnd}
+        renderItem={renderYearPage}
       />
     </SafeAreaView>
   );

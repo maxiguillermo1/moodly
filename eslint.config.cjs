@@ -52,6 +52,8 @@ module.exports = [
       'src/hooks/**/*.{ts,tsx,js,jsx}',
     ],
     rules: {
+      // UI should never log directly; use security logger (redacted + prod-safe).
+      'no-console': 'error',
       'no-restricted-imports': [
         'error',
         {

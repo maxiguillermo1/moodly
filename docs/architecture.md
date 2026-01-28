@@ -33,3 +33,17 @@ Goal: keep Moodly “team scalable” while staying Expo-compatible and UI-stabl
 
 See `src/data/DATA_CONTRACT.md`.
 
+### Guardrails (enforced)
+
+- **ESLint boundary rules**:
+  - UI code (`src/screens`, `src/components`, `src/hooks`) cannot import AsyncStorage.
+  - UI code cannot deep-import storage modules (`src/data/storage/*`).
+  - UI code cannot call `console.*` (use `logger` instead).
+
+### How to add a feature safely (pattern)
+
+- **UI work**: add/modify a screen under `src/screens/*` and keep it thin (layout + intent only).
+- **Domain work**: add pure selectors/rules under `src/domain/*` (deterministic; no side effects).
+- **Persistence work**: add/modify data access under `src/data/*` (validation, caching, quarantine).
+- **Plumbing**: expose new public functions via the appropriate `index.ts` in `src/data` or `src/domain`.
+

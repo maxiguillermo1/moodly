@@ -51,8 +51,6 @@ type Sizes = {
 const DayCell = React.memo(function DayCell(props: {
   dateStr: string;
   day: number;
-  mood: MoodGrade | null;
-  note: string;
   moodColor: string | null;
   isFill: boolean;
   isSelected: boolean;
@@ -82,6 +80,51 @@ const DayCell = React.memo(function DayCell(props: {
   } = props;
   const isBold = isFill || forceBold;
 
+  const cellSizeStyle = useMemo(
+    () => ({
+      width: sizes.cellW,
+      height: sizes.cellH,
+      marginVertical: sizes.vMargin,
+    }),
+    [sizes.cellH, sizes.cellW, sizes.vMargin]
+  );
+
+  const pillBaseStyle = useMemo(
+    () => ({
+      width: sizes.cellW,
+      height: sizes.cellH,
+      borderRadius: sizes.cellH / 2,
+    }),
+    [sizes.cellH, sizes.cellW]
+  );
+
+  const todayRingStyle = useMemo(
+    () => ({
+      borderWidth: sizes.todayRingW,
+      borderColor: colors.system.blue,
+    }),
+    [sizes.todayRingW]
+  );
+
+  const dayTextSizeStyle = useMemo(
+    () => ({
+      fontSize: sizes.dayFontSize,
+      lineHeight: sizes.dayLineHeight,
+      marginTop: sizes.textTopNudge,
+    }),
+    [sizes.dayFontSize, sizes.dayLineHeight, sizes.textTopNudge]
+  );
+
+  const dotBaseStyle = useMemo(
+    () => ({
+      width: sizes.dotSize,
+      height: sizes.dotSize,
+      borderRadius: sizes.dotSize / 2,
+      marginTop: sizes.dotMarginTop,
+    }),
+    [sizes.dotMarginTop, sizes.dotSize]
+  );
+
   const handlePress = useCallback(() => {
     onHapticSelect?.();
     onPressDate?.(dateStr);
@@ -92,40 +135,28 @@ const DayCell = React.memo(function DayCell(props: {
       onPress={handlePress}
       accessibilityRole="button"
       accessibilityLabel={a11yLabel}
-      accessibilityState={isSelected ? { selected: true } : {}}
+      accessibilityState={isSelected ? { selected: true } : undefined}
       style={({ pressed }) => [
         styles.cell,
-        {
-          width: sizes.cellW,
-          height: sizes.cellH,
-          marginVertical: sizes.vMargin,
-          opacity: pressed ? 0.85 : 1,
-        },
+        cellSizeStyle,
+        pressed ? styles.pressedOpacity : null,
         !reduceMotion && pressed && variant === 'full' ? styles.pressedFull : null,
       ]}
     >
       <View
         style={[
           styles.pill,
-          {
-            width: sizes.cellW,
-            height: sizes.cellH,
-            borderRadius: sizes.cellH / 2,
-            backgroundColor: isFill && moodColor ? moodColor : 'transparent',
-          },
-          isSelected ? styles.selectedRing : isToday ? { borderWidth: sizes.todayRingW, borderColor: colors.system.blue } : null,
+          pillBaseStyle,
+          isFill && moodColor ? { backgroundColor: moodColor } : null,
+          isSelected ? styles.selectedRing : isToday ? todayRingStyle : null,
         ]}
       >
         <Text
           style={[
             styles.dayText,
-            {
-              fontSize: sizes.dayFontSize,
-              lineHeight: sizes.dayLineHeight,
-              color: isFill ? '#fff' : colors.system.label,
-              fontWeight: isBold ? '700' : '400',
-              marginTop: sizes.textTopNudge,
-            },
+            dayTextSizeStyle,
+            isFill ? styles.dayTextOnFill : styles.dayTextOnBg,
+            isBold ? styles.dayTextBold : styles.dayTextRegular,
           ]}
           allowFontScaling={variant === 'full'}
         >
@@ -133,13 +164,7 @@ const DayCell = React.memo(function DayCell(props: {
         </Text>
         {!isFill && moodColor ? (
           <View
-            style={{
-              width: sizes.dotSize,
-              height: sizes.dotSize,
-              borderRadius: sizes.dotSize / 2,
-              backgroundColor: moodColor,
-              marginTop: sizes.dotMarginTop,
-            }}
+            style={[dotBaseStyle, { backgroundColor: moodColor }]}
           />
         ) : null}
       </View>
@@ -199,6 +224,11 @@ export const MonthGrid = React.memo(function MonthGrid({
 
   const monthName = MONTHS_LONG[monthIndex0] ?? '';
 
+  const emptyCellStyle = useMemo(
+    () => ({ width: sizes.cellW, height: sizes.cellH, marginVertical: sizes.vMargin }),
+    [sizes.cellH, sizes.cellW, sizes.vMargin]
+  );
+
   return (
     <View style={styles.grid}>
       {weeks.map((week, wIdx) => (
@@ -208,7 +238,7 @@ export const MonthGrid = React.memo(function MonthGrid({
               return (
                 <View
                   key={`e-${year}-${monthIndex0}-${wIdx}-${dIdx}`}
-                  style={{ width: sizes.cellW, height: sizes.cellH, marginVertical: sizes.vMargin }}
+                  style={emptyCellStyle}
                 />
               );
             }
@@ -232,8 +262,6 @@ export const MonthGrid = React.memo(function MonthGrid({
                 key={`c-${year}-${monthIndex0}-${wIdx}-${dIdx}`}
                 dateStr={dateStr}
                 day={day}
-                mood={mood}
-                note={note}
                 moodColor={moodColor}
                 isFill={isFill}
                 isSelected={isSelected}
@@ -258,9 +286,14 @@ const styles = StyleSheet.create({
   grid: { width: '100%' },
   row: { flexDirection: 'row', justifyContent: 'space-between' },
   cell: { alignItems: 'center', justifyContent: 'center' },
+  pressedOpacity: { opacity: 0.85 },
   pressedFull: { transform: [{ scale: 0.985 }] },
   pill: { alignItems: 'center', justifyContent: 'center' },
   selectedRing: { borderWidth: 2, borderColor: colors.system.blue },
   dayText: { textAlign: 'center' },
+  dayTextOnBg: { color: colors.system.label },
+  dayTextOnFill: { color: '#fff' },
+  dayTextBold: { fontWeight: '700' },
+  dayTextRegular: { fontWeight: '400' },
 });
 
