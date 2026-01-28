@@ -202,6 +202,15 @@ export async function upsertEntry(entry: MoodEntry): Promise<void> {
       createdAt: existing?.createdAt ?? now,
       updatedAt: now,
     };
+    // Dev-only invariant checks to fail fast during development.
+    if (typeof __DEV__ !== 'undefined' && __DEV__) {
+      if (next.createdAt > next.updatedAt) {
+        throw new Error('[moodStorage.upsertEntry] Invariant violated: createdAt > updatedAt');
+      }
+      if (next.note.length > MAX_NOTE_LEN) {
+        throw new Error('[moodStorage.upsertEntry] Invariant violated: note length exceeded MAX_NOTE_LEN');
+      }
+    }
     const entries: MoodEntriesRecord = { ...prev, [entry.date]: next };
 
     // Keep derived month index warm (low-risk perf win for CalendarScreen).
@@ -304,6 +313,16 @@ export function createEntry(
   mood: MoodGrade,
   note: string = ''
 ): MoodEntry {
+  // Dev-only fail-fast: callers should never construct entries with invalid keys/moods.
+  // In prod, runtime guards in `upsertEntry` keep the app resilient.
+  if (typeof __DEV__ !== 'undefined' && __DEV__) {
+    if (!isValidISODateKey(date)) {
+      throw new Error(`[moodStorage.createEntry] Invalid ISO date key: ${String(date)}`);
+    }
+    if (!VALID_MOOD_SET.has(mood)) {
+      throw new Error(`[moodStorage.createEntry] Invalid mood grade: ${String(mood)}`);
+    }
+  }
   const now = Date.now();
   return {
     date,

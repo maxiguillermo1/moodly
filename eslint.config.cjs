@@ -127,5 +127,21 @@ module.exports = [
       ],
     },
   },
+  {
+    // Date-key safety: prevent accidental UTC date-key derivation via `toISOString().slice(...)`.
+    // This is a common footgun that breaks local-day semantics near midnight/DST.
+    files: ['src/**/*.{ts,tsx,js,jsx}'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector:
+            'CallExpression[callee.property.name="slice"][callee.object.type="CallExpression"][callee.object.callee.property.name="toISOString"]',
+          message:
+            'Do not derive date keys using `toISOString().slice(...)` (UTC). Use local date helpers (`formatDateToISO`, `getToday`) and validate with `isValidISODateKey`.',
+        },
+      ],
+    },
+  },
 ];
 
