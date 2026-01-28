@@ -75,5 +75,57 @@ module.exports = [
       ],
     },
   },
+  {
+    // Domain must remain pure (no React, no UI, no storage).
+    files: ['src/domain/**/*.{ts,tsx,js,jsx}'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [
+            {
+              name: 'react',
+              message: 'Domain must not import React. Keep domain pure and framework-free.',
+            },
+            {
+              name: 'react-native',
+              message: 'Domain must not import React Native. Keep domain pure and framework-free.',
+            },
+            {
+              name: '@react-navigation/native',
+              message: 'Domain must not import navigation. Keep domain pure and framework-free.',
+            },
+            {
+              name: '@react-native-async-storage/async-storage',
+              message: 'Domain must not import AsyncStorage. Use `src/data/*` for persistence.',
+            },
+          ],
+          patterns: [
+            {
+              group: ['**/screens/**', '**/components/**', '**/navigation/**', '**/data/storage/**', '**/lib/storage/**'],
+              message: 'Domain must not import UI/navigation/storage layers.',
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    // Data layer must not import UI or navigation (prevents hidden coupling).
+    files: ['src/data/**/*.{ts,tsx,js,jsx}'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['**/screens/**', '**/components/**', '**/navigation/**'],
+              message: 'Data layer must not import UI/navigation. Keep persistence isolated and reusable.',
+            },
+          ],
+        },
+      ],
+    },
+  },
 ];
 

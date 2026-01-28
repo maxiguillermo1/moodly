@@ -1,49 +1,74 @@
-## Moodly Architecture (Scalability Guardrails)
+## Moodly Architecture (Team-Scalable Guide)
 
-Goal: keep Moodly “team scalable” while staying Expo-compatible and UI-stable.
+This is the canonical architecture guide for Moodly.
 
-### Layers (import rules)
+> Note: On some macOS filesystems, `docs/ARCHITECTURE.md` and `docs/architecture.md` cannot coexist.
+> We treat **this file** as the source of truth, and `ARCHITECTURE.md` at repo root points here.
 
-- **`src/screens/*`**: UI screens only.
-  - No persistence calls directly.
-  - No AsyncStorage imports.
-  - Use `src/data/*` APIs and pure selectors from `src/domain/*`.
+### Repo map (mental model)
 
-- **`src/components/*`**: reusable UI components.
-  - No persistence calls directly (same rule as screens).
+- **`src/screens/`**: screen orchestration (UI + user intent). Keep screens thin.
+- **`src/components/`**: reusable UI components (calendar/mood/ui subfolders).
+- **`src/navigation/`**: navigators + tab bar (routing only).
+- **`src/data/`**: persistence + caching + corruption quarantine (AsyncStorage access lives here).
+- **`src/domain/`**: pure rules + selectors (no React, no storage).
+- **`src/lib/`**: utilities + security/logging + legacy re-export surfaces.
+- **`src/theme/`**: design tokens only.
+- **`src/types/`**: shared TypeScript types.
 
-- **`src/data/*`**: persistence + caching + migrations/quarantine.
-  - Owns AsyncStorage access and any caching/coalescing.
-  - Must validate at boundaries (runtime guards).
+### Folder responsibilities (single source of truth)
 
-- **`src/domain/*`**: pure domain rules + analytics selectors.
-  - Deterministic transforms.
-  - No side effects, no storage, no React.
+- **Screens**
+  - Own: layout composition, wiring user intent to domain/data calls.
+  - Avoid: heavy transforms, analytics math, persistence details.
 
-- **`src/lib/*`**: pure utilities + platform-safe helpers.
-  - Security logging helpers live under `src/lib/security/*`.
+- **Components**
+  - Own: reusable rendering primitives and feature components.
+  - Avoid: calling data/storage directly.
 
-### Logging rules (privacy-safe)
+- **Domain (`src/domain`)**
+  - Own: invariants, validation helpers, analytics selectors, deterministic transforms.
+  - Must be: pure and deterministic (same input → same output).
+  - Must not: import React / React Native / navigation / AsyncStorage.
 
-- Use `src/lib/security/logger.ts` for internal logs.
-- Do not log payloads (entries/notes/settings blobs).
-- Console is patched on startup to redact and silence logs in prod.
+- **Data (`src/data`)**
+  - Own: AsyncStorage access, caching, in-flight coalescing, corruption quarantine, versioning hooks.
+  - Must not: import screens/components/navigation.
 
-### Data contract
+### Import rules (direction)
 
-See `src/data/DATA_CONTRACT.md`.
+- `screens` → may import: `components`, `domain`, `data`, `lib`, `theme`, `types`
+- `components` → may import: `domain` (pure), `lib` (pure), `theme`, `types`
+- `domain` → may import: `types`, `lib` (pure helpers), `data/model` + `data/analytics` (pure)
+- `data` → may import: `types`, `domain` (pure validation/selectors), `lib/security` (logging/redaction)
+- No layer should import “up” into UI (data/domain must not import screens/components)
 
-### Guardrails (enforced)
+### Common patterns (standardize these)
 
-- **ESLint boundary rules**:
-  - UI code (`src/screens`, `src/components`, `src/hooks`) cannot import AsyncStorage.
-  - UI code cannot deep-import storage modules (`src/data/storage/*`).
-  - UI code cannot call `console.*` (use `logger` instead).
+- **Data loading in screens**
+  - Prefer `useFocusEffect(useCallback(() => { load(); }, [load]))`
+  - Keep `load*` callbacks memoized with `useCallback`
+  - Avoid heavy sync work during transitions; defer via `InteractionManager.runAfterInteractions` where appropriate
 
-### How to add a feature safely (pattern)
+- **Error handling / logging**
+  - UI code never calls `console.*`
+  - Use `logger` (`src/lib/security/logger.ts`) and log metadata only
 
-- **UI work**: add/modify a screen under `src/screens/*` and keep it thin (layout + intent only).
-- **Domain work**: add pure selectors/rules under `src/domain/*` (deterministic; no side effects).
-- **Persistence work**: add/modify data access under `src/data/*` (validation, caching, quarantine).
-- **Plumbing**: expose new public functions via the appropriate `index.ts` in `src/data` or `src/domain`.
+- **List rendering**
+  - Memoize `renderItem`, `keyExtractor`, and derived list props (`contentContainerStyle`, `viewabilityConfig`)
+  - Avoid creating inline objects inside `renderItem` loops for hot lists/grids
+
+### Adding a new feature (example)
+
+If you add “Weekly Insights” (no UI guidance here — just file placement):
+
+- **Domain**: `src/domain/insights/weekly.ts` (pure selectors)
+- **Data**: `src/data/insights/weeklyRepository.ts` (storage reads/writes if needed)
+- **UI**: `src/screens/WeeklyInsightsScreen.tsx` (orchestration only)
+- **Exports**: add to `src/domain/index.ts` and/or `src/data/index.ts` if it’s part of the public surface
+
+### Reference docs
+
+- **Data contract**: `src/data/DATA_CONTRACT.md`
+- **Root pointer**: `ARCHITECTURE.md`
 
