@@ -45,12 +45,16 @@ function pad2(n: number) {
 }
 
 function toISODateString(date: Date) {
+  // IMPORTANT: local date key (not UTC). Do not switch to `toISOString()` without a migration decision.
   return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
 }
 
-const WINDOW_CAP = 24;
-const WINDOW_EXTEND = 6;
-const WINDOW_NEAR_EDGE = 2;
+// -----------------------------------------------------------------------------
+// Hidden decisions / tuning constants (keep stable unless intentionally revisiting perf tradeoffs)
+// -----------------------------------------------------------------------------
+const WINDOW_CAP = 24; // bounded list size cap (months)
+const WINDOW_EXTEND = 6; // how many months to extend when nearing edges
+const WINDOW_NEAR_EDGE = 2; // threshold (items) considered "near edge" for extension
 
 const ESTIMATED_MONTH_ITEM_H = 440; // conservative; FlashList uses this for virtualization
 

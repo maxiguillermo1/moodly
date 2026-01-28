@@ -45,9 +45,13 @@ function safeParseEntries(json: string | null): ParseResult<MoodEntriesRecord> {
   try {
     const raw = JSON.parse(json) as any;
     const out = validateEntriesRecord(raw);
-    // If the raw value is an object but validation strips everything, treat as corrupt.
-    const ok = out && Object.keys(out).length > 0;
-    if (!ok && raw && typeof raw === 'object') return { ok: false, value: {} };
+    // If the raw value is an object but validation strips everything:
+    // - If raw is empty `{}`, it's valid (represents "no entries").
+    // - If raw had keys, treat as corrupt (invalid keys/values were dropped).
+    const rawIsObject = !!raw && typeof raw === 'object' && !Array.isArray(raw);
+    const rawKeyCount = rawIsObject ? Object.keys(raw).length : 0;
+    const ok = rawKeyCount === 0 || Object.keys(out).length > 0;
+    if (!ok && rawIsObject) return { ok: false, value: {} };
     return { ok: true, value: out };
   } catch {
     devWarn('[moodStorage] JSON parse failed; falling back to empty store');

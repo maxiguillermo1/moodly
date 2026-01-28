@@ -25,6 +25,17 @@ const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', '
 
 type CalendarMoodStyle = 'dot' | 'fill';
 
+// -----------------------------------------------------------------------------
+// Hidden decisions / tuning constants (keep stable unless intentionally revisiting UX/perf tradeoffs)
+// -----------------------------------------------------------------------------
+const YEARS_AROUND_INITIAL = 100; // 100 years back + 100 years forward (+ current)
+const YEARS_COUNT = YEARS_AROUND_INITIAL * 2 + 1;
+
+// Visual tuning constants used only to compute padding/centering; does not change navigation/UI structure.
+const HEADER_VISUAL_HEIGHT_ESTIMATE = 88; // iOS large-title header approx height
+const MINI_GRID_HEIGHT_ESTIMATE = 520; // ~ 3×4 mini-month grid height
+const GRID_SHIFT_DOWN_PX = 24; // positive moves grid down; tuned for iPhone 15 Pro
+
 export default function CalendarView() {
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const insets = useSafeAreaInsets();
@@ -55,8 +66,10 @@ export default function CalendarView() {
    * Instead, use a stable year list (virtualized by FlatList) and only update the
    * header value based on scroll position.
    */
-  const yearsStartRef = useRef<number>(initialYearRef.current - 100);
-  const YEARS_COUNT = 201; // 100 years back + current + 100 years forward
+  const yearsStartRef = useRef<number>(initialYearRef.current - YEARS_AROUND_INITIAL);
+  // NOTE: `yearsStartRef` uses a fixed offset so paging remains stable across renders.
+  // This is intentionally coarse and should remain stable to avoid scrollToIndex weirdness.
+  // Keep the "100 years around" decision encoded as a constant above.
   const years = useMemo(
     () => Array.from({ length: YEARS_COUNT }, (_, i) => yearsStartRef.current + i),
     []
@@ -111,17 +124,15 @@ export default function CalendarView() {
 
   // Pixel-perfect centering: compute usable height and center the grid.
   // Header height is stable (one line). We use a tuned constant for iPhone 15 Pro.
-  const headerHeight = 88; // large title header visual height (approx on iOS)
-  const usable = windowHeight - insets.top - headerHeight - bottomOverlaySpace;
-  const gridPadBase = Math.max(0, Math.floor((usable - 520) / 2)); // 520 ~ 3×4 mini-month grid height
+  const usable = windowHeight - insets.top - HEADER_VISUAL_HEIGHT_ESTIMATE - bottomOverlaySpace;
+  const gridPadBase = Math.max(0, Math.floor((usable - MINI_GRID_HEIGHT_ESTIMATE) / 2));
   /**
    * IMPORTANT:
    * If we add the same paddingTop and paddingBottom, the grid stays centered.
    * To *move* the grid down, we need asymmetric padding (more top, less bottom).
    */
-  const GRID_SHIFT_DOWN = 24; // +down, -up (tune on iPhone 15 Pro)
-  const gridPadTop = gridPadBase + GRID_SHIFT_DOWN;
-  const gridPadBottom = Math.max(0, gridPadBase - GRID_SHIFT_DOWN);
+  const gridPadTop = gridPadBase + GRID_SHIFT_DOWN_PX;
+  const gridPadBottom = Math.max(0, gridPadBase - GRID_SHIFT_DOWN_PX);
 
   const monthIndices = useMemo(() => Array.from({ length: 12 }, (_, i) => i), []);
 

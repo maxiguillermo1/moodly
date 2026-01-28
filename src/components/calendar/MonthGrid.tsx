@@ -2,6 +2,11 @@
  * @fileoverview Month grid (shared between CalendarScreen + CalendarView)
  * Hot path: minimize allocations and rerenders for smooth scrolling.
  * @module components/calendar/MonthGrid
+ *
+ * Hidden decisions (intentional):
+ * - Date keys are local `YYYY-MM-DD` strings (see `src/lib/utils/date.ts` and `src/data/model/entry.ts`).
+ * - `monthIndex0` is 0-based (0..11) to match JS Date.
+ * - `todayIso` is computed once per mount (does not update at midnight without remount) to keep the hot path cheap.
  */
 
 import React, { useMemo, useCallback } from 'react';
@@ -31,6 +36,7 @@ const MONTHS_LONG = [
 ];
 
 function iso(year: number, monthIndex0: number, day: number) {
+  // Construct a local date key without `Date` allocations (timezone-safe for our local-key semantics).
   const mm = String(monthIndex0 + 1).padStart(2, '0');
   const dd = String(day).padStart(2, '0');
   return `${year}-${mm}-${dd}`;
