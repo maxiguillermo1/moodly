@@ -18,13 +18,14 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { InteractionManager } from 'react-native';
 import { RootNavigator } from './src/navigation';
 import { seedDemoEntriesIfEmpty } from './src/data';
+import { logger } from './src/lib/security/logger';
 
 export default function App() {
   useEffect(() => {
     // Seed demo data for 2024–2025 if storage is empty (safe: won't overwrite real data).
     const task = InteractionManager.runAfterInteractions(() => {
       seedDemoEntriesIfEmpty().catch((_e) => {
-        console.warn('[seedDemoEntriesIfEmpty] failed');
+        logger.warn('[seedDemoEntriesIfEmpty] failed');
       });
     });
     return () => task.cancel();

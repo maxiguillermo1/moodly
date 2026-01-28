@@ -63,9 +63,11 @@ export async function getSettings(): Promise<AppSettings> {
         try {
           const parsed = JSON.parse(json) as any;
           const isObject = parsed && typeof parsed === 'object' && !Array.isArray(parsed);
+          const keyCount = isObject ? Object.keys(parsed).length : 0;
           const hasValidStyle =
             isObject && (parsed.calendarMoodStyle === 'dot' || parsed.calendarMoodStyle === 'fill');
-          if (!hasValidStyle) {
+          // Treat an empty object `{}` as a benign "defaults" case; don't quarantine to avoid pointless writes.
+          if (keyCount > 0 && !hasValidStyle) {
             logger.warn('[settingsStorage] Corrupt settings detected; quarantining and resetting');
             await quarantineCorruptValue(json);
           }
