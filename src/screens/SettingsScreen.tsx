@@ -8,7 +8,13 @@ import { ScrollView, StyleSheet, Alert, Switch } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { ScreenHeader, GroupedSection, GroupedRow } from '../components';
-import { getAllEntries, clearAllEntries, getSettings, setCalendarMoodStyle } from '../data';
+import {
+  getAllEntries,
+  clearAllEntries,
+  getSettings,
+  setCalendarMoodStyle,
+  setMonthCardMatchesScreenBackground,
+} from '../data';
 import { MOOD_GRADES, getMoodLabel } from '../lib/constants/moods';
 import { CalendarMoodStyle, MoodGrade } from '../types';
 import { colors, spacing } from '../theme';
@@ -19,6 +25,7 @@ export default function SettingsScreen() {
     'A+': 0, 'A': 0, 'B': 0, 'C': 0, 'D': 0, 'F': 0,
   });
   const [calendarMoodStyle, setCalendarMoodStyleState] = useState<CalendarMoodStyle>('dot');
+  const [monthCardMatchesScreenBackground, setMonthCardMatchesScreenBackgroundState] = useState(false);
 
   const loadStats = useCallback(async () => {
     const entries = await getAllEntries();
@@ -34,6 +41,7 @@ export default function SettingsScreen() {
   const loadTheme = useCallback(async () => {
     const settings = await getSettings();
     setCalendarMoodStyleState(settings.calendarMoodStyle);
+    setMonthCardMatchesScreenBackgroundState(!!settings.monthCardMatchesScreenBackground);
   }, []);
 
   useFocusEffect(
@@ -114,6 +122,20 @@ export default function SettingsScreen() {
               />
             )}
             isFirst
+          />
+          <GroupedRow
+            icon="🗓️"
+            label="Month background matches screen"
+            showChevron={false}
+            right={(
+              <Switch
+                value={monthCardMatchesScreenBackground}
+                onValueChange={async (next) => {
+                  setMonthCardMatchesScreenBackgroundState(!!next);
+                  await setMonthCardMatchesScreenBackground(!!next);
+                }}
+              />
+            )}
             isLast
           />
         </GroupedSection>

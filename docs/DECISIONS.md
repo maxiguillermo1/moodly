@@ -33,8 +33,8 @@ If you change one of these, update this doc and the relevant module comments.
 
 - **Decision**: AsyncStorage values are runtime-validated; corrupt values are quarantined to a backup key and the primary key is reset to a safe default.
 - **Where**:
-  - `src/data/storage/moodStorage.ts`
-  - `src/data/storage/settingsStorage.ts`
+  - `src/storage` (facade)
+  - `src/data/storage/*` (current implementation)
   - contract: `src/data/DATA_CONTRACT.md`
 - **Why**: local storage can be partially written, manually edited in dev, or corrupted; the app must never crash.
 - **Failure mode**: removing validation/quarantine can turn one bad write into a crash loop.

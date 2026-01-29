@@ -7,14 +7,22 @@ This is the canonical architecture guide for Moodly.
 
 ### Repo map (mental model)
 
-- **`src/screens/`**: screen orchestration (UI + user intent). Keep screens thin.
-- **`src/components/`**: reusable UI components (calendar/mood/ui subfolders).
-- **`src/navigation/`**: navigators + tab bar (routing only).
-- **`src/data/`**: persistence + caching + corruption quarantine (AsyncStorage access lives here).
-- **`src/domain/`**: pure rules + selectors (no React, no storage).
-- **`src/lib/`**: utilities + security/logging + legacy re-export surfaces.
-- **`src/theme/`**: design tokens only.
-- **`src/types/`**: shared TypeScript types.
+Beginner-friendly “where do I put this?” map:
+
+- **`src/app/`**: app bootstrap & wiring (providers, navigation container, startup tasks)
+- **`src/screens/`**: full screens (composition + user intent only)
+- **`src/components/`**: reusable UI components (calendar/mood/ui subfolders)
+- **`src/navigation/`**: navigators + tab bar only
+- **`src/storage/`**: local persistence + caching + parsing + corruption quarantine (AsyncStorage only here)
+- **`src/logic/`**: pure rules + canonical model (no React, no storage)
+- **`src/insights/`**: pure derived selectors/aggregations (daily/weekly/monthly/streaks)
+- **`src/security/`**: redaction/logger/console patch helpers
+- **`src/utils/`**: small, pure helpers (date formatting, throttles, calendar math)
+- **`src/theme/`**: design tokens only
+- **`src/types/`**: shared TypeScript types
+
+Legacy surfaces (kept for compatibility; prefer the folders above):
+- `src/data/*`, `src/domain/*`, `src/lib/*`
 
 ### Folder responsibilities (single source of truth)
 
@@ -26,22 +34,26 @@ This is the canonical architecture guide for Moodly.
   - Own: reusable rendering primitives and feature components.
   - Avoid: calling data/storage directly.
 
-- **Domain (`src/domain`)**
-  - Own: invariants, validation helpers, analytics selectors, deterministic transforms.
+- **Logic (`src/logic`)**
+  - Own: invariants, validation helpers, deterministic transforms (canonical “rules of the system”).
   - Must be: pure and deterministic (same input → same output).
   - Must not: import React / React Native / navigation / AsyncStorage.
 
-- **Data (`src/data`)**
+- **Insights (`src/insights`)**
+  - Own: deterministic derived views (aggregations/selectors) built on validated data.
+  - Must not: import React / AsyncStorage.
+
+- **Storage (`src/storage`)**
   - Own: AsyncStorage access, caching, in-flight coalescing, corruption quarantine, versioning hooks.
   - Must not: import screens/components/navigation.
 
 ### Import rules (direction)
 
-- `screens` → may import: `components`, `domain`, `data`, `lib`, `theme`, `types`
-- `components` → may import: `domain` (pure), `lib` (pure), `theme`, `types`
-- `domain` → may import: `types`, `lib` (pure helpers), `data/model` + `data/analytics` (pure)
-- `data` → may import: `types`, `domain` (pure validation/selectors), `lib/security` (logging/redaction)
-- No layer should import “up” into UI (data/domain must not import screens/components)
+- `screens` → may import: `components`, `logic`, `insights`, `storage`, `security`, `utils`, `theme`, `types`
+- `components` → may import: `logic`/`insights` (pure), `security`, `utils`, `theme`, `types`
+- `logic`/`insights`/`utils` → may import: `types` (+ other pure modules), but **not** React/navigation/storage
+- `storage` → may import: `types`, `logic` (validation), `security` (logger/redaction)
+- No “upward” imports: storage/logic/insights must not import screens/components/navigation
 
 ### Common patterns (standardize these)
 

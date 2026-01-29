@@ -8,3 +8,6 @@
 export * from '../data/model';
 export * from '../data/analytics';
 
+// Preferred beginner-friendly surfaces:
+export * from '../logic';
+export * from '../insights';

@@ -34,20 +34,12 @@ import { colors, spacing, borderRadius, typography, sizing } from '../theme';
 import { buildMonthWindow, MonthItem, monthKey as monthKey2 } from '../lib/calendar/monthWindow';
 import { throttle } from '../lib/utils/throttle';
 import { logger } from '../lib/security/logger';
+import { formatDateToISO } from '../lib/utils/date';
 
 const MONTHS = [
   'January', 'February', 'March', 'April', 'May', 'June',
   'July', 'August', 'September', 'October', 'November', 'December'
 ];
-
-function pad2(n: number) {
-  return String(n).padStart(2, '0');
-}
-
-function toISODateString(date: Date) {
-  // IMPORTANT: local date key (not UTC). Do not switch to `toISOString()` without a migration decision.
-  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
-}
 
 // -----------------------------------------------------------------------------
 // Hidden decisions / tuning constants (keep stable unless intentionally revisiting perf tradeoffs)
@@ -88,13 +80,14 @@ export default function CalendarScreen() {
     initialAnchorKeyRef.current = monthKey2(anchor.getFullYear(), anchor.getMonth());
     // If we anchored from params, default selection to the first day of that month.
     initialSelectedDateRef.current = hasValidParams
-      ? `${anchor.getFullYear()}-${pad2(anchor.getMonth() + 1)}-01`
-      : toISODateString(deviceToday);
+      ? formatDateToISO(new Date(anchor.getFullYear(), anchor.getMonth(), 1))
+      : formatDateToISO(deviceToday);
   }
 
   const [currentDate] = useState(() => initialAnchorDateRef.current as Date);
   const [entriesByMonthKey, setEntriesByMonthKey] = useState<Record<string, Record<string, MoodEntry>>>({});
   const [calendarMoodStyle, setCalendarMoodStyle] = useState<CalendarMoodStyle>('dot');
+  const [monthCardMatchesScreenBackground, setMonthCardMatchesScreenBackground] = useState(false);
   const [selectedDate, setSelectedDate] = useState<string>(() => initialSelectedDateRef.current as string);
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [editMood, setEditMood] = useState<MoodGrade | null>(null);
@@ -130,6 +123,9 @@ export default function CalendarScreen() {
   const loadSettings = useCallback(async () => {
     const settings = await getSettings();
     setCalendarMoodStyle((prev) => (prev === settings.calendarMoodStyle ? prev : settings.calendarMoodStyle));
+    setMonthCardMatchesScreenBackground((prev) =>
+      prev === !!settings.monthCardMatchesScreenBackground ? prev : !!settings.monthCardMatchesScreenBackground
+    );
   }, []);
 
   useFocusEffect(
@@ -408,7 +404,12 @@ export default function CalendarScreen() {
               <Text style={styles.monthSectionTitle} allowFontScaling>
                 {MONTHS[item.m]} {item.y}
               </Text>
-              <View style={styles.calendarCard}>
+              <View
+                style={[
+                  styles.calendarCard,
+                  monthCardMatchesScreenBackground ? styles.calendarCardMatchScreen : null,
+                ]}
+              >
                 <WeekdayRow variant="full" />
                 <MonthGrid
                   year={item.y}
@@ -572,6 +573,9 @@ const styles = StyleSheet.create({
     padding: spacing[4],
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.system.separator,
+  },
+  calendarCardMatchScreen: {
+    backgroundColor: colors.system.background,
   },
   weekdayRow: {
     flexDirection: 'row',

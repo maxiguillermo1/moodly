@@ -102,8 +102,50 @@ module.exports = [
           ],
           patterns: [
             {
-              group: ['**/screens/**', '**/components/**', '**/navigation/**', '**/data/storage/**', '**/lib/storage/**'],
+              group: [
+                '**/screens/**',
+                '**/components/**',
+                '**/navigation/**',
+                '**/data/storage/**',
+                '**/lib/storage/**',
+                '**/storage/**',
+              ],
               message: 'Domain must not import UI/navigation/storage layers.',
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    // Logic must remain pure (beginner-friendly replacement for `domain`).
+    files: ['src/logic/**/*.{ts,tsx,js,jsx}', 'src/insights/**/*.{ts,tsx,js,jsx}', 'src/utils/**/*.{ts,tsx,js,jsx}'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [
+            {
+              name: 'react',
+              message: 'Pure layers must not import React.',
+            },
+            {
+              name: 'react-native',
+              message: 'Pure layers must not import React Native.',
+            },
+            {
+              name: '@react-navigation/native',
+              message: 'Pure layers must not import navigation.',
+            },
+            {
+              name: '@react-native-async-storage/async-storage',
+              message: 'Pure layers must not import AsyncStorage.',
+            },
+          ],
+          patterns: [
+            {
+              group: ['**/screens/**', '**/components/**', '**/navigation/**', '**/data/storage/**', '**/lib/storage/**', '**/storage/**'],
+              message: 'Pure layers must not import UI/navigation/storage layers.',
             },
           ],
         },
@@ -121,6 +163,23 @@ module.exports = [
             {
               group: ['**/screens/**', '**/components/**', '**/navigation/**'],
               message: 'Data layer must not import UI/navigation. Keep persistence isolated and reusable.',
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    // Storage layer must not import UI or navigation.
+    files: ['src/storage/**/*.{ts,tsx,js,jsx}'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['**/screens/**', '**/components/**', '**/navigation/**'],
+              message: 'Storage layer must not import UI/navigation. Keep persistence isolated and reusable.',
             },
           ],
         },
