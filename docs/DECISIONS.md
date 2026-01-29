@@ -52,6 +52,12 @@ If you change one of these, update this doc and the relevant module comments.
 - **Where enforced**: `eslint.config.cjs` (`no-restricted-imports`)
 - **Why**: prevents bypassing caches/validation and keeps storage changes localized.
 
+### 6.1) UTC date-key derivation is blocked
+
+- **Decision**: The codebase bans deriving date keys from UTC (`toISOString().slice(...)`).
+- **Where enforced**: `eslint.config.cjs` (`no-restricted-syntax`)
+- **Why**: prevents subtle day-shift bugs near midnight/DST.
+
 ### 7) UI must never log sensitive payloads
 
 - **Decision**: UI code must not call `console.*`; use `logger` which redacts and is production-safe.
@@ -68,6 +74,14 @@ If you change one of these, update this doc and the relevant module comments.
   - `src/components/calendar/MonthGrid.tsx`
   - `src/screens/CalendarView.tsx`, `src/screens/CalendarScreen.tsx`
 - **If you change**: re-check scroll smoothness and navigation transitions; prefer memoized callbacks and stable styles.
+
+### 9) Dev-only fail-fast at module boundaries
+
+- **Decision**: In development, invalid inputs to data-layer boundaries should throw early (faster debugging).
+- **Where**:
+  - `src/data/storage/moodStorage.ts` (`getEntry`, `upsertEntry`, `createEntry`, range helpers)
+  - `src/data/storage/settingsStorage.ts` (settings invariants)
+- **Production behavior**: remains resilient (logs metadata and uses safe fallbacks instead of crashing).
 
 ### Good vs bad extensions
 

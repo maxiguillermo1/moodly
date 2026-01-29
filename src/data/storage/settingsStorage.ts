@@ -90,6 +90,12 @@ export async function getSettings(): Promise<AppSettings> {
 }
 
 export async function setSettings(next: AppSettings): Promise<void> {
+  if (typeof __DEV__ !== 'undefined' && __DEV__) {
+    const v = (next as any)?.calendarMoodStyle;
+    if (v !== 'dot' && v !== 'fill') {
+      throw new Error(`[settingsStorage.setSettings] Invalid calendarMoodStyle: ${String(v)}`);
+    }
+  }
   settingsCache = next;
   await AsyncStorage.setItem(SETTINGS_KEY, JSON.stringify(next));
 }

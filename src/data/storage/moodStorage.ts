@@ -168,6 +168,10 @@ export async function getAllEntriesWithMonthIndex(): Promise<{
  */
 export async function getEntry(date: string): Promise<MoodEntry | null> {
   if (!isValidISODateKey(date)) {
+    if (typeof __DEV__ !== 'undefined' && __DEV__) {
+      // Fail fast in dev: screens should only request valid keys.
+      throw new Error(`[moodStorage.getEntry] Invalid ISO date key: ${String(date)}`);
+    }
     logger.warn('[moodStorage] getEntry called with invalid date', { date });
     return null;
   }
@@ -183,10 +187,16 @@ export async function getEntry(date: string): Promise<MoodEntry | null> {
 export async function upsertEntry(entry: MoodEntry): Promise<void> {
   try {
     if (!isValidISODateKey(entry.date)) {
+      if (typeof __DEV__ !== 'undefined' && __DEV__) {
+        throw new Error(`[moodStorage.upsertEntry] Invalid ISO date key: ${String(entry.date)}`);
+      }
       logger.warn('[moodStorage] upsertEntry called with invalid date', { date: entry.date });
       return;
     }
     if (!VALID_MOOD_SET.has(entry.mood as MoodGrade)) {
+      if (typeof __DEV__ !== 'undefined' && __DEV__) {
+        throw new Error(`[moodStorage.upsertEntry] Invalid mood grade: ${String(entry.mood)}`);
+      }
       logger.warn('[moodStorage] upsertEntry called with invalid mood', { mood: entry.mood });
       return;
     }
@@ -279,6 +289,13 @@ export async function getEntriesInRange(
   startDate: string,
   endDate: string
 ): Promise<MoodEntry[]> {
+  if (typeof __DEV__ !== 'undefined' && __DEV__) {
+    if (!isValidISODateKey(startDate) || !isValidISODateKey(endDate) || startDate > endDate) {
+      throw new Error(
+        `[moodStorage.getEntriesInRange] Invalid range: start=${String(startDate)} end=${String(endDate)}`
+      );
+    }
+  }
   const entries = await getAllEntries();
   return Object.values(entries)
     .filter((e) => e.date >= startDate && e.date <= endDate)
