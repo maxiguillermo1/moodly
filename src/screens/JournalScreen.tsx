@@ -22,8 +22,8 @@ import {
   getEntriesSortedDesc,
   upsertEntry,
   deleteEntry,
-} from '../data';
-import { getRelativeDayLabel, formatDateForDisplay } from '../lib/utils/date';
+} from '../storage';
+import { getRelativeDayLabel, formatDateForDisplay } from '../utils';
 import { colors, spacing, borderRadius, typography } from '../theme';
 
 export default function JournalScreen() {

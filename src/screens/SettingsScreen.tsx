@@ -14,8 +14,8 @@ import {
   getSettings,
   setCalendarMoodStyle,
   setMonthCardMatchesScreenBackground,
-} from '../data';
-import { MOOD_GRADES, getMoodLabel } from '../lib/constants/moods';
+} from '../storage';
+import { MOOD_GRADES, getMoodLabel } from '../utils';
 import { CalendarMoodStyle, MoodGrade } from '../types';
 import { colors, spacing } from '../theme';
 

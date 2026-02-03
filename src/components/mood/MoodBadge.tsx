@@ -6,7 +6,7 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { MoodGrade } from '../../types';
-import { getMoodConfig } from '../../lib/constants/moods';
+import { getMoodConfig } from '../../utils';
 import { colors, spacing, borderRadius } from '../../theme';
 
 interface MoodBadgeProps {

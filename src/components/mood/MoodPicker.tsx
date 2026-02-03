@@ -6,7 +6,7 @@
 import React, { useMemo } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { MoodGrade } from '../../types';
-import { getAllMoodConfigs } from '../../lib/constants/moods';
+import { getAllMoodConfigs } from '../../utils';
 import { colors, spacing, borderRadius, typography } from '../../theme';
 
 interface MoodPickerProps {

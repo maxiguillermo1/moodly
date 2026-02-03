@@ -6,7 +6,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, ViewStyle } from 'react-native';
 import { MoodGrade } from '../../types';
-import { getMoodColor } from '../../lib/constants/moods';
+import { getMoodColor } from '../../utils';
 import { colors, borderRadius, typography } from '../../theme';
 
 type BadgeSize = 'sm' | 'md' | 'lg';

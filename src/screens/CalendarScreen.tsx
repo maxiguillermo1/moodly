@@ -29,12 +29,10 @@ import Animated, {
 import * as Haptics from 'expo-haptics';
 import { CalendarMoodStyle, MoodEntry, MoodGrade } from '../types';
 import { LiquidGlass, MonthGrid, MoodPicker, WeekdayRow } from '../components';
-import { createEntry, getAllEntriesWithMonthIndex, getEntry, getSettings, upsertEntry } from '../data';
 import { colors, spacing, borderRadius, typography, sizing } from '../theme';
-import { buildMonthWindow, MonthItem, monthKey as monthKey2 } from '../lib/calendar/monthWindow';
-import { throttle } from '../lib/utils/throttle';
-import { logger } from '../lib/security/logger';
-import { formatDateToISO } from '../lib/utils/date';
+import { createEntry, getAllEntriesWithMonthIndex, getEntry, getSettings, upsertEntry } from '../storage';
+import { buildMonthWindow, MonthItem, monthKey as monthKey2, throttle, formatDateToISO } from '../utils';
+import { logger } from '../security';
 
 const MONTHS = [
   'January', 'February', 'March', 'April', 'May', 'June',

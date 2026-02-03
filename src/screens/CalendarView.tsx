@@ -18,7 +18,7 @@ import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/nativ
 
 import { MoodEntry } from '../types';
 import { MonthGrid, ScreenHeader, WeekdayRow } from '../components';
-import { getAllEntries, getSettings } from '../data';
+import { getAllEntries, getSettings } from '../storage';
 import { colors, spacing, typography } from '../theme';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];

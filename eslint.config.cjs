@@ -70,6 +70,16 @@ module.exports = [
               message:
                 'Do not import deep storage modules from UI code. Import via the `src/data` public surface instead.',
             },
+            {
+              group: ['../lib/**', '../../lib/**', '../../../lib/**', '@/lib/**', '**/src/lib/**'],
+              message:
+                'UI code must not import from `lib/*` directly. Import pure helpers from `domain`/`utils` and runtime services from `security`/`storage` facades.',
+            },
+            {
+              group: ['../data/**', '../../data/**', '../../../data/**', '@/data/**', '**/src/data/**'],
+              message:
+                'UI code must not import from `data/*` directly. Import persistence APIs from the `storage` facade.',
+            },
           ],
         },
       ],

@@ -19,7 +19,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { useMoodEntry } from '../hooks';
 import { ScreenHeader, MoodPicker } from '../components';
-import { getToday, formatDateForDisplay } from '../lib/utils/date';
+import { getToday, formatDateForDisplay } from '../utils';
 import { colors, spacing, borderRadius, typography } from '../theme';
 
 export default function TodayScreen() {

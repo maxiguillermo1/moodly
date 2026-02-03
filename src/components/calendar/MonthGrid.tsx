@@ -11,9 +11,9 @@
 
 import React, { useMemo, useCallback } from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
-import { getMonthMatrix } from '../../lib/calendar/monthMatrix';
 import { MoodEntry, MoodGrade } from '../../types';
-import { getMoodColor } from '../../lib/constants/moods';
+import { getMonthMatrix } from '../../utils';
+import { getMoodColor } from '../../utils';
 import { colors } from '../../theme';
 
 export type CalendarMoodStyle = 'dot' | 'fill';

@@ -24,17 +24,14 @@ function safeParseSettings(json: string | null): AppSettings {
   try {
     const raw = JSON.parse(json) as any;
     if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return DEFAULT_SETTINGS;
-
     const calendarMoodStyle =
       raw.calendarMoodStyle === 'dot' || raw.calendarMoodStyle === 'fill'
         ? (raw.calendarMoodStyle as CalendarMoodStyle)
         : DEFAULT_SETTINGS.calendarMoodStyle;
-
     const monthCardMatchesScreenBackground =
       typeof raw.monthCardMatchesScreenBackground === 'boolean'
         ? raw.monthCardMatchesScreenBackground
         : DEFAULT_SETTINGS.monthCardMatchesScreenBackground;
-
     return { ...DEFAULT_SETTINGS, calendarMoodStyle, monthCardMatchesScreenBackground };
   } catch {
     return DEFAULT_SETTINGS;
@@ -66,7 +63,6 @@ export async function getSettings(): Promise<AppSettings> {
         AsyncStorage.getItem(SETTINGS_KEY)
       );
       const next = safeParseSettings(json);
-
       // If JSON exists but parsing yields defaults, quarantine to avoid repeated weird states.
       if (typeof json === 'string' && json.length > 0) {
         try {
@@ -75,7 +71,6 @@ export async function getSettings(): Promise<AppSettings> {
           const keyCount = isObject ? Object.keys(parsed).length : 0;
           const hasValidStyle =
             isObject && (parsed.calendarMoodStyle === 'dot' || parsed.calendarMoodStyle === 'fill');
-
           // Treat an empty object `{}` as a benign "defaults" case; don't quarantine to avoid pointless writes.
           if (keyCount > 0 && !hasValidStyle) {
             logger.warn('[settingsStorage] Corrupt settings detected; quarantining and resetting');
@@ -86,7 +81,6 @@ export async function getSettings(): Promise<AppSettings> {
           await quarantineCorruptValue(json);
         }
       }
-
       settingsCache = next;
       return next;
     })();
@@ -113,7 +107,6 @@ export async function setSettings(next: AppSettings): Promise<void> {
       );
     }
   }
-
   settingsCache = next;
   await AsyncStorage.setItem(SETTINGS_KEY, JSON.stringify(next));
 }

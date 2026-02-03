@@ -5,9 +5,9 @@
 
 import { useState, useCallback } from 'react';
 import { MoodGrade } from '../types';
-import { getEntry, upsertEntry, createEntry } from '../data';
-import { getToday } from '../lib/utils/date';
-import { logger } from '../lib/security/logger';
+import { getEntry, upsertEntry, createEntry } from '../storage';
+import { getToday } from '../utils';
+import { logger } from '../security';
 
 interface UseMoodEntryOptions {
   date?: string;
