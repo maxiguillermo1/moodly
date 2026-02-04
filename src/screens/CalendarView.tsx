@@ -19,7 +19,8 @@ import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/nativ
 import { MoodEntry } from '../types';
 import { MonthGrid, ScreenHeader, WeekdayRow } from '../components';
 import { getAllEntriesWithMonthIndex, getSettings } from '../storage';
-import { monthKey, perfTimeAsync } from '../utils';
+import { monthKey } from '../utils';
+import { logger } from '../security';
 import { colors, spacing, typography } from '../theme';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -84,11 +85,17 @@ export default function CalendarView() {
   const bottomOverlaySpace = insets.bottom + spacing[8] + 72;
 
   const load = useCallback(async () => {
-    await perfTimeAsync('[CalendarView] load', async () => {
-      const [{ byMonthKey }, settings] = await Promise.all([getAllEntriesWithMonthIndex(), getSettings()]);
-      // Avoid pointless rerenders when these are cache hits.
-      setEntriesByMonthKey((prev) => (prev === (byMonthKey as any) ? prev : (byMonthKey as any)));
-      setCalendarMoodStyle((prev) => (prev === settings.calendarMoodStyle ? prev : settings.calendarMoodStyle));
+    const p: any = (globalThis as any).performance;
+    const start = typeof p?.now === 'function' ? p.now() : Date.now();
+    const [{ byMonthKey }, settings] = await Promise.all([getAllEntriesWithMonthIndex(), getSettings()]);
+    // Avoid pointless rerenders when these are cache hits.
+    setEntriesByMonthKey((prev) => (prev === (byMonthKey as any) ? prev : (byMonthKey as any)));
+    setCalendarMoodStyle((prev) => (prev === settings.calendarMoodStyle ? prev : settings.calendarMoodStyle));
+    const end = typeof p?.now === 'function' ? p.now() : Date.now();
+    logger.perf('calendar.yearView.load', {
+      phase: 'warm',
+      source: 'sessionCache',
+      durationMs: Number(((end as number) - (start as number)).toFixed(1)),
     });
   }, []);
 

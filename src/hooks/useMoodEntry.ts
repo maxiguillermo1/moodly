@@ -66,7 +66,7 @@ export function useMoodEntry(options: UseMoodEntryOptions = {}): UseMoodEntryRet
     } catch {
       // Defensive: storage issues should never crash the UI.
       // Keep prior state if possible; otherwise reset to safe defaults.
-      logger.warn('[useMoodEntry] load failed');
+      logger.warn('today.loadEntry.failed', { dateKey: date });
     } finally {
       setIsLoading(false);
     }

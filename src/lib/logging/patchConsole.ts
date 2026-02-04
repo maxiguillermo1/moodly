@@ -13,12 +13,22 @@ const IS_DEV = typeof __DEV__ !== 'undefined' && __DEV__;
 
 let installed = false;
 
+function isAllowedInProd(method: 'log' | 'warn' | 'error', safeArgs: unknown[]) {
+  // In production:
+  // - Allow errors (redacted) always
+  // - Allow WARN only if it matches our structured logger prefix
+  // - Silence everything else to prevent accidental leakage/noise
+  if (method === 'error') return true;
+  if (method !== 'warn') return false;
+  const first = safeArgs[0];
+  return typeof first === 'string' && first.startsWith('[WARN][');
+}
+
 function wrap(method: 'log' | 'warn' | 'error') {
   const original = console[method].bind(console);
   return (...args: unknown[]) => {
     const safeArgs = args.map((a) => redact(a));
-    // In prod: only allow errors; avoid logs that can leak via device logs.
-    if (!IS_DEV && method !== 'error') return;
+    if (!IS_DEV && !isAllowedInProd(method, safeArgs)) return;
     original(...(safeArgs as any[]));
   };
 }

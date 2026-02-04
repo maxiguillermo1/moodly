@@ -3,7 +3,7 @@
  * @module screens/JournalScreen
  */
 
-import React, { useMemo, useState, useCallback } from 'react';
+import React, { useMemo, useState, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -23,7 +23,8 @@ import {
   upsertEntry,
   deleteEntry,
 } from '../storage';
-import { getRelativeDayLabel, formatDateForDisplay, perfTimeAsync } from '../utils';
+import { getRelativeDayLabel, formatDateForDisplay } from '../utils';
+import { logger } from '../security';
 import { colors, spacing, borderRadius, typography } from '../theme';
 
 export default function JournalScreen() {
@@ -32,10 +33,20 @@ export default function JournalScreen() {
   const [editMood, setEditMood] = useState<MoodGrade | null>(null);
   const [editNote, setEditNote] = useState('');
 
+  const loadCountRef = useRef(0);
+
   const loadEntries = useCallback(async () => {
-    await perfTimeAsync('[JournalScreen] loadEntries', async () => {
-      const sorted = await getEntriesSortedDesc();
-      setEntries((prev) => (prev === sorted ? prev : sorted));
+    const phase = loadCountRef.current === 0 ? 'cold' : 'warm';
+    loadCountRef.current += 1;
+    const p: any = (globalThis as any).performance;
+    const start = typeof p?.now === 'function' ? p.now() : Date.now();
+    const sorted = await getEntriesSortedDesc();
+    setEntries((prev) => (prev === sorted ? prev : sorted));
+    const end = typeof p?.now === 'function' ? p.now() : Date.now();
+    logger.perf('journal.loadEntries', {
+      phase,
+      source: 'sessionCache',
+      durationMs: Number(((end as number) - (start as number)).toFixed(1)),
     });
   }, []);
 

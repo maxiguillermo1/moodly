@@ -30,8 +30,8 @@ import * as Haptics from 'expo-haptics';
 import { CalendarMoodStyle, MoodEntry, MoodGrade } from '../types';
 import { LiquidGlass, MonthGrid, MoodPicker, WeekdayRow } from '../components';
 import { colors, spacing, borderRadius, typography, sizing } from '../theme';
-import { createEntry, getAllEntriesWithMonthIndex, getEntry, getSettings, upsertEntry } from '../storage';
-import { buildMonthWindow, MonthItem, monthKey as monthKey2, throttle, formatDateToISO, perfTimeAsync } from '../utils';
+import { createEntry, getAllEntriesWithMonthIndex, getEntry, getLastAllEntriesSource, getSettings, upsertEntry } from '../storage';
+import { buildMonthWindow, MonthItem, monthKey as monthKey2, throttle, formatDateToISO } from '../utils';
 import { logger } from '../security';
 
 const MONTHS = [
@@ -112,21 +112,37 @@ export default function CalendarScreen() {
 
   // Year grid moved to `CalendarView` for performance.
 
+  const entriesLoadCountRef = useRef(0);
+
   const loadEntries = useCallback(async () => {
-    await perfTimeAsync('[CalendarScreen] loadEntries', async () => {
-      const { byMonthKey } = await getAllEntriesWithMonthIndex();
-      // Avoid pointless rerenders when focus fires but data is unchanged (cache hit).
-      setEntriesByMonthKey((prev) => (prev === (byMonthKey as any) ? prev : (byMonthKey as any)));
+    const phase = entriesLoadCountRef.current === 0 ? 'cold' : 'warm';
+    entriesLoadCountRef.current += 1;
+    const p: any = (globalThis as any).performance;
+    const start = typeof p?.now === 'function' ? p.now() : Date.now();
+    const { byMonthKey } = await getAllEntriesWithMonthIndex();
+    // Avoid pointless rerenders when focus fires but data is unchanged (cache hit).
+    setEntriesByMonthKey((prev) => (prev === (byMonthKey as any) ? prev : (byMonthKey as any)));
+    const end = typeof p?.now === 'function' ? p.now() : Date.now();
+    logger.perf('calendar.loadEntries', {
+      phase,
+      source: getLastAllEntriesSource(),
+      durationMs: Number(((end as number) - (start as number)).toFixed(1)),
     });
   }, []);
 
   const loadSettings = useCallback(async () => {
-    await perfTimeAsync('[CalendarScreen] loadSettings', async () => {
-      const settings = await getSettings();
-      setCalendarMoodStyle((prev) => (prev === settings.calendarMoodStyle ? prev : settings.calendarMoodStyle));
-      setMonthCardMatchesScreenBackground((prev) =>
-        prev === !!settings.monthCardMatchesScreenBackground ? prev : !!settings.monthCardMatchesScreenBackground
-      );
+    const p: any = (globalThis as any).performance;
+    const start = typeof p?.now === 'function' ? p.now() : Date.now();
+    const settings = await getSettings();
+    setCalendarMoodStyle((prev) => (prev === settings.calendarMoodStyle ? prev : settings.calendarMoodStyle));
+    setMonthCardMatchesScreenBackground((prev) =>
+      prev === !!settings.monthCardMatchesScreenBackground ? prev : !!settings.monthCardMatchesScreenBackground
+    );
+    const end = typeof p?.now === 'function' ? p.now() : Date.now();
+    logger.perf('calendar.loadSettings', {
+      phase: 'warm',
+      source: 'sessionCache',
+      durationMs: Number(((end as number) - (start as number)).toFixed(1)),
     });
   }, []);
 
@@ -172,7 +188,7 @@ export default function CalendarScreen() {
       setEditNote(existing?.note ?? '');
     } catch {
       // Defensive: if storage read fails, still allow editing (user can re-save).
-      logger.warn('[CalendarScreen] getEntry failed');
+      logger.warn('calendar.getEntry.failed', { dateKey: isoDate });
       setEditMood(null);
       setEditNote('');
     }

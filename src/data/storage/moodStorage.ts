@@ -15,7 +15,7 @@
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { MoodEntry, MoodEntriesRecord, MoodGrade } from '../../types';
-import { devTimeAsync, devWarn } from '../../lib/utils/devPerf';
+import { devWarn } from '../../lib/utils/devPerf';
 import { logger } from '../../lib/security/logger';
 import { isValidISODateKey, normalizeNote, validateEntriesRecord, VALID_MOOD_SET, MAX_NOTE_LEN } from '../model/entry';
 
@@ -48,6 +48,11 @@ let yearIndexCache: YearIndex | null = null;
 
 // Tiny metadata cache (for dev diagnostics + fast stats).
 let entriesCountCache: number | null = null;
+let lastAllEntriesSource: import('../../lib/security/logger').PerfSource = 'storage';
+
+export function getLastAllEntriesSource(): import('../../lib/security/logger').PerfSource {
+  return lastAllEntriesSource;
+}
 
 function monthKeyFromIso(isoDate: string) {
   // isoDate is YYYY-MM-DD
@@ -82,13 +87,13 @@ async function quarantineCorruptValue(rawJson: string): Promise<void> {
     // Store the raw value for forensic/debug recovery.
     await AsyncStorage.setItem(backupKey, rawJson);
   } catch (e) {
-    logger.warn('[moodStorage] Failed to persist corrupt backup', e);
+    logger.warn('storage.entries.corruptBackup.persistFailed', { key: STORAGE_KEY, error: e });
   }
   try {
     // Reset the primary key to keep the app functional.
     await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify({}));
   } catch (e) {
-    logger.error('[moodStorage] Failed to reset corrupt store', e);
+    logger.error('storage.entries.corruptReset.failed', { key: STORAGE_KEY, error: e });
   }
 }
 
@@ -333,20 +338,26 @@ export async function setAllEntries(next: MoodEntriesRecord): Promise<void> {
  */
 export async function getAllEntries(): Promise<MoodEntriesRecord> {
   try {
-    if (entriesCache) return entriesCache;
+    if (entriesCache) {
+      lastAllEntriesSource = 'sessionCache';
+      return entriesCache;
+    }
     if (entriesLoadPromise) return entriesLoadPromise;
 
     entriesLoadPromise = (async () => {
-      const json = await devTimeAsync('[storage] getAllEntries.getItem', () =>
-        AsyncStorage.getItem(STORAGE_KEY)
+      const json = await logger.perfMeasure(
+        'storage.getAllEntries.getItem',
+        { phase: 'cold', source: 'storage' },
+        () => AsyncStorage.getItem(STORAGE_KEY)
       );
       const parsed = safeParseEntries(json);
       if (!parsed.ok && typeof json === 'string' && json.length > 0) {
-        logger.warn('[moodStorage] Corrupt entries detected; quarantining and resetting');
+        logger.warn('storage.entries.corrupt.detected', { key: STORAGE_KEY, action: 'quarantineAndReset' });
         await quarantineCorruptValue(json);
       }
       setEntriesCache(parsed.value);
       invalidateDerivedCaches();
+      lastAllEntriesSource = 'storage';
       return parsed.value;
     })();
 
@@ -356,7 +367,7 @@ export async function getAllEntries(): Promise<MoodEntriesRecord> {
       entriesLoadPromise = null;
     }
   } catch (error) {
-    logger.error('[moodStorage] Failed to load entries', error);
+    logger.error('storage.entries.load.failed', { key: STORAGE_KEY, error });
     entriesLoadPromise = null;
     return {};
   }
@@ -394,7 +405,7 @@ export async function getEntry(date: string): Promise<MoodEntry | null> {
       // Fail fast in dev: screens should only request valid keys.
       throw new Error(`[moodStorage.getEntry] Invalid ISO date key: ${String(date)}`);
     }
-    logger.warn('[moodStorage] getEntry called with invalid date', { date });
+    logger.warn('storage.entries.getEntry.invalidDateKey', { dateKey: date });
     return null;
   }
   if (entriesCache) return entriesCache[date] ?? null;
@@ -412,14 +423,14 @@ export async function upsertEntry(entry: MoodEntry): Promise<void> {
       if (typeof __DEV__ !== 'undefined' && __DEV__) {
         throw new Error(`[moodStorage.upsertEntry] Invalid ISO date key: ${String(entry.date)}`);
       }
-      logger.warn('[moodStorage] upsertEntry called with invalid date', { date: entry.date });
+      logger.warn('storage.entries.upsert.invalidDateKey', { dateKey: entry.date });
       return;
     }
     if (!VALID_MOOD_SET.has(entry.mood as MoodGrade)) {
       if (typeof __DEV__ !== 'undefined' && __DEV__) {
         throw new Error(`[moodStorage.upsertEntry] Invalid mood grade: ${String(entry.mood)}`);
       }
-      logger.warn('[moodStorage] upsertEntry called with invalid mood', { mood: entry.mood });
+      logger.warn('storage.entries.upsert.invalidMood', { mood: entry.mood });
       return;
     }
     const now = Date.now();
@@ -458,7 +469,7 @@ export async function upsertEntry(entry: MoodEntry): Promise<void> {
     setEntriesCache(entries);
     await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
   } catch (error) {
-    logger.error('[moodStorage] Failed to save entry', error);
+    logger.error('storage.entries.upsert.failed', { key: STORAGE_KEY, error });
     throw error;
   }
 }
@@ -469,7 +480,7 @@ export async function upsertEntry(entry: MoodEntry): Promise<void> {
 export async function deleteEntry(date: string): Promise<void> {
   try {
     if (!isValidISODateKey(date)) {
-      logger.warn('[moodStorage] deleteEntry called with invalid date', { date });
+      logger.warn('storage.entries.delete.invalidDateKey', { dateKey: date });
       return;
     }
     const prev = await getAllEntries();
@@ -499,7 +510,7 @@ export async function deleteEntry(date: string): Promise<void> {
     setEntriesCache(entries);
     await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
   } catch (error) {
-    logger.error('[moodStorage] Failed to delete entry', error);
+    logger.error('storage.entries.delete.failed', { key: STORAGE_KEY, error });
     throw error;
   }
 }
@@ -590,6 +601,7 @@ export function getEntriesSessionCacheDiagnostics(): {
   entriesCount: number;
   monthsIndexed: number;
   yearsIndexed: number;
+  lastAllEntriesSource: import('../../lib/security/logger').PerfSource;
   hasByMonth: boolean;
   hasSorted: boolean;
   hasMoodCounts: boolean;
@@ -603,6 +615,7 @@ export function getEntriesSessionCacheDiagnostics(): {
     entriesCount,
     monthsIndexed,
     yearsIndexed,
+    lastAllEntriesSource,
     hasByMonth: !!entriesByMonthCache,
     hasSorted: !!entriesSortedDescCache,
     hasMoodCounts: !!moodCountsCache,

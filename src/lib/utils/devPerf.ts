@@ -1,38 +1,27 @@
 /**
- * @fileoverview Dev-only perf + logging helpers (no prod spam).
+ * @fileoverview Dev-only perf helpers (legacy surface).
  * @module lib/utils/devPerf
+ *
+ * IMPORTANT:
+ * Prefer `logger.perfMeasure(...)` from `src/security` for new code.
+ * This module remains for backwards compatibility and is intentionally dev-only.
  */
 
-type PerfNow = () => number;
-
-const now: PerfNow = () => {
-  const p: any = (globalThis as any).performance;
-  return typeof p?.now === 'function' ? p.now() : Date.now();
-};
-
-export function devLog(...args: any[]) {
-  if (typeof __DEV__ !== 'undefined' && __DEV__) {
-    // Keep logs minimal and consistent.
-    console.log(...args);
-  }
-}
-
-export function devWarn(...args: any[]) {
-  if (typeof __DEV__ !== 'undefined' && __DEV__) {
-    console.warn(...args);
-  }
-}
+import { logger } from '../security/logger';
 
 /**
  * Measure a synchronous section (dev-only).
  */
 export function devPerfMark(label: string) {
-  const start = now();
+  const p: any = (globalThis as any).performance;
+  const start = typeof p?.now === 'function' ? p.now() : Date.now();
   return {
     end(extra?: Record<string, any>) {
       if (typeof __DEV__ !== 'undefined' && __DEV__) {
-        const ms = now() - start;
-        devLog(`[perf] ${label}: ${ms.toFixed(1)}ms`, extra ?? '');
+        const end = typeof p?.now === 'function' ? p.now() : Date.now();
+        const durationMs = Number(((end as number) - (start as number)).toFixed(1));
+        // Treat label as an event name. Prefer channel-prefixed names, e.g. `storage.getItem`.
+        logger.perf(label, { ...(extra ?? {}), durationMs });
       }
     },
   };

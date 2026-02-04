@@ -27,14 +27,21 @@ export function RootApp() {
       // Seed first (dev-only), then warm RAM-backed caches so screens feel instant.
       seedDemoEntriesIfEmpty()
         .catch((_e) => {
-          logger.warn('[seedDemoEntriesIfEmpty] failed');
+          logger.warn('app.demoSeed.failed');
         })
         .finally(() => {
+          const p: any = (globalThis as any).performance;
+          const start = typeof p?.now === 'function' ? p.now() : Date.now();
           warmSessionStore()
-            .then(() => logSessionStoreDiagnostics())
+            .then(() => {
+              const end = typeof p?.now === 'function' ? p.now() : Date.now();
+              const durationMs = Number(((end as number) - (start as number)).toFixed(1));
+              logger.perf('session.warm', { phase: 'cold', source: 'storage', durationMs });
+              logSessionStoreDiagnostics({ totalMs: durationMs });
+            })
             .catch((_e) => {
               // Non-fatal: this only affects perceived performance, not correctness.
-              logger.warn('[warmSessionStore] failed');
+              logger.warn('session.warm.failed');
             });
         });
     });

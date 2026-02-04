@@ -8,6 +8,7 @@
 import type { MoodEntry, MoodEntriesRecord, MoodGrade } from '../../types';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getAllEntries, setAllEntries } from './moodStorage';
+import { logger } from '../../lib/security/logger';
 
 const SEEDED_KEY = 'moodly.demoSeeded'; // legacy
 const SEEDED_VERSION_KEY = 'moodly.demoSeedVersion';
@@ -342,7 +343,7 @@ export async function seedDemoEntriesIfEmpty(): Promise<void> {
     if (!legacy) await AsyncStorage.setItem(SEEDED_KEY, '1');
   } catch {
     // Non-fatal: app should still work without demo data.
-    console.warn('[demoSeed] Failed to seed demo data'); // metadata-only; console is redacted/patched
+    logger.warn('storage.demoSeed.failed');
   }
 }
 

@@ -3,7 +3,7 @@
  * @module screens/SettingsScreen
  */
 
-import React, { useMemo, useState, useCallback } from 'react';
+import React, { useMemo, useState, useCallback, useRef } from 'react';
 import { ScrollView, StyleSheet, Alert, Switch } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
@@ -15,7 +15,8 @@ import {
   setCalendarMoodStyle,
   setMonthCardMatchesScreenBackground,
 } from '../storage';
-import { MOOD_GRADES, getMoodLabel, perfTimeAsync } from '../utils';
+import { MOOD_GRADES, getMoodLabel } from '../utils';
+import { logger } from '../security';
 import { CalendarMoodStyle, MoodGrade } from '../types';
 import { colors, spacing } from '../theme';
 
@@ -27,19 +28,35 @@ export default function SettingsScreen() {
   const [calendarMoodStyle, setCalendarMoodStyleState] = useState<CalendarMoodStyle>('dot');
   const [monthCardMatchesScreenBackground, setMonthCardMatchesScreenBackgroundState] = useState(false);
 
+  const loadStatsCountRef = useRef(0);
+
   const loadStats = useCallback(async () => {
-    await perfTimeAsync('[SettingsScreen] loadStats', async () => {
-      const { totalEntries: total, moodCounts: counts } = await getMoodStats();
-      setTotalEntries(total);
-      setMoodCounts(counts);
+    const phase = loadStatsCountRef.current === 0 ? 'cold' : 'warm';
+    loadStatsCountRef.current += 1;
+    const p: any = (globalThis as any).performance;
+    const start = typeof p?.now === 'function' ? p.now() : Date.now();
+    const { totalEntries: total, moodCounts: counts } = await getMoodStats();
+    setTotalEntries(total);
+    setMoodCounts(counts);
+    const end = typeof p?.now === 'function' ? p.now() : Date.now();
+    logger.perf('settings.loadStats', {
+      phase,
+      source: 'sessionCache',
+      durationMs: Number(((end as number) - (start as number)).toFixed(1)),
     });
   }, []);
 
   const loadTheme = useCallback(async () => {
-    await perfTimeAsync('[SettingsScreen] loadTheme', async () => {
-      const settings = await getSettings();
-      setCalendarMoodStyleState(settings.calendarMoodStyle);
-      setMonthCardMatchesScreenBackgroundState(!!settings.monthCardMatchesScreenBackground);
+    const p: any = (globalThis as any).performance;
+    const start = typeof p?.now === 'function' ? p.now() : Date.now();
+    const settings = await getSettings();
+    setCalendarMoodStyleState(settings.calendarMoodStyle);
+    setMonthCardMatchesScreenBackgroundState(!!settings.monthCardMatchesScreenBackground);
+    const end = typeof p?.now === 'function' ? p.now() : Date.now();
+    logger.perf('settings.loadTheme', {
+      phase: 'warm',
+      source: 'sessionCache',
+      durationMs: Number(((end as number) - (start as number)).toFixed(1)),
     });
   }, []);
 

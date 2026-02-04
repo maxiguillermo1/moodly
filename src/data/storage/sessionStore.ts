@@ -16,20 +16,25 @@ export async function warmSessionStore(): Promise<void> {
   await Promise.all([warmEntriesSessionCaches(), getSettings()]);
 }
 
-export function logSessionStoreDiagnostics(): void {
+export function logSessionStoreDiagnostics(opts?: { totalMs?: number }): void {
   const IS_DEV = typeof __DEV__ !== 'undefined' && __DEV__;
   if (!IS_DEV) return;
 
   const d = getEntriesSessionCacheDiagnostics();
-  logger.debug('[sessionStore] cache diagnostics', {
-    entriesCount: d.entriesCount,
-    monthsIndexed: d.monthsIndexed,
-    yearsIndexed: d.yearsIndexed,
-    hasByMonth: d.hasByMonth,
-    hasSorted: d.hasSorted,
-    hasMoodCounts: d.hasMoodCounts,
-    hasMonthDateKeys: d.hasMonthDateKeys,
-    hasYearIndex: d.hasYearIndex,
+  const derived: string[] = [];
+  if (d.hasSorted) derived.push('sorted');
+  if (d.hasByMonth) derived.push('byMonth');
+  if (d.hasMoodCounts) derived.push('counts');
+  if (d.hasMonthDateKeys) derived.push('monthDateKeys');
+  if (d.hasYearIndex) derived.push('yearIndex');
+
+  logger.cache('session.ready', {
+    entries: d.entriesCount,
+    months: d.monthsIndexed,
+    years: d.yearsIndexed,
+    derived,
+    source: d.lastAllEntriesSource,
+    totalMs: typeof opts?.totalMs === 'number' ? opts.totalMs : undefined,
   });
 }
 

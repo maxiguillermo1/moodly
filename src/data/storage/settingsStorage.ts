@@ -5,7 +5,6 @@
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AppSettings, CalendarMoodStyle } from '../../types';
-import { devTimeAsync } from '../../lib/utils/devPerf';
 import { logger } from '../../lib/security/logger';
 
 const SETTINGS_KEY = 'moodly.settings';
@@ -44,12 +43,12 @@ async function quarantineCorruptValue(rawJson: string): Promise<void> {
   try {
     await AsyncStorage.setItem(backupKey, rawJson);
   } catch (e) {
-    logger.warn('[settingsStorage] Failed to persist corrupt backup', e);
+    logger.warn('storage.settings.corruptBackup.persistFailed', { key: SETTINGS_KEY, error: e });
   }
   try {
     await AsyncStorage.setItem(SETTINGS_KEY, JSON.stringify(DEFAULT_SETTINGS));
   } catch (e) {
-    logger.error('[settingsStorage] Failed to reset corrupt settings', e);
+    logger.error('storage.settings.corruptReset.failed', { key: SETTINGS_KEY, error: e });
   }
 }
 
@@ -59,8 +58,10 @@ export async function getSettings(): Promise<AppSettings> {
     if (settingsLoadPromise) return settingsLoadPromise;
 
     settingsLoadPromise = (async () => {
-      const json = await devTimeAsync('[storage] getSettings.getItem', () =>
-        AsyncStorage.getItem(SETTINGS_KEY)
+      const json = await logger.perfMeasure(
+        'storage.getSettings.getItem',
+        { phase: 'cold', source: 'storage' },
+        () => AsyncStorage.getItem(SETTINGS_KEY)
       );
       const next = safeParseSettings(json);
       // If JSON exists but parsing yields defaults, quarantine to avoid repeated weird states.
@@ -73,11 +74,11 @@ export async function getSettings(): Promise<AppSettings> {
             isObject && (parsed.calendarMoodStyle === 'dot' || parsed.calendarMoodStyle === 'fill');
           // Treat an empty object `{}` as a benign "defaults" case; don't quarantine to avoid pointless writes.
           if (keyCount > 0 && !hasValidStyle) {
-            logger.warn('[settingsStorage] Corrupt settings detected; quarantining and resetting');
+            logger.warn('storage.settings.corrupt.detected', { key: SETTINGS_KEY, action: 'quarantineAndReset' });
             await quarantineCorruptValue(json);
           }
         } catch {
-          logger.warn('[settingsStorage] Corrupt settings detected; quarantining and resetting');
+          logger.warn('storage.settings.corrupt.detected', { key: SETTINGS_KEY, action: 'quarantineAndReset' });
           await quarantineCorruptValue(json);
         }
       }
