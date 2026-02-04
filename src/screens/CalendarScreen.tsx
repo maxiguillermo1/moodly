@@ -31,7 +31,7 @@ import { CalendarMoodStyle, MoodEntry, MoodGrade } from '../types';
 import { LiquidGlass, MonthGrid, MoodPicker, WeekdayRow } from '../components';
 import { colors, spacing, borderRadius, typography, sizing } from '../theme';
 import { createEntry, getAllEntriesWithMonthIndex, getEntry, getSettings, upsertEntry } from '../storage';
-import { buildMonthWindow, MonthItem, monthKey as monthKey2, throttle, formatDateToISO } from '../utils';
+import { buildMonthWindow, MonthItem, monthKey as monthKey2, throttle, formatDateToISO, perfTimeAsync } from '../utils';
 import { logger } from '../security';
 
 const MONTHS = [
@@ -113,17 +113,21 @@ export default function CalendarScreen() {
   // Year grid moved to `CalendarView` for performance.
 
   const loadEntries = useCallback(async () => {
-    const { byMonthKey } = await getAllEntriesWithMonthIndex();
-    // Avoid pointless rerenders when focus fires but data is unchanged (cache hit).
-    setEntriesByMonthKey((prev) => (prev === (byMonthKey as any) ? prev : (byMonthKey as any)));
+    await perfTimeAsync('[CalendarScreen] loadEntries', async () => {
+      const { byMonthKey } = await getAllEntriesWithMonthIndex();
+      // Avoid pointless rerenders when focus fires but data is unchanged (cache hit).
+      setEntriesByMonthKey((prev) => (prev === (byMonthKey as any) ? prev : (byMonthKey as any)));
+    });
   }, []);
 
   const loadSettings = useCallback(async () => {
-    const settings = await getSettings();
-    setCalendarMoodStyle((prev) => (prev === settings.calendarMoodStyle ? prev : settings.calendarMoodStyle));
-    setMonthCardMatchesScreenBackground((prev) =>
-      prev === !!settings.monthCardMatchesScreenBackground ? prev : !!settings.monthCardMatchesScreenBackground
-    );
+    await perfTimeAsync('[CalendarScreen] loadSettings', async () => {
+      const settings = await getSettings();
+      setCalendarMoodStyle((prev) => (prev === settings.calendarMoodStyle ? prev : settings.calendarMoodStyle));
+      setMonthCardMatchesScreenBackground((prev) =>
+        prev === !!settings.monthCardMatchesScreenBackground ? prev : !!settings.monthCardMatchesScreenBackground
+      );
+    });
   }, []);
 
   useFocusEffect(

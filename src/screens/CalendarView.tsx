@@ -19,7 +19,7 @@ import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/nativ
 import { MoodEntry } from '../types';
 import { MonthGrid, ScreenHeader, WeekdayRow } from '../components';
 import { getAllEntriesWithMonthIndex, getSettings } from '../storage';
-import { monthKey } from '../utils';
+import { monthKey, perfTimeAsync } from '../utils';
 import { colors, spacing, typography } from '../theme';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -84,10 +84,12 @@ export default function CalendarView() {
   const bottomOverlaySpace = insets.bottom + spacing[8] + 72;
 
   const load = useCallback(async () => {
-    const [{ byMonthKey }, settings] = await Promise.all([getAllEntriesWithMonthIndex(), getSettings()]);
-    // Avoid pointless rerenders when these are cache hits.
-    setEntriesByMonthKey((prev) => (prev === (byMonthKey as any) ? prev : (byMonthKey as any)));
-    setCalendarMoodStyle((prev) => (prev === settings.calendarMoodStyle ? prev : settings.calendarMoodStyle));
+    await perfTimeAsync('[CalendarView] load', async () => {
+      const [{ byMonthKey }, settings] = await Promise.all([getAllEntriesWithMonthIndex(), getSettings()]);
+      // Avoid pointless rerenders when these are cache hits.
+      setEntriesByMonthKey((prev) => (prev === (byMonthKey as any) ? prev : (byMonthKey as any)));
+      setCalendarMoodStyle((prev) => (prev === settings.calendarMoodStyle ? prev : settings.calendarMoodStyle));
+    });
   }, []);
 
   useEffect(() => {

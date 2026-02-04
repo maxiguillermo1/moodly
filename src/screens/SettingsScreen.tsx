@@ -15,7 +15,7 @@ import {
   setCalendarMoodStyle,
   setMonthCardMatchesScreenBackground,
 } from '../storage';
-import { MOOD_GRADES, getMoodLabel } from '../utils';
+import { MOOD_GRADES, getMoodLabel, perfTimeAsync } from '../utils';
 import { CalendarMoodStyle, MoodGrade } from '../types';
 import { colors, spacing } from '../theme';
 
@@ -28,15 +28,19 @@ export default function SettingsScreen() {
   const [monthCardMatchesScreenBackground, setMonthCardMatchesScreenBackgroundState] = useState(false);
 
   const loadStats = useCallback(async () => {
-    const { totalEntries: total, moodCounts: counts } = await getMoodStats();
-    setTotalEntries(total);
-    setMoodCounts(counts);
+    await perfTimeAsync('[SettingsScreen] loadStats', async () => {
+      const { totalEntries: total, moodCounts: counts } = await getMoodStats();
+      setTotalEntries(total);
+      setMoodCounts(counts);
+    });
   }, []);
 
   const loadTheme = useCallback(async () => {
-    const settings = await getSettings();
-    setCalendarMoodStyleState(settings.calendarMoodStyle);
-    setMonthCardMatchesScreenBackgroundState(!!settings.monthCardMatchesScreenBackground);
+    await perfTimeAsync('[SettingsScreen] loadTheme', async () => {
+      const settings = await getSettings();
+      setCalendarMoodStyleState(settings.calendarMoodStyle);
+      setMonthCardMatchesScreenBackgroundState(!!settings.monthCardMatchesScreenBackground);
+    });
   }, []);
 
   useFocusEffect(

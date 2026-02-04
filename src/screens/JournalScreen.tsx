@@ -23,7 +23,7 @@ import {
   upsertEntry,
   deleteEntry,
 } from '../storage';
-import { getRelativeDayLabel, formatDateForDisplay } from '../utils';
+import { getRelativeDayLabel, formatDateForDisplay, perfTimeAsync } from '../utils';
 import { colors, spacing, borderRadius, typography } from '../theme';
 
 export default function JournalScreen() {
@@ -33,8 +33,10 @@ export default function JournalScreen() {
   const [editNote, setEditNote] = useState('');
 
   const loadEntries = useCallback(async () => {
-    const sorted = await getEntriesSortedDesc();
-    setEntries((prev) => (prev === sorted ? prev : sorted));
+    await perfTimeAsync('[JournalScreen] loadEntries', async () => {
+      const sorted = await getEntriesSortedDesc();
+      setEntries((prev) => (prev === sorted ? prev : sorted));
+    });
   }, []);
 
   useFocusEffect(

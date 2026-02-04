@@ -183,23 +183,30 @@ function findInsertIndexDesc(arr: MoodEntry[], date: string): number {
 function onUpsertUpdateDerivedCaches(prev: MoodEntry | undefined, next: MoodEntry) {
   // Sorted list (Journal)
   if (entriesSortedDescCache) {
-    const i = entriesSortedDescCache.findIndex((e) => e.date === next.date);
-    if (i >= 0) entriesSortedDescCache.splice(i, 1);
-    const ins = findInsertIndexDesc(entriesSortedDescCache, next.date);
-    entriesSortedDescCache.splice(ins, 0, next);
+    const base = entriesSortedDescCache;
+    const arr = base.slice();
+    const i = arr.findIndex((e) => e.date === next.date);
+    if (i >= 0) arr.splice(i, 1);
+    const ins = findInsertIndexDesc(arr, next.date);
+    arr.splice(ins, 0, next);
+    entriesSortedDescCache = arr;
   }
 
   // Mood counts (Settings)
   if (moodCountsCache) {
-    if (prev) moodCountsCache[prev.mood] = Math.max(0, (moodCountsCache[prev.mood] ?? 0) - 1);
-    moodCountsCache[next.mood] = (moodCountsCache[next.mood] ?? 0) + 1;
+    const nextCounts: MoodCounts = { ...moodCountsCache };
+    if (prev) nextCounts[prev.mood] = Math.max(0, (nextCounts[prev.mood] ?? 0) - 1);
+    nextCounts[next.mood] = (nextCounts[next.mood] ?? 0) + 1;
+    moodCountsCache = nextCounts;
   }
 
   // Month date keys index
   const mk = monthKeyFromIso(next.date);
   if (monthDateKeysIndexCache) {
-    const list = (monthDateKeysIndexCache[mk] ||= []);
-    if (!list.includes(next.date)) {
+    const baseIdx = monthDateKeysIndexCache;
+    const baseList = baseIdx[mk] ?? [];
+    if (!baseList.includes(next.date)) {
+      const list = baseList.slice();
       // Insert into ascending list.
       let lo = 0;
       let hi = list.length;
@@ -209,6 +216,7 @@ function onUpsertUpdateDerivedCaches(prev: MoodEntry | undefined, next: MoodEntr
         else hi = mid;
       }
       list.splice(lo, 0, next.date);
+      monthDateKeysIndexCache = { ...baseIdx, [mk]: list };
     }
   }
 
@@ -217,44 +225,91 @@ function onUpsertUpdateDerivedCaches(prev: MoodEntry | undefined, next: MoodEntr
     const y = Number(next.date.slice(0, 4));
     const m0 = Number(next.date.slice(5, 7)) - 1;
     if (Number.isFinite(y) && Number.isFinite(m0) && m0 >= 0 && m0 <= 11) {
-      const yearMap = (yearIndexCache[y] ||= {});
-      const bucket = (yearMap[m0] ||= { total: 0, counts: emptyMoodCounts() });
-      if (prev) {
-        bucket.counts[prev.mood] = Math.max(0, (bucket.counts[prev.mood] ?? 0) - 1);
-      } else {
-        bucket.total += 1;
-      }
-      bucket.counts[next.mood] = (bucket.counts[next.mood] ?? 0) + 1;
+      const baseYearIdx = yearIndexCache;
+      const baseYearMap = baseYearIdx[y] ?? {};
+      const baseBucket = baseYearMap[m0] ?? { total: 0, counts: emptyMoodCounts() };
+      const nextBucketCounts: MoodCounts = { ...baseBucket.counts };
+      if (prev) nextBucketCounts[prev.mood] = Math.max(0, (nextBucketCounts[prev.mood] ?? 0) - 1);
+      nextBucketCounts[next.mood] = (nextBucketCounts[next.mood] ?? 0) + 1;
+      const nextBucket = {
+        total: prev ? baseBucket.total : baseBucket.total + 1,
+        counts: nextBucketCounts,
+      };
+      yearIndexCache = {
+        ...baseYearIdx,
+        [y]: {
+          ...baseYearMap,
+          [m0]: nextBucket,
+        },
+      };
     }
   }
 }
 
 function onDeleteUpdateDerivedCaches(prev: MoodEntry, date: string) {
   if (entriesSortedDescCache) {
-    const i = entriesSortedDescCache.findIndex((e) => e.date === date);
-    if (i >= 0) entriesSortedDescCache.splice(i, 1);
+    const base = entriesSortedDescCache;
+    const i = base.findIndex((e) => e.date === date);
+    if (i >= 0) {
+      const arr = base.slice();
+      arr.splice(i, 1);
+      entriesSortedDescCache = arr;
+    }
   }
   if (moodCountsCache) {
-    moodCountsCache[prev.mood] = Math.max(0, (moodCountsCache[prev.mood] ?? 0) - 1);
+    const nextCounts: MoodCounts = { ...moodCountsCache };
+    nextCounts[prev.mood] = Math.max(0, (nextCounts[prev.mood] ?? 0) - 1);
+    moodCountsCache = nextCounts;
   }
   const mk = monthKeyFromIso(date);
   if (monthDateKeysIndexCache) {
-    const list = monthDateKeysIndexCache[mk];
-    if (list) {
-      const i = list.indexOf(date);
-      if (i >= 0) list.splice(i, 1);
-      if (list.length === 0) delete monthDateKeysIndexCache[mk];
+    const baseIdx = monthDateKeysIndexCache;
+    const baseList = baseIdx[mk];
+    if (baseList) {
+      const i = baseList.indexOf(date);
+      if (i >= 0) {
+        const list = baseList.slice();
+        list.splice(i, 1);
+        if (list.length === 0) {
+          const nextIdx: MonthDateKeysIndex = { ...baseIdx };
+          delete nextIdx[mk];
+          monthDateKeysIndexCache = nextIdx;
+        } else {
+          monthDateKeysIndexCache = { ...baseIdx, [mk]: list };
+        }
+      }
     }
   }
   if (yearIndexCache) {
     const y = Number(date.slice(0, 4));
     const m0 = Number(date.slice(5, 7)) - 1;
-    const bucket = yearIndexCache[y]?.[m0];
-    if (bucket) {
-      bucket.total = Math.max(0, bucket.total - 1);
-      bucket.counts[prev.mood] = Math.max(0, (bucket.counts[prev.mood] ?? 0) - 1);
-      if (bucket.total === 0) delete yearIndexCache[y]![m0];
-      if (yearIndexCache[y] && Object.keys(yearIndexCache[y]!).length === 0) delete yearIndexCache[y];
+    const baseYearIdx = yearIndexCache;
+    const baseYearMap = baseYearIdx[y];
+    const baseBucket = baseYearMap?.[m0];
+    if (baseYearMap && baseBucket) {
+      const nextTotal = Math.max(0, baseBucket.total - 1);
+      const nextCounts: MoodCounts = { ...baseBucket.counts };
+      nextCounts[prev.mood] = Math.max(0, (nextCounts[prev.mood] ?? 0) - 1);
+
+      if (nextTotal === 0) {
+        const nextYearMap: Record<number, { total: number; counts: MoodCounts }> = { ...baseYearMap };
+        delete nextYearMap[m0];
+        if (Object.keys(nextYearMap).length === 0) {
+          const nextIdx: YearIndex = { ...baseYearIdx };
+          delete nextIdx[y];
+          yearIndexCache = nextIdx;
+        } else {
+          yearIndexCache = { ...baseYearIdx, [y]: nextYearMap };
+        }
+      } else {
+        yearIndexCache = {
+          ...baseYearIdx,
+          [y]: {
+            ...baseYearMap,
+            [m0]: { total: nextTotal, counts: nextCounts },
+          },
+        };
+      }
     }
   }
 }
@@ -393,7 +448,10 @@ export async function upsertEntry(entry: MoodEntry): Promise<void> {
     // Update derived caches synchronously (RAM-heavy, CPU-light).
     const mk = monthKeyFromIso(entry.date);
     if (entriesByMonthCache) {
-      (entriesByMonthCache[mk] ||= {})[entry.date] = next;
+      const base = entriesByMonthCache;
+      const baseMonth = base[mk] ?? {};
+      const nextMonth: MoodEntriesRecord = { ...baseMonth, [entry.date]: next };
+      entriesByMonthCache = { ...base, [mk]: nextMonth };
     }
     onUpsertUpdateDerivedCaches(existing, next);
 
@@ -422,10 +480,18 @@ export async function deleteEntry(date: string): Promise<void> {
 
     if (entriesByMonthCache) {
       const mk = monthKeyFromIso(date);
-      const monthMap = entriesByMonthCache[mk];
-      if (monthMap) {
-        delete monthMap[date];
-        if (Object.keys(monthMap).length === 0) delete entriesByMonthCache[mk];
+      const base = entriesByMonthCache;
+      const monthMap = base[mk];
+      if (monthMap && monthMap[date]) {
+        const nextMonth: MoodEntriesRecord = { ...monthMap };
+        delete nextMonth[date];
+        if (Object.keys(nextMonth).length === 0) {
+          const nextByMonth: EntriesByMonthKey = { ...base };
+          delete nextByMonth[mk];
+          entriesByMonthCache = nextByMonth;
+        } else {
+          entriesByMonthCache = { ...base, [mk]: nextMonth };
+        }
       }
     }
 

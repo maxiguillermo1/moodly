@@ -50,3 +50,9 @@ export async function devTimeAsync<T>(label: string, fn: () => Promise<T>): Prom
   }
 }
 
+/**
+ * Public aliases (naming matches common perf tooling vocabulary).
+ * These remain dev-only and must never include sensitive payloads.
+ */
+export const perfMark = devPerfMark;
+export const perfTimeAsync = devTimeAsync;
