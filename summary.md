@@ -72,6 +72,67 @@ This version demonstrates disciplined ownership of fundamentals: it enforces arc
 
 The next milestones (0.6, 0.7) should follow the same posture: append-only decisions, guardrails over conventions, and only the minimum complexity required for the next constraint the product truly faces.
 
+---
+### 2026-02-04
+
+#### Version 0.5 — Logging & Observability (Privacy‑Safe, Structured)
+
+##### Why we did it (layman terms)
+- Make performance wins **provable** (cold vs warm loads) without guesswork.
+- Keep logging **privacy-safe by default** (no user content; metadata only).
+- Reduce “debug noise” by standardizing format, adding log budgets, and preferring summaries.
+- Ensure production behavior stays **quiet and safe** (dev-only logs off; warnings rate-limited).
+
+##### What changed (engineering summary)
+- Added a **structured logger** with **levels** (BOOT/PERF/CACHE/DATA/WARN/DEV/ERROR) and **channels** (`app`, `storage`, `session`, `calendar`, `journal`, `settings`) in `src/lib/security/logger.ts`.
+- Enforced a **standard log shape**: `[LEVEL][channel] event { meta }` (no interpolated strings; metadata object only).
+- Made **PERF/CACHE/DEV/BOOT/DATA dev-only**; allowed **WARN/ERROR in production** (metadata-only) with **WARN rate limiting**.
+- Added a **log budget** (per session + per channel) with suppression notices to prevent runaway console noise.
+- Updated console hardening (`src/lib/logging/patchConsole.ts`) to **silence non-logger logs** in prod while still allowing structured WARN/ERROR output.
+- Replaced “stringy” logs (e.g. `"[moodStorage] ..."`) with **event + metadata** calls across storage/session/screens/hooks (no payload blobs).
+- Added a **session cache snapshot** log (`CACHE session.ready`) including counts + derived cache list (no notes/entries content).
+- Kept perf timing **dev-only** and added measured logs around key loads (Calendar/Journal/Settings/session warm).
+- Updated legacy perf helpers (`src/lib/utils/devPerf.ts`) to emit structured PERF logs via the logger (still dev-only).
+
+Example PERF line format (metadata-only):
+`[PERF][calendar] calendar.loadEntries { phase: 'warm', source: 'sessionCache', durationMs: 1.6 }`
+
+##### Files touched
+- **storage/**
+  - `src/data/storage/moodStorage.ts`
+  - `src/data/storage/settingsStorage.ts`
+  - `src/data/storage/sessionStore.ts`
+  - `src/data/storage/demoSeed.ts`
+- **screens/**
+  - `src/screens/CalendarScreen.tsx`
+  - `src/screens/CalendarView.tsx`
+  - `src/screens/JournalScreen.tsx`
+  - `src/screens/SettingsScreen.tsx`
+- **security/logging/**
+  - `src/lib/security/logger.ts`
+  - `src/lib/logging/patchConsole.ts`
+  - `src/lib/utils/devPerf.ts`
+- **docs/**
+  - `docs/logger.md`
+
+##### Risk & Guarantees
+✅ No UI/UX changes  
+✅ No feature changes  
+✅ No storage semantic/key changes  
+✅ Expo Go compatible  
+
+##### How to verify (2-minute checklist)
+- Today: save/update entry → relaunch → confirm persisted.
+- Journal: list loads quickly → scroll → edit → save → confirm updates.
+- Calendar: year swipe smooth → open month → scroll months → tap day → save → back.
+- Settings: stats populate correctly and toggles still persist.
+- Dev logs: confirm only metadata objects appear (no notes/entries/settings blobs).
+
+##### Notes for v0.6+ (optional)
+- Add **explicit “revalidate”** phase where/if we introduce background refresh.
+- Centralize event naming conventions further (one place to list canonical events).
+- Add a small **in-app dev-only export** of recent structured logs (still local-only, no network) if needed for audits.
+
 ## Version 0.6 — <short title>
 [future]
 
