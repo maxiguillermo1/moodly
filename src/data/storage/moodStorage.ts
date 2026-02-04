@@ -33,6 +33,22 @@ let entriesByMonthCache: EntriesByMonthKey | null = null;
 // Derived cache: sorted list for JournalScreen (newest first).
 let entriesSortedDescCache: MoodEntry[] | null = null;
 
+// Derived cache: counts per mood grade (used by Settings; avoids repeated scans).
+export type MoodCounts = Record<MoodGrade, number>;
+let moodCountsCache: MoodCounts | null = null;
+
+// Derived cache: date keys per month (YYYY-MM -> [YYYY-MM-DD...]) (fast lookups, RAM-heavy).
+export type MonthDateKeysIndex = Record<string, string[]>;
+let monthDateKeysIndexCache: MonthDateKeysIndex | null = null;
+
+// Derived cache: year/month distribution index for fast "year view" work.
+// Structure: year -> monthIndex0 (0..11) -> counts
+export type YearIndex = Record<number, Record<number, { total: number; counts: MoodCounts }>>;
+let yearIndexCache: YearIndex | null = null;
+
+// Tiny metadata cache (for dev diagnostics + fast stats).
+let entriesCountCache: number | null = null;
+
 function monthKeyFromIso(isoDate: string) {
   // isoDate is YYYY-MM-DD
   return isoDate.slice(0, 7);
@@ -87,11 +103,160 @@ function ensureEntriesByMonthCache(entries: MoodEntriesRecord): EntriesByMonthKe
   return grouped;
 }
 
-function setCache(next: MoodEntriesRecord) {
+function setEntriesCache(next: MoodEntriesRecord) {
   entriesCache = next;
-  // Invalidate derived cache; it will be rebuilt lazily when requested.
+  entriesCountCache = Object.keys(next).length;
+}
+
+function invalidateDerivedCaches() {
   entriesByMonthCache = null;
   entriesSortedDescCache = null;
+  moodCountsCache = null;
+  monthDateKeysIndexCache = null;
+  yearIndexCache = null;
+}
+
+function emptyMoodCounts(): MoodCounts {
+  return { 'A+': 0, 'A': 0, 'B': 0, 'C': 0, 'D': 0, 'F': 0 };
+}
+
+function ensureMoodCountsCache(entries: MoodEntriesRecord): MoodCounts {
+  if (moodCountsCache) return moodCountsCache;
+  const counts = emptyMoodCounts();
+  for (const e of Object.values(entries)) {
+    if (!e) continue;
+    counts[e.mood] = (counts[e.mood] ?? 0) + 1;
+  }
+  moodCountsCache = counts;
+  return counts;
+}
+
+function ensureMonthDateKeysIndexCache(entries: MoodEntriesRecord): MonthDateKeysIndex {
+  if (monthDateKeysIndexCache) return monthDateKeysIndexCache;
+  const byMonth = ensureEntriesByMonthCache(entries);
+  const idx: MonthDateKeysIndex = {};
+  for (const mk of Object.keys(byMonth)) {
+    // Sort ascending so callers can binary search / iterate deterministically.
+    idx[mk] = Object.keys(byMonth[mk]!).sort();
+  }
+  monthDateKeysIndexCache = idx;
+  return idx;
+}
+
+function ensureYearIndexCache(entries: MoodEntriesRecord): YearIndex {
+  if (yearIndexCache) return yearIndexCache;
+  const idx: YearIndex = {};
+  for (const e of Object.values(entries)) {
+    if (!e) continue;
+    const y = Number(e.date.slice(0, 4));
+    const m0 = Number(e.date.slice(5, 7)) - 1;
+    if (!Number.isFinite(y) || !Number.isFinite(m0) || m0 < 0 || m0 > 11) continue;
+    const yearMap = (idx[y] ||= {});
+    const bucket = (yearMap[m0] ||= { total: 0, counts: emptyMoodCounts() });
+    bucket.total += 1;
+    bucket.counts[e.mood] = (bucket.counts[e.mood] ?? 0) + 1;
+  }
+  yearIndexCache = idx;
+  return idx;
+}
+
+function ensureEntriesSortedDescCache(entries: MoodEntriesRecord): MoodEntry[] {
+  if (entriesSortedDescCache) return entriesSortedDescCache;
+  entriesSortedDescCache = Object.values(entries).sort((a, b) => b.date.localeCompare(a.date));
+  return entriesSortedDescCache;
+}
+
+function findInsertIndexDesc(arr: MoodEntry[], date: string): number {
+  // Desc order: newest-first by ISO string compare.
+  let lo = 0;
+  let hi = arr.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    const midDate = arr[mid]!.date;
+    // If midDate < date, date should come earlier (smaller index).
+    if (midDate.localeCompare(date) < 0) hi = mid;
+    else lo = mid + 1;
+  }
+  return lo;
+}
+
+function onUpsertUpdateDerivedCaches(prev: MoodEntry | undefined, next: MoodEntry) {
+  // Sorted list (Journal)
+  if (entriesSortedDescCache) {
+    const i = entriesSortedDescCache.findIndex((e) => e.date === next.date);
+    if (i >= 0) entriesSortedDescCache.splice(i, 1);
+    const ins = findInsertIndexDesc(entriesSortedDescCache, next.date);
+    entriesSortedDescCache.splice(ins, 0, next);
+  }
+
+  // Mood counts (Settings)
+  if (moodCountsCache) {
+    if (prev) moodCountsCache[prev.mood] = Math.max(0, (moodCountsCache[prev.mood] ?? 0) - 1);
+    moodCountsCache[next.mood] = (moodCountsCache[next.mood] ?? 0) + 1;
+  }
+
+  // Month date keys index
+  const mk = monthKeyFromIso(next.date);
+  if (monthDateKeysIndexCache) {
+    const list = (monthDateKeysIndexCache[mk] ||= []);
+    if (!list.includes(next.date)) {
+      // Insert into ascending list.
+      let lo = 0;
+      let hi = list.length;
+      while (lo < hi) {
+        const mid = (lo + hi) >> 1;
+        if (list[mid]!.localeCompare(next.date) < 0) lo = mid + 1;
+        else hi = mid;
+      }
+      list.splice(lo, 0, next.date);
+    }
+  }
+
+  // Year index
+  if (yearIndexCache) {
+    const y = Number(next.date.slice(0, 4));
+    const m0 = Number(next.date.slice(5, 7)) - 1;
+    if (Number.isFinite(y) && Number.isFinite(m0) && m0 >= 0 && m0 <= 11) {
+      const yearMap = (yearIndexCache[y] ||= {});
+      const bucket = (yearMap[m0] ||= { total: 0, counts: emptyMoodCounts() });
+      if (prev) {
+        bucket.counts[prev.mood] = Math.max(0, (bucket.counts[prev.mood] ?? 0) - 1);
+      } else {
+        bucket.total += 1;
+      }
+      bucket.counts[next.mood] = (bucket.counts[next.mood] ?? 0) + 1;
+    }
+  }
+}
+
+function onDeleteUpdateDerivedCaches(prev: MoodEntry, date: string) {
+  if (entriesSortedDescCache) {
+    const i = entriesSortedDescCache.findIndex((e) => e.date === date);
+    if (i >= 0) entriesSortedDescCache.splice(i, 1);
+  }
+  if (moodCountsCache) {
+    moodCountsCache[prev.mood] = Math.max(0, (moodCountsCache[prev.mood] ?? 0) - 1);
+  }
+  const mk = monthKeyFromIso(date);
+  if (monthDateKeysIndexCache) {
+    const list = monthDateKeysIndexCache[mk];
+    if (list) {
+      const i = list.indexOf(date);
+      if (i >= 0) list.splice(i, 1);
+      if (list.length === 0) delete monthDateKeysIndexCache[mk];
+    }
+  }
+  if (yearIndexCache) {
+    const y = Number(date.slice(0, 4));
+    const m0 = Number(date.slice(5, 7)) - 1;
+    const bucket = yearIndexCache[y]?.[m0];
+    if (bucket) {
+      bucket.total = Math.max(0, bucket.total - 1);
+      bucket.counts[prev.mood] = Math.max(0, (bucket.counts[prev.mood] ?? 0) - 1);
+      if (bucket.total === 0) delete yearIndexCache[y]![m0];
+      if (yearIndexCache[y] && Object.keys(yearIndexCache[y]!).length === 0) delete yearIndexCache[y];
+    }
+  }
 }
 
 /**
@@ -99,7 +264,8 @@ function setCache(next: MoodEntriesRecord) {
  * Used by demo seeding and (optionally) dev tooling.
  */
 export async function setAllEntries(next: MoodEntriesRecord): Promise<void> {
-  setCache(next);
+  setEntriesCache(next);
+  invalidateDerivedCaches();
   await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(next));
 }
 
@@ -124,7 +290,8 @@ export async function getAllEntries(): Promise<MoodEntriesRecord> {
         logger.warn('[moodStorage] Corrupt entries detected; quarantining and resetting');
         await quarantineCorruptValue(json);
       }
-      setCache(parsed.value);
+      setEntriesCache(parsed.value);
+      invalidateDerivedCaches();
       return parsed.value;
     })();
 
@@ -223,13 +390,14 @@ export async function upsertEntry(entry: MoodEntry): Promise<void> {
     }
     const entries: MoodEntriesRecord = { ...prev, [entry.date]: next };
 
-    // Keep derived month index warm (low-risk perf win for CalendarScreen).
+    // Update derived caches synchronously (RAM-heavy, CPU-light).
     const mk = monthKeyFromIso(entry.date);
     if (entriesByMonthCache) {
       (entriesByMonthCache[mk] ||= {})[entry.date] = next;
     }
+    onUpsertUpdateDerivedCaches(existing, next);
 
-    setCache(entries);
+    setEntriesCache(entries);
     await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
   } catch (error) {
     logger.error('[moodStorage] Failed to save entry', error);
@@ -247,7 +415,8 @@ export async function deleteEntry(date: string): Promise<void> {
       return;
     }
     const prev = await getAllEntries();
-    if (!prev[date]) return;
+    const existing = prev[date];
+    if (!existing) return;
     const entries: MoodEntriesRecord = { ...prev };
     delete entries[date];
 
@@ -260,7 +429,8 @@ export async function deleteEntry(date: string): Promise<void> {
       }
     }
 
-    setCache(entries);
+    onDeleteUpdateDerivedCaches(existing, date);
+    setEntriesCache(entries);
     await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
   } catch (error) {
     logger.error('[moodStorage] Failed to delete entry', error);
@@ -277,9 +447,7 @@ export async function deleteEntry(date: string): Promise<void> {
  */
 export async function getEntriesSortedDesc(): Promise<MoodEntry[]> {
   const entries = await getAllEntries();
-  if (entriesSortedDescCache) return entriesSortedDescCache;
-  entriesSortedDescCache = Object.values(entries).sort((a, b) => b.date.localeCompare(a.date));
-  return entriesSortedDescCache;
+  return ensureEntriesSortedDescCache(entries);
 }
 
 /**
@@ -307,15 +475,74 @@ export async function getEntriesInRange(
  */
 export async function getMoodCounts(): Promise<Record<MoodGrade, number>> {
   const entries = await getAllEntries();
-  const counts: Record<MoodGrade, number> = {
-    'A+': 0, 'A': 0, 'B': 0, 'C': 0, 'D': 0, 'F': 0,
+  return ensureMoodCountsCache(entries);
+}
+
+/**
+ * RAM-heavy stats helper for Settings (and future internal use).
+ * Avoids repeated `Object.keys/values` scans on focus.
+ */
+export async function getMoodStats(): Promise<{ totalEntries: number; moodCounts: MoodCounts }> {
+  const entries = await getAllEntries();
+  const moodCounts = ensureMoodCountsCache(entries);
+  const totalEntries = entriesCountCache ?? Object.keys(entries).length;
+  return { totalEntries, moodCounts };
+}
+
+/**
+ * RAM-heavy index: monthKey -> sorted date keys.
+ * Useful for calendar-related lookups without scanning the full store.
+ */
+export async function getMonthDateKeysIndex(): Promise<MonthDateKeysIndex> {
+  const entries = await getAllEntries();
+  return ensureMonthDateKeysIndexCache(entries);
+}
+
+/**
+ * RAM-heavy index: year -> monthIndex0 -> distribution.
+ * Built once per session (or updated incrementally on writes if already built).
+ */
+export async function getYearIndex(): Promise<YearIndex> {
+  const entries = await getAllEntries();
+  return ensureYearIndexCache(entries);
+}
+
+/**
+ * Warm common RAM caches after the first paint so screens feel instant on first open.
+ * Safe: does not change semantics; only precomputes derived views in-memory.
+ */
+export async function warmEntriesSessionCaches(): Promise<void> {
+  const entries = await getAllEntries();
+  ensureEntriesByMonthCache(entries);
+  ensureEntriesSortedDescCache(entries);
+  ensureMoodCountsCache(entries);
+  ensureMonthDateKeysIndexCache(entries);
+  ensureYearIndexCache(entries);
+}
+
+export function getEntriesSessionCacheDiagnostics(): {
+  entriesCount: number;
+  monthsIndexed: number;
+  yearsIndexed: number;
+  hasByMonth: boolean;
+  hasSorted: boolean;
+  hasMoodCounts: boolean;
+  hasMonthDateKeys: boolean;
+  hasYearIndex: boolean;
+} {
+  const entriesCount = entriesCountCache ?? (entriesCache ? Object.keys(entriesCache).length : 0);
+  const monthsIndexed = entriesByMonthCache ? Object.keys(entriesByMonthCache).length : 0;
+  const yearsIndexed = yearIndexCache ? Object.keys(yearIndexCache).length : 0;
+  return {
+    entriesCount,
+    monthsIndexed,
+    yearsIndexed,
+    hasByMonth: !!entriesByMonthCache,
+    hasSorted: !!entriesSortedDescCache,
+    hasMoodCounts: !!moodCountsCache,
+    hasMonthDateKeys: !!monthDateKeysIndexCache,
+    hasYearIndex: !!yearIndexCache,
   };
-
-  Object.values(entries).forEach((entry) => {
-    counts[entry.mood]++;
-  });
-
-  return counts;
 }
 
 // ============================================================================
@@ -358,9 +585,9 @@ export function createEntry(
  * Clear all entries (use with caution!)
  */
 export async function clearAllEntries(): Promise<void> {
-  entriesCache = {};
+  setEntriesCache({});
   entriesLoadPromise = null;
-  entriesByMonthCache = {};
+  invalidateDerivedCaches();
   await AsyncStorage.removeItem(STORAGE_KEY);
 }
 

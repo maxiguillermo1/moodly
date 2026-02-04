@@ -9,4 +9,5 @@
 export * from './moodStorage';
 export * from './settingsStorage';
 export * from './demoSeed';
+export * from './sessionStore';
 

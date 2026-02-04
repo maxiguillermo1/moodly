@@ -17,16 +17,26 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { InteractionManager } from 'react-native';
 
 import { RootNavigator } from '../navigation';
-import { seedDemoEntriesIfEmpty } from '../storage';
+import { seedDemoEntriesIfEmpty, warmSessionStore, logSessionStoreDiagnostics } from '../storage';
 import { logger } from '../security';
 
 export function RootApp() {
   useEffect(() => {
     // Dev-only seed. Deferred to avoid blocking first paint / nav transitions.
     const task = InteractionManager.runAfterInteractions(() => {
-      seedDemoEntriesIfEmpty().catch((_e) => {
-        logger.warn('[seedDemoEntriesIfEmpty] failed');
-      });
+      // Seed first (dev-only), then warm RAM-backed caches so screens feel instant.
+      seedDemoEntriesIfEmpty()
+        .catch((_e) => {
+          logger.warn('[seedDemoEntriesIfEmpty] failed');
+        })
+        .finally(() => {
+          warmSessionStore()
+            .then(() => logSessionStoreDiagnostics())
+            .catch((_e) => {
+              // Non-fatal: this only affects perceived performance, not correctness.
+              logger.warn('[warmSessionStore] failed');
+            });
+        });
     });
     return () => task.cancel();
   }, []);

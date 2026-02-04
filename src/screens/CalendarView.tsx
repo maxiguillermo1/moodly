@@ -18,7 +18,8 @@ import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/nativ
 
 import { MoodEntry } from '../types';
 import { MonthGrid, ScreenHeader, WeekdayRow } from '../components';
-import { getAllEntries, getSettings } from '../storage';
+import { getAllEntriesWithMonthIndex, getSettings } from '../storage';
+import { monthKey } from '../utils';
 import { colors, spacing, typography } from '../theme';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -51,7 +52,7 @@ export default function CalendarView() {
   );
 
   const [yearBase, setYearBase] = useState<number>(() => initialYearRef.current);
-  const [entries, setEntries] = useState<Record<string, MoodEntry>>({});
+  const [entriesByMonthKey, setEntriesByMonthKey] = useState<Record<string, Record<string, MoodEntry>>>({});
   const [calendarMoodStyle, setCalendarMoodStyle] = useState<CalendarMoodStyle>('dot');
 
   const yearPagerRef = useRef<any>(null);
@@ -83,9 +84,9 @@ export default function CalendarView() {
   const bottomOverlaySpace = insets.bottom + spacing[8] + 72;
 
   const load = useCallback(async () => {
-    const [data, settings] = await Promise.all([getAllEntries(), getSettings()]);
+    const [{ byMonthKey }, settings] = await Promise.all([getAllEntriesWithMonthIndex(), getSettings()]);
     // Avoid pointless rerenders when these are cache hits.
-    setEntries((prev) => (prev === (data as any) ? prev : (data as any)));
+    setEntriesByMonthKey((prev) => (prev === (byMonthKey as any) ? prev : (byMonthKey as any)));
     setCalendarMoodStyle((prev) => (prev === settings.calendarMoodStyle ? prev : settings.calendarMoodStyle));
   }, []);
 
@@ -170,12 +171,12 @@ export default function CalendarView() {
           year={y}
           monthIndex0={mIdx}
           variant="mini"
-          entries={entries}
+          entries={entriesByMonthKey[monthKey(y, mIdx)] ?? {}}
           calendarMoodStyle={calendarMoodStyle}
         />
       </TouchableOpacity>
     ),
-    [calendarMoodStyle, entries, navigation]
+    [calendarMoodStyle, entriesByMonthKey, navigation]
   );
 
   const keyExtractor = useCallback((y: number) => String(y), []);

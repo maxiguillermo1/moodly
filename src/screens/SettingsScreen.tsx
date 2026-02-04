@@ -9,9 +9,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { ScreenHeader, GroupedSection, GroupedRow } from '../components';
 import {
-  getAllEntries,
   clearAllEntries,
   getSettings,
+  getMoodStats,
   setCalendarMoodStyle,
   setMonthCardMatchesScreenBackground,
 } from '../storage';
@@ -28,13 +28,8 @@ export default function SettingsScreen() {
   const [monthCardMatchesScreenBackground, setMonthCardMatchesScreenBackgroundState] = useState(false);
 
   const loadStats = useCallback(async () => {
-    const entries = await getAllEntries();
-    setTotalEntries(Object.keys(entries).length);
-    // Compute counts from the already-loaded entries (avoids an extra AsyncStorage pass).
-    const counts: Record<MoodGrade, number> = { 'A+': 0, 'A': 0, 'B': 0, 'C': 0, 'D': 0, 'F': 0 };
-    Object.values(entries).forEach((e) => {
-      counts[e.mood]++;
-    });
+    const { totalEntries: total, moodCounts: counts } = await getMoodStats();
+    setTotalEntries(total);
     setMoodCounts(counts);
   }, []);
 
