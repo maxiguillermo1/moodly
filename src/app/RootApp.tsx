@@ -19,11 +19,16 @@ import { InteractionManager } from 'react-native';
 import { RootNavigator } from '../navigation';
 import { seedDemoEntriesIfEmpty, warmSessionStore, logSessionStoreDiagnostics } from '../storage';
 import { logger } from '../security';
+import { perfNavigation, perfProbe } from '../perf';
 
 export function RootApp() {
   useEffect(() => {
     // Dev-only seed. Deferred to avoid blocking first paint / nav transitions.
     const task = InteractionManager.runAfterInteractions(() => {
+      // Approximate "first interaction readiness" (dev-only, metadata-only).
+      // This fires after initial RN interactions/animations settle.
+      perfProbe.logFirstInteractionReady({ stage: 'RootApp.afterInteractions' });
+
       // Seed first (dev-only), then warm RAM-backed caches so screens feel instant.
       seedDemoEntriesIfEmpty()
         .catch((_e) => {
@@ -50,7 +55,12 @@ export function RootApp() {
 
   return (
     <SafeAreaProvider>
-      <NavigationContainer>
+      <NavigationContainer
+        // Dev-only observers: do NOT mutate nav state; metadata-only perf logs.
+        ref={perfNavigation.ref as any}
+        onReady={perfNavigation.onReady}
+        onStateChange={perfNavigation.onStateChange}
+      >
         <StatusBar style="dark" />
         <RootNavigator />
       </NavigationContainer>

@@ -14,6 +14,7 @@ import {
   Modal,
   TextInput,
 } from 'react-native';
+import { FlashList } from '@shopify/flash-list';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { MoodEntry, MoodGrade } from '../types';
@@ -25,9 +26,24 @@ import {
 } from '../storage';
 import { getRelativeDayLabel, formatDateForDisplay } from '../utils';
 import { logger } from '../security';
+import { PerfProfiler, usePerfScreen } from '../perf';
 import { colors, spacing, borderRadius, typography } from '../theme';
 
+/**
+ * PERF experiment toggle (small + reversible).
+ *
+ * Baseline-first rule:
+ * - Keep this as `'flatlist'` to collect baseline numbers.
+ * - Switch to `'flashlist'` to collect post-change numbers.
+ *
+ * Rollback:
+ * - Set back to `'flatlist'` (no other code changes needed).
+ */
+const JOURNAL_LIST_IMPL: 'flatlist' | 'flashlist' = 'flatlist';
+
 export default function JournalScreen() {
+  usePerfScreen('Journal', { listIds: ['list.journal'] });
+
   const [entries, setEntries] = useState<MoodEntry[]>([]);
   const [editingEntry, setEditingEntry] = useState<MoodEntry | null>(null);
   const [editMood, setEditMood] = useState<MoodGrade | null>(null);
@@ -137,19 +153,40 @@ export default function JournalScreen() {
     <SafeAreaView style={styles.container} edges={['top']}>
       <ScreenHeader title="Journal" />
 
-      <FlatList
-        data={entries}
-        keyExtractor={keyExtractor}
-        renderItem={renderEntry}
-        ListEmptyComponent={renderEmptyState}
-        contentContainerStyle={listContentStyle as any}
-        showsVerticalScrollIndicator={false}
-        removeClippedSubviews
-        initialNumToRender={12}
-        windowSize={7}
-        maxToRenderPerBatch={12}
-        updateCellsBatchingPeriod={50}
-      />
+      <PerfProfiler id="list.journal">
+        {JOURNAL_LIST_IMPL === 'flashlist' ? (
+          /**
+           * PERF: FlashList improves virtualization + memory behavior for large lists.
+           * This is a low-risk swap because it’s a FlatList-compatible surface for our usage.
+           *
+           * FlashList v2 note:
+           * - `estimatedItemSize` is deprecated/removed, so we do NOT pass it.
+           */
+          <FlashList
+            data={entries}
+            keyExtractor={keyExtractor}
+            renderItem={renderEntry}
+            ListEmptyComponent={renderEmptyState}
+            contentContainerStyle={listContentStyle as any}
+            showsVerticalScrollIndicator={false}
+            removeClippedSubviews
+          />
+        ) : (
+          <FlatList
+            data={entries}
+            keyExtractor={keyExtractor}
+            renderItem={renderEntry}
+            ListEmptyComponent={renderEmptyState}
+            contentContainerStyle={listContentStyle as any}
+            showsVerticalScrollIndicator={false}
+            removeClippedSubviews
+            initialNumToRender={12}
+            windowSize={7}
+            maxToRenderPerBatch={12}
+            updateCellsBatchingPeriod={50}
+          />
+        )}
+      </PerfProfiler>
 
       {/* Edit Modal */}
       <Modal

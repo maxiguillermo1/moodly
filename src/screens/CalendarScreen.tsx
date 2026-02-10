@@ -33,6 +33,7 @@ import { colors, spacing, borderRadius, typography, sizing } from '../theme';
 import { createEntry, getAllEntriesWithMonthIndex, getEntry, getLastAllEntriesSource, getSettings, upsertEntry } from '../storage';
 import { buildMonthWindow, MonthItem, monthKey as monthKey2, throttle, formatDateToISO } from '../utils';
 import { logger } from '../security';
+import { PerfProfiler, usePerfScreen } from '../perf';
 
 const MONTHS = [
   'January', 'February', 'March', 'April', 'May', 'June',
@@ -46,9 +47,9 @@ const WINDOW_CAP = 24; // bounded list size cap (months)
 const WINDOW_EXTEND = 6; // how many months to extend when nearing edges
 const WINDOW_NEAR_EDGE = 2; // threshold (items) considered "near edge" for extension
 
-const ESTIMATED_MONTH_ITEM_H = 440; // conservative; FlashList uses this for virtualization
-
 export default function CalendarScreen() {
+  usePerfScreen('CalendarScreen', { listIds: ['list.calendarMonthTimeline'] });
+
   const { width: windowWidth } = useWindowDimensions();
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
@@ -374,77 +375,79 @@ export default function CalendarScreen() {
       </View>
 
       {/* Month timeline (months only; overlay header handles month label) */}
-      <AnimatedFlashList
-        // Key remount keeps initialScrollIndex deterministic when we reset the anchor (Today).
-        key={timelineKey}
-        ref={monthListRef}
-        data={monthsData}
-        keyExtractor={(item: MonthItem) => item.key}
-        estimatedItemSize={ESTIMATED_MONTH_ITEM_H}
-        estimatedListSize={{ width: windowWidth, height: 800 }}
-        drawDistance={800}
-        onLayout={() => {
-          listReadyRef.current = true;
-          setListReady(true);
-        }}
-        initialScrollIndex={initialMonthIndex}
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.monthTimeline}
-        onScrollBeginDrag={() => {
-          isUserScrollingRef.current = true;
-        }}
-        onMomentumScrollBegin={() => {
-          isUserScrollingRef.current = true;
-        }}
-        onScrollEndDrag={() => {
-          isUserScrollingRef.current = false;
-          const next = pendingMonthRef.current;
-          if (next && (next.y !== visibleMonth.y || next.m !== visibleMonth.m)) {
-            commitVisibleMonthThrottled(next);
-          }
-        }}
-        onMomentumScrollEnd={() => {
-          isUserScrollingRef.current = false;
-          const next = pendingMonthRef.current;
-          if (next && (next.y !== visibleMonth.y || next.m !== visibleMonth.m)) {
-            commitVisibleMonthThrottled(next);
-          }
-        }}
-        onScroll={scrollHandler}
-        scrollEventThrottle={16}
-        viewabilityConfig={{ itemVisiblePercentThreshold: 20 }}
-        onViewableItemsChanged={onViewableItemsChanged as any}
-        renderItem={({ item }: { item: MonthItem }) => {
-          const monthEntries = entriesByMonthKey[item.key] ?? {};
-          const selectedForThisMonth = selectedDate.startsWith(item.key) ? selectedDate : undefined;
-          return (
-            <View style={styles.monthSection}>
-              <Text style={styles.monthSectionTitle} allowFontScaling>
-                {MONTHS[item.m]} {item.y}
-              </Text>
-              <View
-                style={[
-                  styles.calendarCard,
-                  monthCardMatchesScreenBackground ? styles.calendarCardMatchScreen : null,
-                ]}
-              >
-                <WeekdayRow variant="full" />
-                <MonthGrid
-                  year={item.y}
-                  monthIndex0={item.m}
-                  variant="full"
-                  entries={monthEntries}
-                  calendarMoodStyle={calendarMoodStyle}
-                  selectedDate={selectedForThisMonth}
-                  onPressDate={handlePressDate}
-                  reduceMotion={reduceMotion}
-                  onHapticSelect={handleHapticSelect}
-                />
+      <PerfProfiler id="list.calendarMonthTimeline">
+        <AnimatedFlashList
+          // Key remount keeps initialScrollIndex deterministic when we reset the anchor (Today).
+          key={timelineKey}
+          ref={monthListRef}
+          data={monthsData}
+          keyExtractor={(item: MonthItem) => item.key}
+          // FlashList v2 note: `estimatedItemSize` is deprecated/removed.
+          estimatedListSize={{ width: windowWidth, height: 800 }}
+          drawDistance={800}
+          onLayout={() => {
+            listReadyRef.current = true;
+            setListReady(true);
+          }}
+          initialScrollIndex={initialMonthIndex}
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.monthTimeline}
+          onScrollBeginDrag={() => {
+            isUserScrollingRef.current = true;
+          }}
+          onMomentumScrollBegin={() => {
+            isUserScrollingRef.current = true;
+          }}
+          onScrollEndDrag={() => {
+            isUserScrollingRef.current = false;
+            const next = pendingMonthRef.current;
+            if (next && (next.y !== visibleMonth.y || next.m !== visibleMonth.m)) {
+              commitVisibleMonthThrottled(next);
+            }
+          }}
+          onMomentumScrollEnd={() => {
+            isUserScrollingRef.current = false;
+            const next = pendingMonthRef.current;
+            if (next && (next.y !== visibleMonth.y || next.m !== visibleMonth.m)) {
+              commitVisibleMonthThrottled(next);
+            }
+          }}
+          onScroll={scrollHandler}
+          scrollEventThrottle={16}
+          viewabilityConfig={{ itemVisiblePercentThreshold: 20 }}
+          onViewableItemsChanged={onViewableItemsChanged as any}
+          renderItem={({ item }: { item: MonthItem }) => {
+            const monthEntries = entriesByMonthKey[item.key] ?? {};
+            const selectedForThisMonth = selectedDate.startsWith(item.key) ? selectedDate : undefined;
+            return (
+              <View style={styles.monthSection}>
+                <Text style={styles.monthSectionTitle} allowFontScaling>
+                  {MONTHS[item.m]} {item.y}
+                </Text>
+                <View
+                  style={[
+                    styles.calendarCard,
+                    monthCardMatchesScreenBackground ? styles.calendarCardMatchScreen : null,
+                  ]}
+                >
+                  <WeekdayRow variant="full" />
+                  <MonthGrid
+                    year={item.y}
+                    monthIndex0={item.m}
+                    variant="full"
+                    entries={monthEntries}
+                    calendarMoodStyle={calendarMoodStyle}
+                    selectedDate={selectedForThisMonth}
+                    onPressDate={handlePressDate}
+                    reduceMotion={reduceMotion}
+                    onHapticSelect={handleHapticSelect}
+                  />
+                </View>
               </View>
-            </View>
-          );
-        }}
-      />
+            );
+          }}
+        />
+      </PerfProfiler>
 
       {/* Quick edit modal (tap a day or +) */}
       <Modal visible={isEditOpen} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setIsEditOpen(false)}>

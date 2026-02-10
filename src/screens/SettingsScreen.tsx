@@ -17,10 +17,13 @@ import {
 } from '../storage';
 import { MOOD_GRADES, getMoodLabel } from '../utils';
 import { logger } from '../security';
+import { usePerfScreen } from '../perf';
 import { CalendarMoodStyle, MoodGrade } from '../types';
 import { colors, spacing } from '../theme';
 
 export default function SettingsScreen() {
+  usePerfScreen('Settings');
+
   const [totalEntries, setTotalEntries] = useState(0);
   const [moodCounts, setMoodCounts] = useState<Record<MoodGrade, number>>({
     'A+': 0, 'A': 0, 'B': 0, 'C': 0, 'D': 0, 'F': 0,

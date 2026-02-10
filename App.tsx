@@ -10,6 +10,10 @@ import 'react-native-gesture-handler';
 import { installSafeConsole } from './src/security';
 installSafeConsole();
 
+// Dev-only perf probes (metadata-only logs; no behavior/UI changes).
+import { initPerfProbe } from './src/perf';
+initPerfProbe();
+
 import React from 'react';
 import { RootApp } from './src/app';
 

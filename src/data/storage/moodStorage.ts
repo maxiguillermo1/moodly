@@ -15,7 +15,6 @@
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { MoodEntry, MoodEntriesRecord, MoodGrade } from '../../types';
-import { devWarn } from '../../lib/utils/devPerf';
 import { logger } from '../../lib/security/logger';
 import { isValidISODateKey, normalizeNote, validateEntriesRecord, VALID_MOOD_SET, MAX_NOTE_LEN } from '../model/entry';
 
@@ -75,7 +74,7 @@ function safeParseEntries(json: string | null): ParseResult<MoodEntriesRecord> {
     if (!ok && rawIsObject) return { ok: false, value: {} };
     return { ok: true, value: out };
   } catch {
-    devWarn('[moodStorage] JSON parse failed; falling back to empty store');
+    logger.dev('storage.entries.parse.failed', { source: 'storage' });
     return { ok: false, value: {} };
   }
 }

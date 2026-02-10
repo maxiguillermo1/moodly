@@ -1,12 +1,12 @@
 /**
- * @fileoverview Security-first structured logger.
+ * @fileoverview Security-first logger.
  * @module lib/security/logger
  *
  * Goals:
  * - Never log sensitive payloads (entries/notes/settings or full storage blobs)
- * - Structured, channelized logs (observability, not debugging noise)
- * - Dev-first: PERF/CACHE/DEV/BOOT/DATA are dev-only unless explicitly allowed
- * - Production-safe: WARN/ERROR only (metadata-only, WARN rate-limited)
+ * - Dev-friendly metadata logs
+ * - Production-safe (quiet by default)
+ * - Structured + channelized (observability, not debugging noise)
  */
 
 import { redact } from './redact';
@@ -19,8 +19,6 @@ export type LogChannel = 'app' | 'storage' | 'session' | 'calendar' | 'journal' 
 
 export type PerfPhase = 'cold' | 'warm' | 'revalidate';
 export type PerfSource = 'storage' | 'sessionCache';
-
-export type LogMeta = Record<string, unknown>;
 
 type AssertOptions = {
   maxString?: number;
@@ -65,12 +63,14 @@ function isChannel(v: string): v is LogChannel {
 
 function channelFromEvent(event: string): LogChannel {
   const first = String(event).split('.')[0] ?? '';
-  return isChannel(first) ? first : 'app';
+  if (isChannel(first)) return first;
+  // Default to app if event names are not channel-prefixed.
+  return 'app';
 }
 
 /**
  * Dev-only guardrail: detect when a caller tries to log values that look like payloads.
- * This should prevent accidental logging of entries/settings/notes blobs.
+ * This should prevent accidental "log the whole entries object" during development.
  */
 export function assertNoSensitiveLogArgs(args: unknown[], opts: AssertOptions = {}): void {
   if (!IS_DEV) return;
@@ -83,7 +83,9 @@ export function assertNoSensitiveLogArgs(args: unknown[], opts: AssertOptions = 
     if (depth > 4) return true; // too deep; treat as suspicious
 
     if (typeof v === 'string') {
+      // Long strings often represent notes or serialized blobs.
       if (v.length > o.maxString) return true;
+      // Common serialized payload hints
       const t = v.trimStart();
       if ((t.startsWith('{') || t.startsWith('[')) && v.length > 60) return true;
       if (v.includes('"note"') || v.includes('"entries"') || v.includes('"mood"')) return true;
@@ -115,17 +117,22 @@ export function assertNoSensitiveLogArgs(args: unknown[], opts: AssertOptions = 
 
   for (const a of args) {
     if (scan(a, 0)) {
-      throw new Error('Blocked unsafe log arguments (possible sensitive payload). Log metadata only.');
+      throw new Error(
+        'Blocked unsafe log arguments (possible sensitive payload). Log metadata only.'
+      );
     }
   }
 }
 
-function safeMeta(meta: LogMeta | undefined): LogMeta {
-  return (redact(meta ?? {}) as any) as LogMeta;
+type Meta = Record<string, unknown>;
+
+function safeMeta(meta: Meta | undefined): Meta {
+  // Redact + clamp; never pass raw objects that might contain sensitive payloads.
+  return (redact(meta ?? {}) as any) as Meta;
 }
 
 // ---------------------------------------------------------------------------
-// Log budget + rate limiting
+// Log budget + rate limiting (prevents noise)
 // ---------------------------------------------------------------------------
 
 const DEFAULT_BUDGET_TOTAL = 240;
@@ -133,32 +140,33 @@ const DEFAULT_BUDGET_PER_CHANNEL = 60;
 
 let totalLogs = 0;
 const perChannelLogs = new Map<LogChannel, number>();
-const budgetNotices = new Set<string>(); // keys like "total" | "channel:calendar"
+const budgetSuppressed = new Set<string>(); // keys like "total" | "calendar" | "log-budget"
 
 function shouldSuppressForBudget(level: LogLevel, channel: LogChannel): boolean {
-  // Budget suppression is dev-only; production emits minimal logs anyway.
+  // Budget suppression is dev-only; in prod we emit minimal logs anyway.
   if (!IS_DEV) return false;
 
-  // Always allow WARN/ERROR through budget gates (still counts, but don't suppress).
-  if (level === 'WARN' || level === 'ERROR') return false;
-
   if (totalLogs >= DEFAULT_BUDGET_TOTAL) {
-    if (!budgetNotices.has('total')) {
-      budgetNotices.add('total');
+    if (!budgetSuppressed.has('total')) {
+      budgetSuppressed.add('total');
+      // One diagnostic so engineers know why logs stopped.
       console.warn('[DEV][log-budget]', { scope: 'session', suppressed: true, budget: DEFAULT_BUDGET_TOTAL });
     }
     return true;
   }
 
-  const c = perChannelLogs.get(channel) ?? 0;
-  if (c >= DEFAULT_BUDGET_PER_CHANNEL) {
-    const key = `channel:${channel}`;
-    if (!budgetNotices.has(key)) {
-      budgetNotices.add(key);
+  const prev = perChannelLogs.get(channel) ?? 0;
+  if (prev >= DEFAULT_BUDGET_PER_CHANNEL) {
+    const k = channel;
+    if (!budgetSuppressed.has(k)) {
+      budgetSuppressed.add(k);
       console.warn('[DEV][log-budget]', { scope: 'channel', channel, suppressed: true, budget: DEFAULT_BUDGET_PER_CHANNEL });
     }
     return true;
   }
+
+  // Always allow WARN/ERROR even if channel is noisy (still respects total budget).
+  if (level === 'WARN' || level === 'ERROR') return false;
 
   return false;
 }
@@ -190,12 +198,7 @@ function isLevelEnabled(level: LogLevel): boolean {
   return true;
 }
 
-function nowMs(): number {
-  const p: any = (globalThis as any).performance;
-  return typeof p?.now === 'function' ? p.now() : Date.now();
-}
-
-function emit(level: LogLevel, event: string, meta?: LogMeta): void {
+function emit(level: LogLevel, event: string, meta?: Meta): void {
   if (!isLevelEnabled(level)) return;
 
   const channel = channelFromEvent(event);
@@ -203,50 +206,68 @@ function emit(level: LogLevel, event: string, meta?: LogMeta): void {
   if (level === 'WARN' && shouldRateLimitWarnInProd(event)) return;
   if (shouldSuppressForBudget(level, channel)) return;
 
+  // Dev-only enforcement: prevent accidental payload logs.
   try {
     assertNoSensitiveLogArgs([event, meta]);
   } catch (e) {
     const msg = (e as Error).message ?? 'Blocked unsafe log args';
+    // Always allow this one-line warning so engineers know why logs are missing.
     console.warn('[DEV][log-guard]', { event, channel, reason: msg });
     return;
   }
 
   const m = safeMeta(meta);
 
-  // No interpolated content in strings. Use constant prefix + structured meta.
+  // Keep formatting simple and grep-friendly.
   const prefix = `[${level}][${channel}]`;
-  const method = level === 'ERROR' ? console.error : level === 'WARN' ? console.warn : console.log;
+  const method =
+    level === 'ERROR' ? console.error : level === 'WARN' ? console.warn : console.log;
   method(prefix, event, m);
-
   if (IS_DEV) countLog(channel);
 }
 
-async function perfMeasure<T>(event: string, meta: LogMeta, fn: () => Promise<T>): Promise<T> {
+function measureStart() {
+  const p: any = (globalThis as any).performance;
+  return typeof p?.now === 'function' ? p.now() : Date.now();
+}
+
+async function perfMeasure<T>(
+  event: string,
+  meta: Meta,
+  fn: () => Promise<T>
+): Promise<T> {
   // PERF is dev-only by contract.
   if (!IS_DEV) return await fn();
-  const start = nowMs();
+  const start = measureStart();
   try {
     return await fn();
   } finally {
-    const end = nowMs();
+    const end = measureStart();
     emit('PERF', event, { ...meta, durationMs: Number((end - start).toFixed(1)) });
   }
 }
 
 export const logger = {
+  // -------------------------------------------------------------------------
   // Structured channels + levels (preferred)
-  boot: (event: string, meta: LogMeta = {}) => emit('BOOT', event, meta),
-  perf: (event: string, meta: LogMeta) => emit('PERF', event, meta),
-  cache: (event: string, meta: LogMeta) => emit('CACHE', event, meta),
-  data: (event: string, meta: LogMeta) => emit('DATA', event, meta),
-  warn: (event: string, meta: LogMeta = {}) => emit('WARN', event, meta),
-  dev: (event: string, meta: LogMeta = {}) => emit('DEV', event, meta),
-  error: (event: string, meta: LogMeta = {}) => emit('ERROR', event, meta),
+  // -------------------------------------------------------------------------
+  boot: (event: string, meta: Meta = {}) => emit('BOOT', event, meta),
+  perf: (event: string, meta: Meta) => emit('PERF', event, meta),
+  cache: (event: string, meta: Meta) => emit('CACHE', event, meta),
+  data: (event: string, meta: Meta) => emit('DATA', event, meta),
+  warn: (event: string, meta: Meta = {}) => emit('WARN', event, meta),
+  dev: (event: string, meta: Meta = {}) => emit('DEV', event, meta),
+  error: (event: string, meta: Meta = {}) => emit('ERROR', event, meta),
 
+  // -------------------------------------------------------------------------
   // Perf helper (dev-only; structured output)
+  // -------------------------------------------------------------------------
   perfMeasure,
 
+  // -------------------------------------------------------------------------
   // Back-compat shims (avoid immediate refactor blast radius)
+  // NOTE: Prefer structured methods above.
+  // -------------------------------------------------------------------------
   debug: (...args: unknown[]) => emit('DEV', 'app.legacy.debug', { args }),
   info: (...args: unknown[]) => emit('DEV', 'app.legacy.info', { args }),
 };

@@ -21,8 +21,11 @@ import { useMoodEntry } from '../hooks';
 import { ScreenHeader, MoodPicker } from '../components';
 import { getToday, formatDateForDisplay } from '../utils';
 import { colors, spacing, borderRadius, typography } from '../theme';
+import { usePerfScreen } from '../perf';
 
 export default function TodayScreen() {
+  usePerfScreen('Today');
+
   const today = getToday();
   const [saveMessage, setSaveMessage] = useState('');
 

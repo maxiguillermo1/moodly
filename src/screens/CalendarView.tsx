@@ -21,6 +21,7 @@ import { MonthGrid, ScreenHeader, WeekdayRow } from '../components';
 import { getAllEntriesWithMonthIndex, getSettings } from '../storage';
 import { monthKey } from '../utils';
 import { logger } from '../security';
+import { PerfProfiler, usePerfScreen } from '../perf';
 import { colors, spacing, typography } from '../theme';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -39,6 +40,8 @@ const MINI_GRID_HEIGHT_ESTIMATE = 520; // ~ 3×4 mini-month grid height
 const GRID_SHIFT_DOWN_PX = 24; // positive moves grid down; tuned for iPhone 15 Pro
 
 export default function CalendarView() {
+  usePerfScreen('CalendarView', { listIds: ['list.calendarYearPager'] });
+
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<any>();
@@ -222,29 +225,31 @@ export default function CalendarView() {
     <SafeAreaView style={styles.container} edges={['top']}>
       <ScreenHeader title={String(yearBase)} showSettings onPressSettings={openSettings} />
 
-      <FlatList
-        ref={yearPagerRef}
-        data={years}
-        keyExtractor={keyExtractor}
-        horizontal
-        pagingEnabled
-        showsHorizontalScrollIndicator={false}
-        initialScrollIndex={initialYearIndex}
-        getItemLayout={(_, index) => ({ length: windowWidth, offset: windowWidth * index, index })}
-        onLayout={() => setPagerReady(true)}
-        removeClippedSubviews
-        initialNumToRender={1}
-        windowSize={2}
-        maxToRenderPerBatch={1}
-        updateCellsBatchingPeriod={50}
-        onScrollToIndexFailed={(info) => {
-          setTimeout(() => {
-            yearPagerRef.current?.scrollToIndex({ index: info.index, animated: false });
-          }, 50);
-        }}
-        onMomentumScrollEnd={onMomentumScrollEnd}
-        renderItem={renderYearPage}
-      />
+      <PerfProfiler id="list.calendarYearPager">
+        <FlatList
+          ref={yearPagerRef}
+          data={years}
+          keyExtractor={keyExtractor}
+          horizontal
+          pagingEnabled
+          showsHorizontalScrollIndicator={false}
+          initialScrollIndex={initialYearIndex}
+          getItemLayout={(_, index) => ({ length: windowWidth, offset: windowWidth * index, index })}
+          onLayout={() => setPagerReady(true)}
+          removeClippedSubviews
+          initialNumToRender={1}
+          windowSize={2}
+          maxToRenderPerBatch={1}
+          updateCellsBatchingPeriod={50}
+          onScrollToIndexFailed={(info) => {
+            setTimeout(() => {
+              yearPagerRef.current?.scrollToIndex({ index: info.index, animated: false });
+            }, 50);
+          }}
+          onMomentumScrollEnd={onMomentumScrollEnd}
+          renderItem={renderYearPage}
+        />
+      </PerfProfiler>
     </SafeAreaView>
   );
 }
