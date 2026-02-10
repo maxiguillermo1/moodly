@@ -9,7 +9,6 @@
 
 export * from '../lib/utils/date';
 export * from '../lib/utils/throttle';
-export * from '../lib/utils/devPerf';
 export * from '../lib/constants/moods';
 export * from '../lib/calendar/monthMatrix';
 export * from '../lib/calendar/monthWindow';
