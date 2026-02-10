@@ -41,12 +41,17 @@ export function MoodPicker({
               ]}
               onPress={() => onSelect(mood.grade)}
               activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel={`Mood ${mood.grade}, ${mood.label}`}
+              accessibilityHint={isSelected ? 'Selected' : 'Select mood'}
+              accessibilityState={isSelected ? { selected: true } : undefined}
             >
               <Text
                 style={[
                   styles.segmentText,
                   { color: isSelected ? mood.color : colors.system.secondaryLabel },
                 ]}
+                allowFontScaling
               >
                 {mood.grade}
               </Text>
@@ -59,7 +64,11 @@ export function MoodPicker({
 
   return (
     <View style={styles.container}>
-      {title && <Text style={styles.title}>{title}</Text>}
+      {title && (
+        <Text style={styles.title} allowFontScaling>
+          {title}
+        </Text>
+      )}
       
       <View style={styles.grid}>
         {moods.map((mood) => {
@@ -75,9 +84,17 @@ export function MoodPicker({
               ]}
               onPress={() => onSelect(mood.grade)}
               activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel={`Mood ${mood.grade}, ${mood.label}`}
+              accessibilityHint={isSelected ? 'Selected' : 'Select mood'}
+              accessibilityState={isSelected ? { selected: true } : undefined}
             >
-              <Text style={[styles.grade, { color: mood.color }]}>{mood.grade}</Text>
-              <Text style={styles.label}>{mood.label}</Text>
+              <Text style={[styles.grade, { color: mood.color }]} allowFontScaling>
+                {mood.grade}
+              </Text>
+              <Text style={styles.label} allowFontScaling>
+                {mood.label}
+              </Text>
             </TouchableOpacity>
           );
         })}

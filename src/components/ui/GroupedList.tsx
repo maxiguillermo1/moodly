@@ -4,7 +4,8 @@
  */
 
 import React, { ReactNode } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, Pressable, StyleSheet } from 'react-native';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { colors, spacing, borderRadius, typography } from '../../theme';
 
 interface GroupedSectionProps {
@@ -16,9 +17,17 @@ interface GroupedSectionProps {
 export function GroupedSection({ header, footer, children }: GroupedSectionProps) {
   return (
     <View style={styles.section}>
-      {header && <Text style={styles.sectionHeader}>{header}</Text>}
+      {header && (
+        <Text style={styles.sectionHeader} allowFontScaling>
+          {header}
+        </Text>
+      )}
       <View style={styles.sectionContent}>{children}</View>
-      {footer && <Text style={styles.sectionFooter}>{footer}</Text>}
+      {footer && (
+        <Text style={styles.sectionFooter} allowFontScaling>
+          {footer}
+        </Text>
+      )}
     </View>
   );
 }
@@ -46,35 +55,63 @@ export function GroupedRow({
   destructive = false,
   right,
 }: GroupedRowProps) {
+  // Match iOS Settings: separators are inset so they align with label text.
+  // Emoji icons are used here; treat them as a fixed “slot” to keep rhythm consistent.
+  const separatorInsetLeft = spacing[4] + (icon ? 22 + spacing[3] : 0);
+
   const content = (
-    <View
-      style={[
-        styles.row,
-        isFirst && styles.rowFirst,
-        isLast && styles.rowLast,
-        !isLast && styles.rowBorder,
-      ]}
-    >
-      {icon && <Text style={styles.rowIcon}>{icon}</Text>}
-      <Text style={[styles.rowLabel, destructive && styles.rowLabelDestructive]}>
+    <View style={[styles.row, isFirst && styles.rowFirst, isLast && styles.rowLast]}>
+      {icon && (
+        <Text style={styles.rowIcon} allowFontScaling={false}>
+          {icon}
+        </Text>
+      )}
+      <Text
+        style={[styles.rowLabel, destructive && styles.rowLabelDestructive]}
+        allowFontScaling
+        numberOfLines={1}
+      >
         {label}
       </Text>
       <View style={styles.rowRight}>
         {right ?? (
           <>
-            {value && <Text style={styles.rowValue}>{value}</Text>}
-            {onPress && showChevron && <Text style={styles.chevron}>›</Text>}
+            {value ? (
+              <Text style={styles.rowValue} allowFontScaling numberOfLines={1}>
+                {value}
+              </Text>
+            ) : null}
+            {onPress && showChevron ? (
+              <Ionicons
+                name="chevron-forward"
+                size={16}
+                color={colors.system.tertiaryLabel}
+                style={styles.chevronIcon}
+              />
+            ) : null}
           </>
         )}
       </View>
+
+      {/* Inset separator (iOS grouped list style) */}
+      {!isLast ? (
+        <View
+          pointerEvents="none"
+          style={[styles.separator, { left: separatorInsetLeft }]}
+        />
+      ) : null}
     </View>
   );
 
   if (onPress) {
     return (
-      <TouchableOpacity onPress={onPress} activeOpacity={0.6}>
+      <Pressable
+        onPress={onPress}
+        accessibilityRole="button"
+        style={({ pressed }) => (pressed ? styles.rowPressed : undefined)}
+      >
         {content}
-      </TouchableOpacity>
+      </Pressable>
     );
   }
 
@@ -97,6 +134,9 @@ const styles = StyleSheet.create({
     borderRadius: borderRadius.lg,
     marginHorizontal: spacing[4],
     overflow: 'hidden',
+    // Subtle iOS grouped card stroke.
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.system.separator,
   },
   sectionFooter: {
     ...typography.footnote,
@@ -112,6 +152,10 @@ const styles = StyleSheet.create({
     backgroundColor: colors.system.secondaryBackground,
     minHeight: 44,
   },
+  rowPressed: {
+    // iOS row highlight (subtle).
+    backgroundColor: colors.system.fill,
+  },
   rowFirst: {
     borderTopLeftRadius: borderRadius.lg,
     borderTopRightRadius: borderRadius.lg,
@@ -120,9 +164,12 @@ const styles = StyleSheet.create({
     borderBottomLeftRadius: borderRadius.lg,
     borderBottomRightRadius: borderRadius.lg,
   },
-  rowBorder: {
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.system.separator,
+  separator: {
+    position: 'absolute',
+    right: 0,
+    bottom: 0,
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: colors.system.separator,
   },
   rowIcon: {
     fontSize: 22,
@@ -143,11 +190,9 @@ const styles = StyleSheet.create({
   rowValue: {
     ...typography.body,
     color: colors.system.secondaryLabel,
-    marginRight: spacing[1],
+    marginRight: spacing[2],
   },
-  chevron: {
-    fontSize: 20,
-    color: colors.system.tertiaryLabel,
-    fontWeight: '600',
+  chevronIcon: {
+    marginRight: -2, // optical alignment like iOS
   },
 });

@@ -11,14 +11,12 @@ import {
   TouchableOpacity,
   StyleSheet,
   Alert,
-  Modal,
-  TextInput,
 } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { MoodEntry, MoodGrade } from '../types';
-import { ScreenHeader, MoodPicker, MoodBadge } from '../components';
+import { ScreenHeader, MoodBadge } from '../components';
 import {
   getEntriesSortedDesc,
   upsertEntry,
@@ -28,6 +26,7 @@ import { getRelativeDayLabel, formatDateForDisplay } from '../utils';
 import { logger } from '../security';
 import { PerfProfiler, usePerfScreen } from '../perf';
 import { colors, spacing, borderRadius, typography } from '../theme';
+import { JournalEditModal } from './journal/JournalEditModal';
 
 /**
  * PERF experiment toggle (small + reversible).
@@ -51,7 +50,7 @@ export default function JournalScreen() {
 
   const loadCountRef = useRef(0);
 
-  const loadEntries = useCallback(async () => {
+  const reloadJournalEntries = useCallback(async () => {
     const phase = loadCountRef.current === 0 ? 'cold' : 'warm';
     loadCountRef.current += 1;
     const p: any = (globalThis as any).performance;
@@ -68,8 +67,8 @@ export default function JournalScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      loadEntries();
-    }, [loadEntries])
+      reloadJournalEntries();
+    }, [reloadJournalEntries])
   );
 
   const handleTapEntry = useCallback((entry: MoodEntry) => {
@@ -89,12 +88,16 @@ export default function JournalScreen() {
           style: 'destructive',
           onPress: async () => {
             await deleteEntry(entry.date);
-            loadEntries();
+            reloadJournalEntries();
           },
         },
       ]
     );
-  }, [loadEntries]);
+  }, [reloadJournalEntries]);
+
+  const handleCloseEdit = useCallback(() => {
+    setEditingEntry(null);
+  }, []);
 
   const handleSaveEdit = useCallback(async () => {
     if (!editingEntry || !editMood) return;
@@ -107,8 +110,8 @@ export default function JournalScreen() {
     });
 
     setEditingEntry(null);
-    loadEntries();
-  }, [editMood, editNote, editingEntry, loadEntries]);
+    reloadJournalEntries();
+  }, [editMood, editNote, editingEntry, reloadJournalEntries]);
 
   const keyExtractor = useCallback((item: MoodEntry) => item.date, []);
 
@@ -188,44 +191,15 @@ export default function JournalScreen() {
         )}
       </PerfProfiler>
 
-      {/* Edit Modal */}
-      <Modal
-        visible={editingEntry !== null}
-        animationType="slide"
-        presentationStyle="pageSheet"
-        onRequestClose={() => setEditingEntry(null)}
-      >
-        <SafeAreaView style={styles.modalContainer} edges={['top']}>
-          <View style={styles.modalHeader}>
-            <TouchableOpacity onPress={() => setEditingEntry(null)}>
-              <Text style={styles.modalCancel}>Cancel</Text>
-            </TouchableOpacity>
-            <Text style={styles.modalTitle}>
-              {editingEntry ? formatDateForDisplay(editingEntry.date) : ''}
-            </Text>
-            <TouchableOpacity onPress={handleSaveEdit}>
-              <Text style={styles.modalSave}>Save</Text>
-            </TouchableOpacity>
-          </View>
-
-          <View style={styles.modalContent}>
-            <MoodPicker selectedMood={editMood} onSelect={setEditMood} />
-
-            <View style={styles.modalNoteSection}>
-              <Text style={styles.modalNoteLabel}>NOTE</Text>
-              <TextInput
-                style={styles.modalNoteInput}
-                placeholder="What made this day special?"
-                placeholderTextColor={colors.system.tertiaryLabel}
-                value={editNote}
-                onChangeText={setEditNote}
-                maxLength={200}
-                multiline
-              />
-            </View>
-          </View>
-        </SafeAreaView>
-      </Modal>
+      <JournalEditModal
+        editingEntry={editingEntry}
+        editMood={editMood}
+        editNote={editNote}
+        setEditMood={setEditMood}
+        setEditNote={setEditNote}
+        onCancel={handleCloseEdit}
+        onSave={handleSaveEdit}
+      />
     </SafeAreaView>
   );
 }
@@ -287,54 +261,5 @@ const styles = StyleSheet.create({
     ...typography.body,
     color: colors.system.secondaryLabel,
     textAlign: 'center',
-  },
-  // Modal
-  modalContainer: {
-    flex: 1,
-    backgroundColor: colors.system.background,
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: spacing[4],
-    paddingVertical: spacing[4],
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.system.separator,
-    backgroundColor: colors.system.secondaryBackground,
-  },
-  modalCancel: {
-    ...typography.body,
-    color: colors.system.secondaryLabel,
-  },
-  modalTitle: {
-    ...typography.headline,
-    color: colors.system.label,
-  },
-  modalSave: {
-    ...typography.body,
-    color: colors.system.blue,
-    fontWeight: '600',
-  },
-  modalContent: {
-    padding: spacing[4],
-  },
-  modalNoteSection: {
-    marginTop: spacing[6],
-  },
-  modalNoteLabel: {
-    ...typography.footnote,
-    color: colors.system.secondaryLabel,
-    textTransform: 'uppercase',
-    marginBottom: spacing[2],
-  },
-  modalNoteInput: {
-    ...typography.body,
-    color: colors.system.label,
-    backgroundColor: colors.system.secondaryBackground,
-    borderRadius: borderRadius.lg,
-    padding: spacing[4],
-    minHeight: 100,
-    textAlignVertical: 'top',
   },
 });

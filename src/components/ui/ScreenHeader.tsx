@@ -19,15 +19,24 @@ interface ScreenHeaderProps {
 export function ScreenHeader({ title, showSettings = true, onPressSettings }: ScreenHeaderProps) {
   const navigation = useNavigation<any>();
 
+  // Keep touch targets >= 44pt without changing visual size.
+  // (iOS HIG: minimum tappable area)
+  const settingsHitSlop = { top: 8, bottom: 8, left: 8, right: 8 };
+
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>{title}</Text>
+      <Text style={styles.title} allowFontScaling>
+        {title}
+      </Text>
       
       {showSettings && (
         <TouchableOpacity
           style={styles.settingsPill}
           onPress={() => (onPressSettings ? onPressSettings() : navigation.navigate('Settings'))}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          hitSlop={settingsHitSlop}
+          accessibilityRole="button"
+          accessibilityLabel="Settings"
+          accessibilityHint="Opens settings"
         >
           <LiquidGlass
             style={StyleSheet.absoluteFill}
@@ -39,7 +48,7 @@ export function ScreenHeader({ title, showSettings = true, onPressSettings }: Sc
           </LiquidGlass>
           <Ionicons
             name="settings-outline"
-            size={20}
+            size={sizing.iconSm}
             color={colors.system.label}
           />
         </TouchableOpacity>

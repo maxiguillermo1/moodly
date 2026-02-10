@@ -28,6 +28,7 @@ export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
       >
         {state.routes.map((route, index) => {
           const isFocused = state.index === index;
+          const label = `${route.name} tab`;
 
           const onPress = () => {
             const event = navigation.emit({
@@ -45,14 +46,17 @@ export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
             <TouchableOpacity
               key={route.key}
               accessibilityRole="button"
+              accessibilityLabel={label}
+              accessibilityHint={isFocused ? 'Current tab' : `Switches to ${route.name}`}
               accessibilityState={isFocused ? { selected: true } : {}}
               onPress={onPress}
               style={styles.tab}
               activeOpacity={0.7}
+              hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
             >
               <Ionicons
                 name={TAB_ICONS[route.name]}
-                size={20}
+                size={sizing.iconSm}
                 color={isFocused ? colors.system.blue : colors.system.secondaryLabel}
               />
               <View style={[styles.indicator, isFocused && styles.indicatorActive]} />

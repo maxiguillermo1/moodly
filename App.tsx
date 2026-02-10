@@ -11,8 +11,10 @@ import { installSafeConsole } from './src/security';
 installSafeConsole();
 
 // Dev-only perf probes (metadata-only logs; no behavior/UI changes).
-import { initPerfProbe } from './src/perf';
-initPerfProbe();
+// Production hygiene: do not even initialize probe modules in prod bundles.
+if (typeof __DEV__ !== 'undefined' && __DEV__) {
+  require('./src/perf').initPerfProbe();
+}
 
 import React from 'react';
 import { RootApp } from './src/app';
