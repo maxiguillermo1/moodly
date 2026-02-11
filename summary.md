@@ -133,8 +133,86 @@ Example PERF line format (metadata-only):
 - Centralize event naming conventions further (one place to list canonical events).
 - Add a small **in-app dev-only export** of recent structured logs (still local-only, no network) if needed for audits.
 
-## Version 0.6 — <short title>
-[future]
+---
+### 2026-02-11
+
+#### Version 0.6 — Real-World Hardening (Survive Real Users)
+
+##### Why we did it (layman terms)
+- Prevent “rare” edge cases (double taps, app backgrounding mid-save, slow storage) from turning into **data loss** or **crash loops**.
+- Make the app resilient on old devices and under real-world chaos, without changing the product.
+
+##### Problems discovered (what would break)
+- **Concurrent writes could silently lose data**: two overlapping entry writes could race and overwrite each other (last writer wins).
+- **Failed writes could desync in-memory UI/cache from disk**: some flows updated RAM state before persistence completed.
+- **Unhandled async errors from UI handlers**: async `onPress` paths could throw/reject without user-safe recovery.
+- **Calendar fast-tap race**: rapid date taps could show the wrong entry in the edit sheet due to out-of-order async reads.
+- **Settings toggle spam**: rapid switching could race writes and end in stale/incorrect persisted values.
+
+##### Protections added (engineering summary)
+- **Write serialization** at the storage boundary:
+  - Added a lightweight in-memory **write queue** for entries and settings so mutations are applied sequentially.
+  - This prevents “lost updates” under double taps / multi-screen overlap.
+- **Persist-first, then update caches**:
+  - Storage now writes to AsyncStorage first and only then updates session RAM caches/derived indexes.
+  - This prevents “looks saved but isn’t” states when persistence fails.
+- **User-safe error handling**:
+  - UI write handlers now **never throw** and instead show safe alerts on failure + emit redacted structured logs.
+- **Calendar read race guard**:
+  - Added a request-id guard so only the latest `getEntry()` result can populate the edit sheet.
+
+##### Files touched (high signal)
+- **storage (reliability)**
+  - `src/data/storage/moodStorage.ts` (entries write queue + persist-first cache commits)
+  - `src/data/storage/settingsStorage.ts` (settings write queue + persist-first cache commits)
+- **screens (safe error handling / race guards)**
+  - `src/screens/CalendarScreen.tsx` (save spam guard, never-throw save, stale read guard)
+  - `src/screens/JournalScreen.tsx` (catch delete/save failures)
+  - `src/screens/SettingsScreen.tsx` (catch toggle + clear failures, resync on error)
+
+##### Phase 1 code links (exact functions changed)
+- **Entries (write safety) — `src/data/storage/moodStorage.ts`**
+  - `withEntriesWriteLock` (new): serializes all mutations
+  - `upsertEntry` (updated): persist-first, then update caches
+  - `deleteEntry` (updated): persist-first, then update caches
+  - `clearAllEntries` (updated): persist-first, then clear caches
+  - `setAllEntries` (updated): persist-first, then set caches
+- **Settings (write safety) — `src/data/storage/settingsStorage.ts`**
+  - `withSettingsWriteLock` (new): serializes settings writes
+  - `setSettings` (updated): persist-first, then update cache (+ structured error log)
+- **UI handlers (never crash-loop)**
+  - `src/screens/CalendarScreen.tsx`: modal save `onPress` (no throw), `handlePressDate` (stale-read guard), save spam guard (`isSavingRef`)
+  - `src/screens/JournalScreen.tsx`: `handleSaveEdit`, delete confirm `onPress` (try/catch + user-safe alerts)
+  - `src/screens/SettingsScreen.tsx`: toggle `onValueChange` handlers + `handleClearData` (try/catch + resync)
+
+##### Failures now prevented
+- ✅ Silent data loss from overlapping writes (double-tap / multi-screen write races)
+- ✅ Crash loops / unhandled promise rejections from async UI event handlers
+- ✅ Calendar edit sheet showing the wrong day’s data after rapid taps
+- ✅ Settings persisting stale values after toggle spam (writes are now serialized)
+- ✅ “Saved in UI but not on disk” cache divergence on failed writes
+
+##### What remains intentionally unsolved (v0.7+ candidates)
+- **Encryption at rest** (requires explicit threat model + key management)
+- **System dark mode** (currently forced light mode via Expo config; enabling is a visible change)
+- **Midnight/timezone policy** (define/implement “today rolls over while open” behavior explicitly)
+- **Disk-full simulation + recovery UX** (we recover safely; richer UX is optional)
+- **Future sync engine** (no networking in this milestone; only safe foundations)
+
+##### Migration note (v0.5 → v0.6)
+v0.6 adds a reliability layer that makes storage writes **deterministic and race-safe** under real user behavior. The app remains local-first and feature-identical, but is significantly less likely to corrupt data or crash under chaos.
+
+##### Constraints confirmation
+- **No feature changes** (no new screens/flows/routes; behavior on success paths unchanged)
+- **No storage semantic/key changes** (`moodly.entries` / `moodly.settings` unchanged; only write safety added)
+- **Expo Go compatible**
+
+##### Quick validation checklist (2–5 minutes)
+- Today: save/update entry → relaunch → confirm persisted.
+- Journal: scroll → edit → save → long-press delete → confirm updates.
+- Calendar: year → month → tap day → save → confirm updates (try fast taps).
+- Settings: toggle both switches repeatedly → relaunch → confirm persisted.
+- Simulate failure (optional): toggle airplane mode doesn’t matter; instead watch for no crashes on rapid interactions.
 
 ## Version 0.7 — <short title>
 [future]

@@ -80,9 +80,14 @@ export default function SettingsScreen() {
           text: 'Delete All',
           style: 'destructive',
           onPress: async () => {
-            await clearAllEntries();
-            loadStats();
-            Alert.alert('Done', 'All entries have been deleted.');
+            try {
+              await clearAllEntries();
+              loadStats();
+              Alert.alert('Done', 'All entries have been deleted.');
+            } catch {
+              logger.warn('settings.clearAll.failed');
+              Alert.alert('Error', 'Failed to clear data. Please try again.');
+            }
           },
         },
       ]
@@ -136,7 +141,15 @@ export default function SettingsScreen() {
                 onValueChange={async (next) => {
                   const style: CalendarMoodStyle = next ? 'fill' : 'dot';
                   setCalendarMoodStyleState(style);
-                  await setCalendarMoodStyle(style);
+                  try {
+                    await setCalendarMoodStyle(style);
+                  } catch {
+                    logger.warn('settings.setCalendarMoodStyle.failed', { style });
+                    Alert.alert('Error', 'Failed to save setting. Please try again.');
+                    // Best-effort resync from storage so UI reflects persisted truth.
+                    const fresh = await getSettings().catch(() => null);
+                    if (fresh) setCalendarMoodStyleState(fresh.calendarMoodStyle);
+                  }
                 }}
               />
             )}
@@ -151,7 +164,14 @@ export default function SettingsScreen() {
                 value={monthCardMatchesScreenBackground}
                 onValueChange={async (next) => {
                   setMonthCardMatchesScreenBackgroundState(!!next);
-                  await setMonthCardMatchesScreenBackground(!!next);
+                  try {
+                    await setMonthCardMatchesScreenBackground(!!next);
+                  } catch {
+                    logger.warn('settings.setMonthCardMatchesScreenBackground.failed', { enabled: !!next });
+                    Alert.alert('Error', 'Failed to save setting. Please try again.');
+                    const fresh = await getSettings().catch(() => null);
+                    if (fresh) setMonthCardMatchesScreenBackgroundState(!!fresh.monthCardMatchesScreenBackground);
+                  }
                 }}
               />
             )}

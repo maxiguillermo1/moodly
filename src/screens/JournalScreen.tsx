@@ -87,8 +87,13 @@ export default function JournalScreen() {
           text: 'Delete',
           style: 'destructive',
           onPress: async () => {
-            await deleteEntry(entry.date);
-            reloadJournalEntries();
+            try {
+              await deleteEntry(entry.date);
+              reloadJournalEntries();
+            } catch {
+              logger.warn('journal.delete.failed', { dateKey: entry.date });
+              Alert.alert('Error', 'Failed to delete. Please try again.');
+            }
           },
         },
       ]
@@ -102,15 +107,20 @@ export default function JournalScreen() {
   const handleSaveEdit = useCallback(async () => {
     if (!editingEntry || !editMood) return;
 
-    await upsertEntry({
-      ...editingEntry,
-      mood: editMood,
-      note: editNote.trim(),
-      updatedAt: Date.now(),
-    });
+    try {
+      await upsertEntry({
+        ...editingEntry,
+        mood: editMood,
+        note: editNote.trim(),
+        updatedAt: Date.now(),
+      });
 
-    setEditingEntry(null);
-    reloadJournalEntries();
+      setEditingEntry(null);
+      reloadJournalEntries();
+    } catch {
+      logger.warn('journal.edit.save.failed', { dateKey: editingEntry.date });
+      Alert.alert('Error', 'Failed to save. Please try again.');
+    }
   }, [editMood, editNote, editingEntry, reloadJournalEntries]);
 
   const keyExtractor = useCallback((item: MoodEntry) => item.date, []);

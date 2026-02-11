@@ -92,7 +92,9 @@ export default function CalendarScreen() {
   const [editMood, setEditMood] = useState<MoodGrade | null>(null);
   const [editNote, setEditNote] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  const isSavingRef = useRef(false);
   const [reduceMotion, setReduceMotion] = useState(false);
+  const getEntryReqIdRef = useRef(0);
   const [visibleMonth, setVisibleMonth] = useState<{ y: number; m: number }>(() => {
     const d = initialAnchorDateRef.current as Date;
     return { y: d.getFullYear(), m: d.getMonth() };
@@ -182,17 +184,23 @@ export default function CalendarScreen() {
   }, []);
 
   const handlePressDate = useCallback(async (isoDate: string) => {
+    // Prevent stale async reads from overwriting newer taps.
+    // (Fast taps can race `getEntry` calls; only the latest tap wins.)
+    const reqId = (getEntryReqIdRef.current += 1);
     setSelectedDate(isoDate);
     try {
       const existing = await getEntry(isoDate);
+      if (getEntryReqIdRef.current !== reqId) return;
       setEditMood(existing?.mood ?? null);
       setEditNote(existing?.note ?? '');
     } catch {
       // Defensive: if storage read fails, still allow editing (user can re-save).
       logger.warn('calendar.getEntry.failed', { dateKey: isoDate });
+      if (getEntryReqIdRef.current !== reqId) return;
       setEditMood(null);
       setEditNote('');
     }
+    if (getEntryReqIdRef.current !== reqId) return;
     setIsEditOpen(true);
   }, []);
 
@@ -463,6 +471,8 @@ export default function CalendarScreen() {
                   Alert.alert('Pick a mood', 'Choose a mood before saving.');
                   return;
                 }
+                if (isSavingRef.current) return;
+                isSavingRef.current = true;
                 setIsSaving(true);
                 try {
                   const next = createEntry(selectedDate, editMood, editNote);
@@ -477,16 +487,19 @@ export default function CalendarScreen() {
                     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
                   }
                   setIsEditOpen(false);
-                } catch (e) {
+                } catch {
                   if (!reduceMotion) {
                     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
                   }
-                  throw e;
+                  logger.warn('calendar.save.failed', { dateKey: selectedDate });
+                  Alert.alert('Error', 'Failed to save. Please try again.');
                 } finally {
+                  isSavingRef.current = false;
                   setIsSaving(false);
                 }
               }}
               activeOpacity={0.7}
+              disabled={isSaving}
             >
               <Text style={styles.modalSave}>{isSaving ? 'Saving…' : 'Save'}</Text>
             </TouchableOpacity>

@@ -18,6 +18,27 @@ const DEFAULT_SETTINGS: AppSettings = {
 let settingsCache: AppSettings | null = null;
 let settingsLoadPromise: Promise<AppSettings> | null = null;
 
+/**
+ * Write serialization (reliability).
+ *
+ * Settings are mutated from UI switches which can be spammed.
+ * Without a lock, overlapping writes can race and end in stale values.
+ */
+let settingsWriteTail: Promise<void> = Promise.resolve();
+async function withSettingsWriteLock<T>(op: () => Promise<T>): Promise<T> {
+  const prev = settingsWriteTail;
+  let release!: () => void;
+  settingsWriteTail = new Promise<void>((r) => {
+    release = r;
+  });
+  await prev;
+  try {
+    return await op();
+  } finally {
+    release();
+  }
+}
+
 function safeParseSettings(json: string | null): AppSettings {
   if (!json) return DEFAULT_SETTINGS;
   try {
@@ -96,20 +117,28 @@ export async function getSettings(): Promise<AppSettings> {
 }
 
 export async function setSettings(next: AppSettings): Promise<void> {
-  if (typeof __DEV__ !== 'undefined' && __DEV__) {
-    const style = (next as any)?.calendarMoodStyle;
-    if (style !== 'dot' && style !== 'fill') {
-      throw new Error(`[settingsStorage.setSettings] Invalid calendarMoodStyle: ${String(style)}`);
+  return withSettingsWriteLock(async () => {
+    if (typeof __DEV__ !== 'undefined' && __DEV__) {
+      const style = (next as any)?.calendarMoodStyle;
+      if (style !== 'dot' && style !== 'fill') {
+        throw new Error(`[settingsStorage.setSettings] Invalid calendarMoodStyle: ${String(style)}`);
+      }
+      const monthBg = (next as any)?.monthCardMatchesScreenBackground;
+      if (typeof monthBg !== 'boolean') {
+        throw new Error(
+          `[settingsStorage.setSettings] Invalid monthCardMatchesScreenBackground: ${String(monthBg)}`
+        );
+      }
     }
-    const monthBg = (next as any)?.monthCardMatchesScreenBackground;
-    if (typeof monthBg !== 'boolean') {
-      throw new Error(
-        `[settingsStorage.setSettings] Invalid monthCardMatchesScreenBackground: ${String(monthBg)}`
-      );
+    try {
+      // Persist first. Only update RAM cache after the write succeeds.
+      await AsyncStorage.setItem(SETTINGS_KEY, JSON.stringify(next));
+      settingsCache = next;
+    } catch (error) {
+      logger.error('storage.settings.set.failed', { key: SETTINGS_KEY, error });
+      throw error;
     }
-  }
-  settingsCache = next;
-  await AsyncStorage.setItem(SETTINGS_KEY, JSON.stringify(next));
+  });
 }
 
 export async function setCalendarMoodStyle(style: CalendarMoodStyle): Promise<void> {

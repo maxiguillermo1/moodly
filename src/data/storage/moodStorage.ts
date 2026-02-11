@@ -25,6 +25,31 @@ const CORRUPT_PREFIX = `${STORAGE_KEY}.corrupt.`;
 let entriesCache: MoodEntriesRecord | null = null;
 let entriesLoadPromise: Promise<MoodEntriesRecord> | null = null;
 
+/**
+ * Write serialization (reliability).
+ *
+ * AsyncStorage operations are async and UI can trigger overlapping writes (double-tap,
+ * multiple screens, backgrounding mid-save). Without a lock, two writes can race and
+ * silently lose data (last writer wins).
+ *
+ * This queue guarantees that mutations to `moodly.entries` are applied sequentially.
+ * It does NOT change storage semantics/keys; it only prevents races.
+ */
+let entriesWriteTail: Promise<void> = Promise.resolve();
+async function withEntriesWriteLock<T>(op: () => Promise<T>): Promise<T> {
+  const prev = entriesWriteTail;
+  let release!: () => void;
+  entriesWriteTail = new Promise<void>((r) => {
+    release = r;
+  });
+  await prev;
+  try {
+    return await op();
+  } finally {
+    release();
+  }
+}
+
 // Derived cache: entries grouped by YYYY-MM (used by CalendarScreen to avoid regrouping).
 export type EntriesByMonthKey = Record<string, MoodEntriesRecord>;
 let entriesByMonthCache: EntriesByMonthKey | null = null;
@@ -323,9 +348,13 @@ function onDeleteUpdateDerivedCaches(prev: MoodEntry, date: string) {
  * Used by demo seeding and (optionally) dev tooling.
  */
 export async function setAllEntries(next: MoodEntriesRecord): Promise<void> {
-  setEntriesCache(next);
-  invalidateDerivedCaches();
-  await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+  await withEntriesWriteLock(async () => {
+    // Persist first. Only update RAM caches after the write succeeds.
+    // This prevents a failed write from leaving the app in a "looks saved but isn't" state.
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+    setEntriesCache(next);
+    invalidateDerivedCaches();
+  });
 }
 
 // ============================================================================
@@ -417,7 +446,8 @@ export async function getEntry(date: string): Promise<MoodEntry | null> {
  * Preserves createdAt on updates, always updates updatedAt
  */
 export async function upsertEntry(entry: MoodEntry): Promise<void> {
-  try {
+  return withEntriesWriteLock(async () => {
+    try {
     if (!isValidISODateKey(entry.date)) {
       if (typeof __DEV__ !== 'undefined' && __DEV__) {
         throw new Error(`[moodStorage.upsertEntry] Invalid ISO date key: ${String(entry.date)}`);
@@ -455,7 +485,10 @@ export async function upsertEntry(entry: MoodEntry): Promise<void> {
     }
     const entries: MoodEntriesRecord = { ...prev, [entry.date]: next };
 
-    // Update derived caches synchronously (RAM-heavy, CPU-light).
+    // Persist first. Only update RAM caches after the write succeeds.
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
+
+    // Update derived caches (RAM-heavy, CPU-light) *after* persistence commits.
     const mk = monthKeyFromIso(entry.date);
     if (entriesByMonthCache) {
       const base = entriesByMonthCache;
@@ -466,18 +499,19 @@ export async function upsertEntry(entry: MoodEntry): Promise<void> {
     onUpsertUpdateDerivedCaches(existing, next);
 
     setEntriesCache(entries);
-    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
   } catch (error) {
     logger.error('storage.entries.upsert.failed', { key: STORAGE_KEY, error });
     throw error;
   }
+  });
 }
 
 /**
  * Delete an entry by date
  */
 export async function deleteEntry(date: string): Promise<void> {
-  try {
+  return withEntriesWriteLock(async () => {
+    try {
     if (!isValidISODateKey(date)) {
       logger.warn('storage.entries.delete.invalidDateKey', { dateKey: date });
       return;
@@ -487,6 +521,9 @@ export async function deleteEntry(date: string): Promise<void> {
     if (!existing) return;
     const entries: MoodEntriesRecord = { ...prev };
     delete entries[date];
+
+    // Persist first. Only update RAM caches after the write succeeds.
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
 
     if (entriesByMonthCache) {
       const mk = monthKeyFromIso(date);
@@ -507,11 +544,11 @@ export async function deleteEntry(date: string): Promise<void> {
 
     onDeleteUpdateDerivedCaches(existing, date);
     setEntriesCache(entries);
-    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
   } catch (error) {
     logger.error('storage.entries.delete.failed', { key: STORAGE_KEY, error });
     throw error;
   }
+  });
 }
 
 // ============================================================================
@@ -663,9 +700,12 @@ export function createEntry(
  * Clear all entries (use with caution!)
  */
 export async function clearAllEntries(): Promise<void> {
-  setEntriesCache({});
-  entriesLoadPromise = null;
-  invalidateDerivedCaches();
-  await AsyncStorage.removeItem(STORAGE_KEY);
+  await withEntriesWriteLock(async () => {
+    // Persist first. Only update RAM caches after the write succeeds.
+    await AsyncStorage.removeItem(STORAGE_KEY);
+    setEntriesCache({});
+    entriesLoadPromise = null;
+    invalidateDerivedCaches();
+  });
 }
 
