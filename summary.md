@@ -136,7 +136,7 @@ Example PERF line format (metadata-only):
 ---
 ### 2026-02-11
 
-#### Version 0.6 — Real-World Hardening (Survive Real Users)
+#### Version 0.6 — Internal Hardening (No UI changes)
 
 ##### Why we did it (layman terms)
 - Prevent “rare” edge cases (double taps, app backgrounding mid-save, slow storage) from turning into **data loss** or **crash loops**.

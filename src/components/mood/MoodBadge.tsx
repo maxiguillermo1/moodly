@@ -3,7 +3,7 @@
  * @module components/mood/MoodBadge
  */
 
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { MoodGrade } from '../../types';
 import { getMoodConfig } from '../../utils';
@@ -21,35 +21,58 @@ const SIZES = {
   lg: { badge: 56, font: 20, labelFont: 14 },
 };
 
-export function MoodBadge({ grade, showLabel = false, size = 'md' }: MoodBadgeProps) {
+/**
+ * Presentational component used in hot lists (e.g., Journal).
+ * Memoized to reduce rerenders when parent lists update.
+ */
+export const MoodBadge = React.memo(function MoodBadge({
+  grade,
+  showLabel = false,
+  size = 'md',
+}: MoodBadgeProps) {
   const config = getMoodConfig(grade);
   const sizeConfig = SIZES[size];
+
+  const badgeStyle = useMemo(
+    () => ({
+      width: sizeConfig.badge,
+      height: sizeConfig.badge,
+      backgroundColor: config.color,
+    }),
+    [config.color, sizeConfig.badge]
+  );
+
+  const gradeTextStyle = useMemo(
+    () => ({ fontSize: sizeConfig.font }),
+    [sizeConfig.font]
+  );
+
+  const labelTextStyle = useMemo(
+    () => ({ fontSize: sizeConfig.labelFont }),
+    [sizeConfig.labelFont]
+  );
 
   return (
     <View style={styles.container}>
       <View
         style={[
           styles.badge,
-          {
-            width: sizeConfig.badge,
-            height: sizeConfig.badge,
-            backgroundColor: config.color,
-          },
+          badgeStyle,
         ]}
       >
-        <Text style={[styles.grade, { fontSize: sizeConfig.font }]}>
+        <Text style={[styles.grade, gradeTextStyle]} allowFontScaling>
           {grade}
         </Text>
       </View>
       
       {showLabel && (
-        <Text style={[styles.label, { fontSize: sizeConfig.labelFont }]}>
+        <Text style={[styles.label, labelTextStyle]} allowFontScaling>
           {config.label}
         </Text>
       )}
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   container: {

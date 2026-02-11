@@ -21,6 +21,22 @@ Logs exist to make system behavior **provable and readable**:
 This is not debugging spam. If a log does not help future maintainers understand system behavior, it should not exist.
 
 ---
+## How to enable / disable (developer ergonomics)
+
+- **Dev mode** (`__DEV__ = true`):
+  - PERF/CACHE/BOOT/DATA/DEV logs are enabled (budgeted) so you can diagnose cold vs warm paths.
+  - Use this to validate performance work without adding UI instrumentation.
+
+- **Production builds** (`__DEV__ = false`):
+  - PERF/CACHE/BOOT/DATA/DEV logs are disabled by design.
+  - WARN/ERROR remain allowed (metadata-only), WARN is rate-limited.
+  - Console is patched via `installSafeConsole` to redact/suppress non-logger noise.
+
+If you need to reduce dev noise further:
+- Prefer summary-level logs over per-item logs.
+- Keep new logs behind existing budgets (do not raise budgets unless justified).
+
+---
 ## Structured format (non‑negotiable)
 
 All logs must be emitted via the privacy‑safe `logger` (see `src/security` facade).

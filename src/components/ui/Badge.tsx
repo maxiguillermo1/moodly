@@ -3,7 +3,7 @@
  * @module components/ui/Badge
  */
 
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, ViewStyle } from 'react-native';
 import { MoodGrade } from '../../types';
 import { getMoodColor } from '../../utils';
@@ -23,28 +23,39 @@ const SIZE_CONFIG = {
   lg: { width: 56, height: 44, fontSize: 18 },
 };
 
-export function Badge({ grade, size = 'md', style }: BadgeProps) {
+/**
+ * Small presentational component used in hot UI paths.
+ * Memoized to reduce rerenders when parent lists update.
+ */
+export const Badge = React.memo(function Badge({ grade, size = 'md', style }: BadgeProps) {
   const config = SIZE_CONFIG[size];
   const backgroundColor = getMoodColor(grade);
+
+  const badgeStyle = useMemo(
+    () => ({
+      width: config.width,
+      height: config.height,
+      backgroundColor,
+    }),
+    [backgroundColor, config.height, config.width]
+  );
+
+  const textStyle = useMemo(() => ({ fontSize: config.fontSize }), [config.fontSize]);
 
   return (
     <View
       style={[
         styles.badge,
-        {
-          width: config.width,
-          height: config.height,
-          backgroundColor,
-        },
+        badgeStyle,
         style,
       ]}
     >
-      <Text style={[styles.text, { fontSize: config.fontSize }]}>
+      <Text style={[styles.text, textStyle]} allowFontScaling>
         {grade}
       </Text>
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   badge: {
