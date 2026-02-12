@@ -9,14 +9,16 @@
  * - `todayIso` is computed once per mount (does not update at midnight without remount) to keep the hot path cheap.
  */
 
-import React, { useMemo, useCallback } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
-import { MoodEntry, MoodGrade } from '../../types';
+import { MoodEntry } from '../../types';
 import { getMonthMatrix } from '../../utils';
-import { getMoodColor } from '../../utils';
 import { colors } from '../../theme';
+import { getMonthRenderModel } from './monthModel';
+import type { CalendarMoodStyle as CalendarMoodStyle2 } from './monthModel';
+import { perfProbe } from '../../perf';
 
-export type CalendarMoodStyle = 'dot' | 'fill';
+export type CalendarMoodStyle = CalendarMoodStyle2;
 
 interface MonthGridProps {
   year: number;
@@ -24,159 +26,191 @@ interface MonthGridProps {
   variant: 'mini' | 'full';
   entries: Record<string, MoodEntry>; // Ideally pre-filtered to the month for perf (CalendarScreen does this)
   calendarMoodStyle: CalendarMoodStyle;
+  /**
+   * Performance-only: bump this number whenever the backing entries for this month change.
+   * This allows MonthModel caches to invalidate without hashing or scanning.
+   */
+  entriesRevision?: number;
   selectedDate?: string;
   onPressDate?: (isoDate: string) => void;
   reduceMotion?: boolean;
   onHapticSelect?: () => void;
 }
 
-const MONTHS_LONG = [
-  'January', 'February', 'March', 'April', 'May', 'June',
-  'July', 'August', 'September', 'October', 'November', 'December',
-];
+type SizeKey = 'full' | 'mini-dot' | 'mini-fill';
 
-function iso(year: number, monthIndex0: number, day: number) {
-  // Construct a local date key without `Date` allocations (timezone-safe for our local-key semantics).
-  const mm = String(monthIndex0 + 1).padStart(2, '0');
-  const dd = String(day).padStart(2, '0');
-  return `${year}-${mm}-${dd}`;
-}
-
-type Sizes = {
-  cellH: number;
-  cellW: number;
-  vMargin: number;
-  dayFontSize: number;
-  dayLineHeight: number;
-  dotSize: number;
-  dotMarginTop: number;
-  textTopNudge: number;
-  todayRingW: number;
+type SharedCellStyles = {
+  cellSizeStyle: { width: number; height: number; marginVertical: number };
+  pillBaseStyle: { width: number; height: number; borderRadius: number };
+  todayRingStyle: { borderWidth: number; borderColor: string };
+  dayTextSizeStyle: { fontSize: number; lineHeight: number; marginTop: number };
+  dotBaseStyle: { width: number; height: number; borderRadius: number; marginTop: number };
 };
 
-const DayCell = React.memo(function DayCell(props: {
-  dateStr: string;
-  day: number;
-  moodColor: string | null;
-  isFill: boolean;
-  isSelected: boolean;
-  isToday: boolean;
-  forceBold: boolean;
-  sizes: Sizes;
-  variant: 'mini' | 'full';
-  reduceMotion: boolean;
-  onPressDate?: (isoDate: string) => void;
-  onHapticSelect?: () => void;
-  a11yLabel: string;
-}) {
-  const {
-    dateStr,
-    day,
-    moodColor,
-    isFill,
-    isSelected,
-    isToday,
-    forceBold,
-    sizes,
-    variant,
-    reduceMotion,
-    onPressDate,
-    onHapticSelect,
-    a11yLabel,
-  } = props;
-  const isBold = isFill || forceBold;
+const sharedStylesCache = new Map<SizeKey, SharedCellStyles>();
+function getSharedStyles(sizeKey: SizeKey): SharedCellStyles {
+  const cached = sharedStylesCache.get(sizeKey);
+  if (cached) return cached;
 
-  const cellSizeStyle = useMemo(
-    () => ({
+  // These numbers match the previous Phase 1 implementation exactly.
+  const sizes =
+    sizeKey === 'full'
+      ? {
+          cellH: 44,
+          cellW: 44,
+          vMargin: 2,
+          dayFontSize: 17,
+          dayLineHeight: 22,
+          dotSize: 6,
+          dotMarginTop: 4,
+          textTopNudge: 2,
+          todayRingW: 3,
+        }
+      : sizeKey === 'mini-fill'
+        ? {
+            cellH: 14,
+            cellW: 14,
+            vMargin: 1,
+            dayFontSize: 7,
+            dayLineHeight: 9,
+            dotSize: 3,
+            dotMarginTop: 1,
+            textTopNudge: 0,
+            todayRingW: 1,
+          }
+        : {
+            cellH: 14,
+            cellW: 14,
+            vMargin: 1,
+            dayFontSize: 9,
+            dayLineHeight: 10,
+            dotSize: 3,
+            dotMarginTop: 1,
+            textTopNudge: 0,
+            todayRingW: 1,
+          };
+
+  const next: SharedCellStyles = Object.freeze({
+    cellSizeStyle: Object.freeze({
       width: sizes.cellW,
       height: sizes.cellH,
       marginVertical: sizes.vMargin,
     }),
-    [sizes.cellH, sizes.cellW, sizes.vMargin]
-  );
-
-  const pillBaseStyle = useMemo(
-    () => ({
+    pillBaseStyle: Object.freeze({
       width: sizes.cellW,
       height: sizes.cellH,
       borderRadius: sizes.cellH / 2,
     }),
-    [sizes.cellH, sizes.cellW]
-  );
-
-  const todayRingStyle = useMemo(
-    () => ({
+    todayRingStyle: Object.freeze({
       borderWidth: sizes.todayRingW,
       borderColor: colors.system.blue,
     }),
-    [sizes.todayRingW]
-  );
-
-  const dayTextSizeStyle = useMemo(
-    () => ({
+    dayTextSizeStyle: Object.freeze({
       fontSize: sizes.dayFontSize,
       lineHeight: sizes.dayLineHeight,
       marginTop: sizes.textTopNudge,
     }),
-    [sizes.dayFontSize, sizes.dayLineHeight, sizes.textTopNudge]
-  );
-
-  const dotBaseStyle = useMemo(
-    () => ({
+    dotBaseStyle: Object.freeze({
       width: sizes.dotSize,
       height: sizes.dotSize,
       borderRadius: sizes.dotSize / 2,
       marginTop: sizes.dotMarginTop,
     }),
-    [sizes.dotMarginTop, sizes.dotSize]
-  );
+  });
+  sharedStylesCache.set(sizeKey, next);
+  return next;
+}
 
-  const handlePress = useCallback(() => {
-    onHapticSelect?.();
-    onPressDate?.(dateStr);
-  }, [dateStr, onHapticSelect, onPressDate]);
+// Cache background color styles so DayCell never allocates `{ backgroundColor }` objects.
+const bgColorStyleCache = new Map<string, { backgroundColor: string }>();
+function bgStyle(color: string): { backgroundColor: string } {
+  const cached = bgColorStyleCache.get(color);
+  if (cached) return cached;
+  const next = Object.freeze({ backgroundColor: color });
+  bgColorStyleCache.set(color, next);
+  return next;
+}
 
-  return (
-    <Pressable
-      onPress={handlePress}
-      accessibilityRole="button"
-      accessibilityLabel={a11yLabel}
-      accessibilityState={isSelected ? { selected: true } : undefined}
-      style={({ pressed }) => [
-        styles.cell,
-        cellSizeStyle,
-        pressed ? styles.pressedOpacity : null,
-        !reduceMotion && pressed && variant === 'full' ? styles.pressedFull : null,
-      ]}
-    >
-      <View
-        style={[
-          styles.pill,
-          pillBaseStyle,
-          isFill && moodColor ? { backgroundColor: moodColor } : null,
-          isSelected ? styles.selectedRing : isToday ? todayRingStyle : null,
+const DayCell = React.memo(
+  function DayCell(props: {
+    day: number;
+    moodColor: string | null;
+    isFill: boolean;
+    isSelected: boolean;
+    isToday: boolean;
+    forceBold: boolean;
+    sizeKey: SizeKey;
+    variant: 'mini' | 'full';
+    reduceMotion: boolean;
+    onPress?: () => void;
+    a11yLabel: string;
+  }) {
+    const { day, moodColor, isFill, isSelected, isToday, forceBold, sizeKey, variant, reduceMotion, onPress, a11yLabel } =
+      props;
+    const isBold = isFill || forceBold;
+    const shared = getSharedStyles(sizeKey);
+
+    if (perfProbe.enabled) {
+      // Sampled breadcrumb (avoid per-cell spam): 1st day gives one signal per month.
+      if (day === 1) perfProbe.breadcrumb(variant === 'mini' ? 'DayCell.render.mini' : 'DayCell.render.full');
+    }
+
+    return (
+      <Pressable
+        onPress={onPress}
+        accessibilityRole="button"
+        accessibilityLabel={a11yLabel}
+        accessibilityState={isSelected ? { selected: true } : undefined}
+        style={({ pressed }) => [
+          styles.cell,
+          shared.cellSizeStyle,
+          pressed ? styles.pressedOpacity : null,
+          !reduceMotion && pressed && variant === 'full' ? styles.pressedFull : null,
         ]}
       >
-        <Text
+        <View
           style={[
-            styles.dayText,
-            dayTextSizeStyle,
-            isFill ? styles.dayTextOnFill : styles.dayTextOnBg,
-            isBold ? styles.dayTextBold : styles.dayTextRegular,
+            styles.pill,
+            shared.pillBaseStyle,
+            isFill && moodColor ? bgStyle(moodColor) : null,
+            isSelected ? styles.selectedRing : isToday ? shared.todayRingStyle : null,
           ]}
-          allowFontScaling={variant === 'full'}
         >
-          {day}
-        </Text>
-        {!isFill && moodColor ? (
-          <View
-            style={[dotBaseStyle, { backgroundColor: moodColor }]}
-          />
-        ) : null}
-      </View>
-    </Pressable>
-  );
-});
+          <Text
+            style={[
+              styles.dayText,
+              shared.dayTextSizeStyle,
+              isFill ? styles.dayTextOnFill : styles.dayTextOnBg,
+              isBold ? styles.dayTextBold : styles.dayTextRegular,
+            ]}
+            allowFontScaling={variant === 'full'}
+          >
+            {day}
+          </Text>
+          {!isFill && moodColor ? (
+            <View style={[shared.dotBaseStyle, bgStyle(moodColor)]} />
+          ) : null}
+        </View>
+      </Pressable>
+    );
+  },
+  (prev, next) => {
+    // Custom comparator: DayCell rerenders only when something it *renders* changes.
+    return (
+      prev.day === next.day &&
+      prev.moodColor === next.moodColor &&
+      prev.isFill === next.isFill &&
+      prev.isSelected === next.isSelected &&
+      prev.isToday === next.isToday &&
+      prev.forceBold === next.forceBold &&
+      prev.sizeKey === next.sizeKey &&
+      prev.variant === next.variant &&
+      prev.reduceMotion === next.reduceMotion &&
+      prev.onPress === next.onPress &&
+      prev.a11yLabel === next.a11yLabel
+    );
+  }
+);
 
 export const MonthGrid = React.memo(function MonthGrid({
   year,
@@ -184,11 +218,15 @@ export const MonthGrid = React.memo(function MonthGrid({
   variant,
   entries,
   calendarMoodStyle,
+  entriesRevision = 0,
   selectedDate,
   onPressDate,
   reduceMotion = false,
   onHapticSelect,
 }: MonthGridProps) {
+  if (perfProbe.enabled) {
+    perfProbe.breadcrumb(variant === 'mini' ? 'MonthGrid.render.mini' : 'MonthGrid.render.full');
+  }
   const weeks = useMemo(() => getMonthMatrix(year, monthIndex0), [year, monthIndex0]);
   const todayIso = useMemo(() => {
     const d = new Date();
@@ -197,43 +235,42 @@ export const MonthGrid = React.memo(function MonthGrid({
     return `${d.getFullYear()}-${mm}-${dd}`;
   }, []);
 
+  useEffect(() => {
+    if (!perfProbe.enabled) return;
+    perfProbe.breadcrumb(variant === 'mini' ? 'MonthGrid.commit.mini' : 'MonthGrid.commit.full');
+  }, [variant]);
+
+  const model = useMemo(() => {
+    return getMonthRenderModel({
+      year,
+      monthIndex0,
+      variant,
+      calendarMoodStyle,
+      monthEntries: entries,
+      entriesRevision,
+      selectedDate,
+      todayIso,
+      onPressDate,
+      onHapticSelect,
+    });
+  }, [
+    year,
+    monthIndex0,
+    variant,
+    calendarMoodStyle,
+    entries,
+    entriesRevision,
+    selectedDate,
+    todayIso,
+    onPressDate,
+    onHapticSelect,
+  ]);
+
   // Only affects CalendarView's mini grid when "Full color days" is enabled.
   const forceBoldMiniWhenFillTheme = variant === 'mini' && calendarMoodStyle === 'fill';
 
-  const sizes: Sizes = useMemo(() => {
-    if (variant === 'mini') {
-      return {
-        cellH: 14,
-        cellW: 14,
-        vMargin: 1,
-        // When theme is "fill", make numbers slightly smaller in the Year (mini) grid.
-        dayFontSize: calendarMoodStyle === 'fill' ? 7 : 9,
-        dayLineHeight: calendarMoodStyle === 'fill' ? 9 : 10,
-        dotSize: 3,
-        dotMarginTop: 1,
-        textTopNudge: 0,
-        todayRingW: 1, // subtle + uncluttered in mini year grid
-      };
-    }
-    return {
-      cellH: 44,
-      cellW: 44, // enables a perfect circle for "today" (matches iOS feel)
-      vMargin: 2,
-      dayFontSize: 17,
-      dayLineHeight: 22,
-      dotSize: 6,
-      dotMarginTop: 4,
-      textTopNudge: 2,
-      todayRingW: 3, // slightly stronger in full month view
-    };
-  }, [calendarMoodStyle, variant]);
-
-  const monthName = MONTHS_LONG[monthIndex0] ?? '';
-
-  const emptyCellStyle = useMemo(
-    () => ({ width: sizes.cellW, height: sizes.cellH, marginVertical: sizes.vMargin }),
-    [sizes.cellH, sizes.cellW, sizes.vMargin]
-  );
+  const shared = getSharedStyles(model.sizeKey);
+  const emptyCellStyle = shared.cellSizeStyle;
 
   return (
     <View style={styles.grid}>
@@ -249,36 +286,33 @@ export const MonthGrid = React.memo(function MonthGrid({
               );
             }
 
-            const dateStr = iso(year, monthIndex0, day);
+            const dateStr = model.isoByDay[day]!;
             const entry = entries[dateStr];
-            const mood: MoodGrade | null = entry?.mood ?? null;
-            const note = entry?.note ?? '';
-            const moodColor = mood ? getMoodColor(mood) : null;
-            const isFill = calendarMoodStyle === 'fill' && !!moodColor;
-            const isSelected = selectedDate === dateStr;
-            const isToday = dateStr === todayIso;
+            const moodColor = model.moodColorByDay[day] ?? null;
+            const isFill = model.isFillTheme && !!moodColor;
+            const isSelected = model.selectedDay === day;
+            const isToday = model.todayDay === day;
 
-            // iOS-like label without Date allocations:
-            const a11yParts = [`${monthName} ${day}, ${year}`];
-            if (mood) a11yParts.push(`Mood: ${mood}`);
-            if (note.trim().length > 0) a11yParts.push('Has note');
+            // iOS-like label without Date allocations.
+            // Keep it cheap: avoid arrays/joins in the hot cell loop.
+            let a11yLabel = `${model.monthName} ${day}, ${year}`;
+            if (entry?.mood) a11yLabel += `. Mood: ${entry.mood}`;
+            if (model.hasNoteByDay[day]) a11yLabel += '. Has note';
 
             return (
               <DayCell
                 key={`c-${year}-${monthIndex0}-${wIdx}-${dIdx}`}
-                dateStr={dateStr}
                 day={day}
                 moodColor={moodColor}
                 isFill={isFill}
                 isSelected={isSelected}
                 isToday={isToday}
                 forceBold={forceBoldMiniWhenFillTheme}
-                sizes={sizes}
+                sizeKey={model.sizeKey}
                 variant={variant}
                 reduceMotion={reduceMotion}
-                onPressDate={onPressDate}
-                onHapticSelect={onHapticSelect}
-                a11yLabel={a11yParts.join('. ')}
+                onPress={model.pressByDay ? model.pressByDay[day] : undefined}
+                a11yLabel={a11yLabel}
               />
             );
           })}

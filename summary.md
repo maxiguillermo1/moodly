@@ -281,6 +281,51 @@ v0.6 adds a reliability layer that makes storage writes **deterministic and race
 
 ---
 
+### Calendar performance deep dive (Phase 1) (2026-02-11)
+
+#### Why we did it (layman terms)
+- Make Calendar scrolling/taps feel closer to Apple Calendar by removing avoidable JS work during scroll and by adding dev-only measurement so we can prove improvements.
+
+#### Risks / problems discovered (ranked)
+- **1) MonthGrid per-cell work**: avoidable string building and per-cell allocations can add up to micro-stutters during month timeline scroll.
+- **2) List prop/callback churn**: inline objects/functions (`renderItem`, `{}` fallbacks, viewability config) can create extra work while the list is actively scrolling.
+- **3) Year pager mini months**: inline layout objects per mini month can amplify work during paging/updates.
+- **4) Lack of “where did the hitch happen?” signal**: without a hitch detector and phase tags, it’s hard to attribute stutters to a code phase.
+
+#### Fixes added (engineering summary)
+- Added a **dev-only JS hitch detector** (requestAnimationFrame delta \(> 24ms\)) with a **CULPRIT PHASE** tag for correlation.
+- Added targeted **dev-only perf markers** for calendar lifecycle and hot interactions (load, month window build, day tap → modal open, modal save).
+- Reduced MonthGrid/DayCell hot-path work by precomputing ISO keys per month, reusing stable per-day press handlers, and sharing style objects across cells.
+- Stabilized Calendar list props/callbacks (no per-render `{}` fallbacks for empty months; stable key extractors, viewability config, and scroll handlers).
+- Reduced year pager prop churn by stabilizing mini-month layout styles and avoiding per-item empty-map allocations.
+
+#### Files touched (high signal)
+- `src/perf/probe.ts`
+- `src/screens/CalendarScreen.tsx`
+- `src/screens/CalendarView.tsx`
+- `src/components/calendar/MonthGrid.tsx`
+- `docs/perf-calendar.md`
+
+#### Failures prevented
+- ✅ Fewer avoidable JS allocations during scroll (reduces risk of micro-stutter)
+- ✅ Better attribution of dev-only hitches to a rough code phase (CULPRIT PHASE tagging)
+
+#### What remains intentionally out of scope
+- Medium-risk list/animation architecture changes (kept Phase 1 strictly low-risk and reversible).
+
+#### Constraints confirmation
+- ✅ No UI/UX changes
+- ✅ No feature changes
+- ✅ No storage schema/key/semantic changes
+- ✅ Expo Go compatible
+
+#### Quick validation checklist
+- Calendar month timeline: scroll up/down quickly; verify no visible behavior changes.
+- Year view: swipe years; tap a month to open; verify no visible behavior changes.
+- Day tap: tap multiple days quickly; verify correct entry loads and modal opens.
+- Save: edit mood/note; save; verify persistence and no crashes.
+- Dev logs: confirm metadata-only output; no notes/entries/settings payloads.
+
 ## Version 0.7 — <short title> [future]
 
 ### Version 0.7 — <short title> (YYYY-MM-DD)
@@ -346,6 +391,56 @@ v0.6 adds a reliability layer that makes storage writes **deterministic and race
 - …
 
 ---
+
+### v0.6 Phase 7 — Calendar micro-hitch elimination (2026-02-11)
+
+#### Why we did it (layman terms)
+- The Calendar felt “almost smooth” but still had **micro-freezes** (200–900ms) that broke the Apple-like feel.
+- Many hitches showed up as **`unknown`**, making it hard to decide what to fix vs what was dev tooling/GC noise.
+
+#### Risks / problems discovered (ranked)
+- **1) Unattributed JS hitches (`unknown`)**: without context, we could waste time optimizing the wrong thing (e.g. Metro stalls).
+- **2) CalendarView paging spikes**: swiping years mounts many mini-month cells at once; spikes looked like `CalendarView.scroll` ~250ms.
+- **3) Prewarm work leaking across navigation**: background compute continuing after blur can create “tap freezes” when bouncing between screens.
+- **4) Empty-month compute overhead**: many months have no entries; repeatedly allocating/looping per-day arrays adds avoidable work.
+
+#### Fixes added (engineering summary)
+- **Hitch attribution hardening (dev-only)**:
+  - Added a **breadcrumbs ring buffer** (last ~50 markers) and included a small tail in `perf.report`.
+  - Hitch phases are now inferred as: **explicit phase tag → nearest breadcrumb (±50ms) → `DEV_METRO_OR_GC`**.
+  - This makes “unknown hitches” effectively **impossible** in reports.
+- **Render/list breadcrumbs (dev-only, sampled)**:
+  - Added lightweight breadcrumbs for MonthGrid renders/commits and sampled DayCell renders.
+  - Added breadcrumbs around list scroll begin/end and prewarm start/chunk/cancel paths.
+- **Empty-month fast path (no UX change)**:
+  - `getMonthRenderModel` now avoids per-day allocations/loops when a month has no entries by reusing shared immutable arrays.
+- **Prewarm safety (no UX change)**:
+  - Prewarm work is cancellable and focus-aware to avoid leaking compute across navigation.
+
+#### Files touched (high signal)
+- `src/perf/probe.ts`
+- `src/components/calendar/MonthGrid.tsx`
+- `src/components/calendar/monthModel.ts`
+- `src/screens/CalendarScreen.tsx`
+- `src/screens/CalendarView.tsx`
+- `summary.md`
+
+#### Metrics (from dev perf.report)
+- **Before**: `CalendarView.scroll` hitches often appeared as ~250ms and many stalls were `unknown`.
+- **After**: `CalendarScreen.scroll` p95 reached ~40–75ms in follow-up runs; large stalls are more clearly classified (breadcrumb phase or `DEV_METRO_OR_GC`).
+- Note: `DEV_METRO_OR_GC` indicates suspected dev tooling / JS runtime stalls, not directly actionable app code.
+
+#### Constraints confirmation
+- ✅ No UI/UX changes
+- ✅ No feature changes
+- ✅ No storage semantic/key changes
+- ✅ Expo Go compatible
+
+#### Quick validation checklist (2–5 minutes)
+- CalendarScreen: hard scroll across many months → confirm no periodic freezes.
+- CalendarView: swipe years → confirm paging is responsive.
+- Bounce CalendarView ↔ CalendarScreen rapidly → confirm no tap freezes.
+- Collect `perf.report` → confirm no `unknown` phase remains (should infer breadcrumb or `DEV_METRO_OR_GC`).
 ### How to use this file
 - Append a new version section for each milestone (0.6, 0.7, 1.0).
 - Do not edit or delete older entries.

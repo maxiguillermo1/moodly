@@ -62,6 +62,11 @@ function isChannel(v: string): v is LogChannel {
 }
 
 function channelFromEvent(event: string): LogChannel {
+  // Special-case: perf reports are emitted by calendar screens and must be
+  // easy to grep/copy even when dev log budgets are reached.
+  // This forces the channel prefix to match the expected output:
+  // `[PERF][calendar] perf.report { ... }`
+  if (IS_DEV && event === 'perf.report') return 'calendar';
   const first = String(event).split('.')[0] ?? '';
   if (isChannel(first)) return first;
   // Default to app if event names are not channel-prefixed.
@@ -202,9 +207,11 @@ function emit(level: LogLevel, event: string, meta?: Meta): void {
   if (!isLevelEnabled(level)) return;
 
   const channel = channelFromEvent(event);
+  const bypassBudget = IS_DEV && event === 'perf.report';
 
   if (level === 'WARN' && shouldRateLimitWarnInProd(event)) return;
-  if (shouldSuppressForBudget(level, channel)) return;
+  // Dev-only: never suppress the one-line perf report summary.
+  if (!bypassBudget && shouldSuppressForBudget(level, channel)) return;
 
   // Dev-only enforcement: prevent accidental payload logs.
   try {
@@ -223,7 +230,8 @@ function emit(level: LogLevel, event: string, meta?: Meta): void {
   const method =
     level === 'ERROR' ? console.error : level === 'WARN' ? console.warn : console.log;
   method(prefix, event, m);
-  if (IS_DEV) countLog(channel);
+  // Dev-only: don't count perf.report against budgets (it's the session summary).
+  if (IS_DEV && !bypassBudget) countLog(channel);
 }
 
 function measureStart() {

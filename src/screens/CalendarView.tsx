@@ -18,15 +18,19 @@ import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/nativ
 
 import { MoodEntry } from '../types';
 import { MonthGrid, ScreenHeader, WeekdayRow } from '../components';
+import { getMonthRenderModel } from '../components/calendar/monthModel';
 import { getAllEntriesWithMonthIndex, getSettings } from '../storage';
-import { monthKey } from '../utils';
+import { perfProbe } from '../perf';
 import { logger } from '../security';
 import { PerfProfiler, usePerfScreen } from '../perf';
 import { colors, spacing, typography } from '../theme';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const MONTH_2 = ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12'] as const;
 
 type CalendarMoodStyle = 'dot' | 'fill';
+
+const EMPTY_MONTH_ENTRIES: Record<string, MoodEntry> = Object.freeze({});
 
 // -----------------------------------------------------------------------------
 // Hidden decisions / tuning constants (keep stable unless intentionally revisiting UX/perf tradeoffs)
@@ -57,11 +61,53 @@ export default function CalendarView() {
 
   const [yearBase, setYearBase] = useState<number>(() => initialYearRef.current);
   const [entriesByMonthKey, setEntriesByMonthKey] = useState<Record<string, Record<string, MoodEntry>>>({});
+  // Performance-only revision counter to invalidate month-level caches without hashing/scanning.
+  const entriesRevisionRef = useRef(0);
   const [calendarMoodStyle, setCalendarMoodStyle] = useState<CalendarMoodStyle>('dot');
 
   const yearPagerRef = useRef<any>(null);
   const [pagerReady, setPagerReady] = useState(false);
   const lastRequestedYearRef = useRef<number | null>(null);
+  const momentumStartMsRef = useRef<number | null>(null);
+  const didFlushPerfReportRef = useRef(false);
+  // Phase 7 v2: prewarm mini-month render models after page settles.
+  const lastPrewarmYearRef = useRef<number | null>(null);
+  const prewarmRafRef = useRef<number | null>(null);
+  const prewarmTaskRef = useRef<{ cancel: () => void } | null>(null);
+  const isFocusedRef = useRef(true);
+
+  useEffect(() => {
+    if (!perfProbe.enabled) return;
+    logger.perf('calendar.yearView.mount', { phase: 'warm', source: 'ui', screen: 'CalendarView' });
+    return () => {
+      logger.perf('calendar.yearView.unmount', { phase: 'warm', source: 'ui', screen: 'CalendarView' });
+      // NOTE: perf.report is flushed on focus-exit below to be reliable in tab navigation.
+    };
+  }, []);
+
+  // Flush perf.report on focus-exit (blur) so it's reliably observable (tabs often keep screens mounted).
+  useFocusEffect(
+    useCallback(() => {
+      isFocusedRef.current = true;
+      didFlushPerfReportRef.current = false;
+      return () => {
+        // On blur: cancel any background prewarm to prevent navigation/tap freezes.
+        isFocusedRef.current = false;
+        prewarmTaskRef.current?.cancel?.();
+        prewarmTaskRef.current = null;
+        if (prewarmRafRef.current != null) {
+          cancelAnimationFrame(prewarmRafRef.current);
+          prewarmRafRef.current = null;
+        }
+        perfProbe.enabled && perfProbe.breadcrumb('CalendarView.prewarm.cancel.blur');
+
+        if (perfProbe.enabled && !didFlushPerfReportRef.current) {
+          didFlushPerfReportRef.current = true;
+          perfProbe.flushReport('CalendarView.unmount');
+        }
+      };
+    }, [])
+  );
 
   /**
    * Performance + UX:
@@ -88,18 +134,25 @@ export default function CalendarView() {
   const bottomOverlaySpace = insets.bottom + spacing[8] + 72;
 
   const load = useCallback(async () => {
+    if (perfProbe.enabled) perfProbe.setCulpritPhase('CalendarView.load');
     const p: any = (globalThis as any).performance;
     const start = typeof p?.now === 'function' ? p.now() : Date.now();
     const [{ byMonthKey }, settings] = await Promise.all([getAllEntriesWithMonthIndex(), getSettings()]);
     // Avoid pointless rerenders when these are cache hits.
-    setEntriesByMonthKey((prev) => (prev === (byMonthKey as any) ? prev : (byMonthKey as any)));
+    setEntriesByMonthKey((prev) => {
+      if (prev === (byMonthKey as any)) return prev;
+      entriesRevisionRef.current += 1;
+      return byMonthKey as any;
+    });
     setCalendarMoodStyle((prev) => (prev === settings.calendarMoodStyle ? prev : settings.calendarMoodStyle));
     const end = typeof p?.now === 'function' ? p.now() : Date.now();
     logger.perf('calendar.yearView.load', {
       phase: 'warm',
       source: 'sessionCache',
+      monthsIndexed: Object.keys(byMonthKey as any).length,
       durationMs: Number(((end as number) - (start as number)).toFixed(1)),
     });
+    if (perfProbe.enabled) perfProbe.setCulpritPhase(null);
   }, []);
 
   useEffect(() => {
@@ -170,11 +223,14 @@ export default function CalendarView() {
   const gridHorizontalPadStyle = useMemo(() => ({ paddingHorizontal: spacing[4] }), []);
 
   const renderMiniMonth = useCallback(
-    (y: number, mIdx: number, cardWidth: number, marginRight: number) => (
+    (y: number, mIdx: number, cardWidthStyle: { width: number }, marginStyle: { marginRight: number }) => {
+      const mk = `${y}-${MONTH_2[mIdx]}`;
+      const monthEntries = entriesByMonthKey[mk] ?? EMPTY_MONTH_ENTRIES;
+      return (
       <TouchableOpacity
         key={`${y}-${mIdx}`}
         activeOpacity={0.7}
-        style={[styles.miniMonth, { width: cardWidth, marginRight }]}
+        style={[styles.miniMonth, cardWidthStyle, marginStyle]}
         onPress={() => navigation.navigate('CalendarScreen', { year: y, month: mIdx })}
       >
         <Text style={styles.miniMonthTitle}>{MONTHS[mIdx]}</Text>
@@ -183,42 +239,156 @@ export default function CalendarView() {
           year={y}
           monthIndex0={mIdx}
           variant="mini"
-          entries={entriesByMonthKey[monthKey(y, mIdx)] ?? {}}
+          entries={monthEntries}
+          entriesRevision={entriesRevisionRef.current}
           calendarMoodStyle={calendarMoodStyle}
         />
       </TouchableOpacity>
-    ),
+      );
+    },
     [calendarMoodStyle, entriesByMonthKey, navigation]
   );
 
   const keyExtractor = useCallback((y: number) => String(y), []);
 
+  const prewarmYear = useCallback(
+    (y: number) => {
+      if (!isFocusedRef.current) return;
+      if (lastPrewarmYearRef.current === y) return;
+      lastPrewarmYearRef.current = y;
+
+      prewarmTaskRef.current?.cancel?.();
+      prewarmTaskRef.current = null;
+      if (prewarmRafRef.current != null) {
+        cancelAnimationFrame(prewarmRafRef.current);
+        prewarmRafRef.current = null;
+      }
+
+      const task = InteractionManager.runAfterInteractions(() => {
+        if (!isFocusedRef.current) return;
+        perfProbe.enabled && perfProbe.breadcrumb('CalendarView.prewarm.start');
+        const startMs = perfProbe.enabled ? perfProbe.nowMs() : 0;
+        const d = new Date();
+        const todayIso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+        const rev = entriesRevisionRef.current;
+        let i = 0;
+
+        const step = () => {
+          if (!isFocusedRef.current) return;
+          // Keep this very small; these are tiny months but the model compute can still be expensive.
+          const end = Math.min(i + 1, 12);
+          for (; i < end; i++) {
+            perfProbe.enabled && perfProbe.breadcrumb('CalendarView.prewarm.chunk');
+            if (perfProbe.enabled) perfProbe.setCulpritPhase('CalendarView.prewarm');
+            const mk = `${y}-${MONTH_2[i]}`;
+            const monthEntries = entriesByMonthKey[mk] ?? EMPTY_MONTH_ENTRIES;
+            getMonthRenderModel({
+              year: y,
+              monthIndex0: i,
+              variant: 'mini',
+              calendarMoodStyle,
+              monthEntries,
+              entriesRevision: rev,
+              selectedDate: undefined,
+              todayIso,
+              onPressDate: undefined,
+              onHapticSelect: undefined,
+            });
+            if (perfProbe.enabled) perfProbe.clearCulpritAfterFrames(1);
+          }
+
+          if (i < 12) {
+            prewarmRafRef.current = requestAnimationFrame(step);
+            return;
+          }
+
+          logger.perf('calendar.yearView.prewarm', {
+            phase: 'warm',
+            source: 'ui',
+            y,
+            months: 12,
+            durationMs: perfProbe.enabled ? Number((perfProbe.nowMs() - startMs).toFixed(1)) : undefined,
+            cancelled: false,
+          });
+          prewarmRafRef.current = null;
+        };
+
+        step();
+      });
+      prewarmTaskRef.current = task as any;
+    },
+    [calendarMoodStyle, entriesByMonthKey]
+  );
+
   const onMomentumScrollEnd = useCallback(
     (e: any) => {
+      if (perfProbe.enabled) perfProbe.setCulpritPhase('CalendarView.pageSettle');
+      perfProbe.enabled && perfProbe.breadcrumb('CalendarView.scrollEnd');
+      const startMs = momentumStartMsRef.current;
+      momentumStartMsRef.current = null;
       const idx = Math.round(e.nativeEvent.contentOffset.x / windowWidth);
       const newYear = years[idx] ?? yearBase;
       if (newYear !== yearBase) setYearBase(newYear);
+      prewarmYear(newYear);
+      if (perfProbe.enabled) {
+        logger.perf('calendar.yearView.page', { phase: 'warm', source: 'ui', y: newYear, index: idx });
+        if (typeof startMs === 'number') {
+          perfProbe.measureSince('calendar.yearView.momentumEnd', startMs, { phase: 'warm', source: 'ui' });
+        }
+        perfProbe.clearCulpritAfterFrames(2);
+      }
     },
-    [windowWidth, yearBase, years]
+    [prewarmYear, windowWidth, yearBase, years]
   );
+
+  const onMomentumScrollBegin = useCallback(() => {
+    if (!perfProbe.enabled) return;
+    // If the user starts paging again, stop any background prewarm work.
+    if (prewarmRafRef.current != null) {
+      cancelAnimationFrame(prewarmRafRef.current);
+      prewarmRafRef.current = null;
+    }
+    momentumStartMsRef.current = perfProbe.nowMs();
+    perfProbe.setCulpritPhase('CalendarView.scroll');
+    perfProbe.breadcrumb('CalendarView.scrollBegin');
+  }, []);
+
+  // Keep these tiny objects stable to avoid re-render churn in each mini month.
+  const miniMonthWidthStyle = useMemo(() => ({ width: layout.cardWidth }), [layout.cardWidth]);
+  const miniMonthMarginRightStyle = useMemo(() => ({ marginRight: layout.colGap }), [layout.colGap]);
+  const miniMonthMarginZeroStyle = useMemo(() => ({ marginRight: 0 }), []);
 
   const renderYearPage = useCallback(
     ({ item: y }: { item: number }) => {
-      const { colGap, cardWidth } = layout;
       return (
         <View style={yearPageStyle}>
           <View style={[styles.gridWrapper, gridWrapperPadStyle]}>
             <View style={[styles.grid, gridHorizontalPadStyle]}>
               {monthIndices.map((mIdx) => {
                 const isEndOfRow = (mIdx + 1) % 3 === 0;
-                return renderMiniMonth(y, mIdx, cardWidth, isEndOfRow ? 0 : colGap);
+                return renderMiniMonth(
+                  y,
+                  mIdx,
+                  miniMonthWidthStyle,
+                  isEndOfRow ? miniMonthMarginZeroStyle : miniMonthMarginRightStyle
+                );
               })}
             </View>
           </View>
         </View>
       );
     },
-    [gridHorizontalPadStyle, gridWrapperPadStyle, layout, monthIndices, renderMiniMonth, yearPageStyle]
+    [
+      gridHorizontalPadStyle,
+      gridWrapperPadStyle,
+      miniMonthMarginRightStyle,
+      miniMonthMarginZeroStyle,
+      miniMonthWidthStyle,
+      monthIndices,
+      renderMiniMonth,
+      yearPageStyle,
+    ]
   );
 
   return (
@@ -246,6 +416,7 @@ export default function CalendarView() {
               yearPagerRef.current?.scrollToIndex({ index: info.index, animated: false });
             }, 50);
           }}
+          onMomentumScrollBegin={onMomentumScrollBegin}
           onMomentumScrollEnd={onMomentumScrollEnd}
           renderItem={renderYearPage}
         />

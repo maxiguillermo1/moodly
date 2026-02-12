@@ -14,6 +14,7 @@ import {
   TextInput,
   Alert,
   AccessibilityInfo,
+  InteractionManager,
 } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -29,23 +30,29 @@ import Animated, {
 import * as Haptics from 'expo-haptics';
 import { CalendarMoodStyle, MoodEntry, MoodGrade } from '../types';
 import { LiquidGlass, MonthGrid, MoodPicker, WeekdayRow } from '../components';
+import { getMonthRenderModel } from '../components/calendar/monthModel';
 import { colors, spacing, borderRadius, typography, sizing } from '../theme';
 import { createEntry, getAllEntriesWithMonthIndex, getEntry, getLastAllEntriesSource, getSettings, upsertEntry } from '../storage';
-import { buildMonthWindow, MonthItem, monthKey as monthKey2, throttle, formatDateToISO } from '../utils';
+import { buildMonthWindow, MonthItem, monthKey as monthKey2, formatDateToISO } from '../utils';
 import { logger } from '../security';
-import { PerfProfiler, usePerfScreen } from '../perf';
+import { PerfProfiler, usePerfScreen, perfProbe } from '../perf';
 
 const MONTHS = [
   'January', 'February', 'March', 'April', 'May', 'June',
   'July', 'August', 'September', 'October', 'November', 'December'
 ];
 
+const EMPTY_MONTH_ENTRIES: Record<string, MoodEntry> = Object.freeze({});
+
 // -----------------------------------------------------------------------------
 // Hidden decisions / tuning constants (keep stable unless intentionally revisiting perf tradeoffs)
 // -----------------------------------------------------------------------------
-const WINDOW_CAP = 24; // bounded list size cap (months)
-const WINDOW_EXTEND = 6; // how many months to extend when nearing edges
-const WINDOW_NEAR_EDGE = 2; // threshold (items) considered "near edge" for extension
+// Phase 8: eliminate periodic window-shift freezes.
+// Instead of keeping a tiny bounded window that must be shifted (and recentered) every ~WINDOW_EXTEND months,
+// use a large mostly-static window. This removes the "every ~7 months" hitch pattern without changing UI.
+const WINDOW_CAP = 1201; // ~100 years of months (plenty for real use; still cheap as data array)
+const WINDOW_EXTEND = 120; // only relevant if user scrolls to extreme ends (10y)
+const WINDOW_NEAR_EDGE = 8; // threshold (items) considered "near edge" for extension (rare with large window)
 
 export default function CalendarScreen() {
   usePerfScreen('CalendarScreen', { listIds: ['list.calendarMonthTimeline'] });
@@ -85,6 +92,8 @@ export default function CalendarScreen() {
 
   const [currentDate] = useState(() => initialAnchorDateRef.current as Date);
   const [entriesByMonthKey, setEntriesByMonthKey] = useState<Record<string, Record<string, MoodEntry>>>({});
+  // Performance-only revision counter to invalidate month-level caches without hashing/scanning.
+  const entriesRevisionRef = useRef(0);
   const [calendarMoodStyle, setCalendarMoodStyle] = useState<CalendarMoodStyle>('dot');
   const [monthCardMatchesScreenBackground, setMonthCardMatchesScreenBackground] = useState(false);
   const [selectedDate, setSelectedDate] = useState<string>(() => initialSelectedDateRef.current as string);
@@ -108,32 +117,49 @@ export default function CalendarScreen() {
   const lastVisibleMonthKeyRef = useRef<string | null>(null);
   const pendingMonthRef = useRef<{ y: number; m: number } | null>(null);
   const isUserScrollingRef = useRef(false);
+  const pendingWindowExtendRef = useRef<null | 'start' | 'end'>(null);
+  const pendingFirstIndexRef = useRef<number | null>(null);
 
-  // Bounded window around the anchor month. Constant-cost list.
-  const [windowOffsets, setWindowOffsets] = useState(() => ({ start: -6, end: 10 }));
+  // Phase 7 v2: prewarm month render models after scroll settles to reduce mount bursts.
+  const lastPrewarmAnchorKeyRef = useRef<string | null>(null);
+  const prewarmTaskRef = useRef<{ cancel: () => void } | null>(null);
+  const prewarmRafRef = useRef<number | null>(null);
+  const isFocusedRef = useRef(true);
+
+  // Large window around the anchor month. Avoid shifting/recentering during normal scrolling.
+  const [windowOffsets, setWindowOffsets] = useState(() => ({ start: -600, end: 600 }));
   const lastWindowKeyRef = useRef<string>(`${windowOffsets.start}:${windowOffsets.end}`);
 
   // Year grid moved to `CalendarView` for performance.
 
   const entriesLoadCountRef = useRef(0);
+  const didFlushPerfReportRef = useRef(false);
 
   const loadEntries = useCallback(async () => {
+    if (perfProbe.enabled) perfProbe.setCulpritPhase('CalendarScreen.loadEntries');
     const phase = entriesLoadCountRef.current === 0 ? 'cold' : 'warm';
     entriesLoadCountRef.current += 1;
     const p: any = (globalThis as any).performance;
     const start = typeof p?.now === 'function' ? p.now() : Date.now();
     const { byMonthKey } = await getAllEntriesWithMonthIndex();
     // Avoid pointless rerenders when focus fires but data is unchanged (cache hit).
-    setEntriesByMonthKey((prev) => (prev === (byMonthKey as any) ? prev : (byMonthKey as any)));
+    setEntriesByMonthKey((prev) => {
+      if (prev === (byMonthKey as any)) return prev;
+      entriesRevisionRef.current += 1;
+      return byMonthKey as any;
+    });
     const end = typeof p?.now === 'function' ? p.now() : Date.now();
     logger.perf('calendar.loadEntries', {
       phase,
       source: getLastAllEntriesSource(),
+      monthsIndexed: Object.keys(byMonthKey as any).length,
       durationMs: Number(((end as number) - (start as number)).toFixed(1)),
     });
+    if (perfProbe.enabled) perfProbe.setCulpritPhase(null);
   }, []);
 
   const loadSettings = useCallback(async () => {
+    if (perfProbe.enabled) perfProbe.setCulpritPhase('CalendarScreen.loadSettings');
     const p: any = (globalThis as any).performance;
     const start = typeof p?.now === 'function' ? p.now() : Date.now();
     const settings = await getSettings();
@@ -147,14 +173,47 @@ export default function CalendarScreen() {
       source: 'sessionCache',
       durationMs: Number(((end as number) - (start as number)).toFixed(1)),
     });
+    if (perfProbe.enabled) perfProbe.setCulpritPhase(null);
   }, []);
 
   useFocusEffect(
     useCallback(() => {
+      if (perfProbe.enabled) perfProbe.setCulpritPhase('CalendarScreen.focus');
+      isFocusedRef.current = true;
+      // New "session" for perf reporting on each focus.
+      didFlushPerfReportRef.current = false;
       loadEntries();
       loadSettings();
+      return () => {
+        // On blur: cancel any background prewarm work to avoid navigation freezes.
+        isFocusedRef.current = false;
+        prewarmTaskRef.current?.cancel?.();
+        prewarmTaskRef.current = null;
+        if (prewarmRafRef.current != null) {
+          cancelAnimationFrame(prewarmRafRef.current);
+          prewarmRafRef.current = null;
+        }
+        perfProbe.enabled && perfProbe.breadcrumb('CalendarScreen.prewarm.cancel.blur');
+
+        // Tabs/stacks often keep screens mounted; flush on focus-exit so the report is observable.
+        // Guarantee: exactly one perf.report per focus session (dev-only).
+        if (perfProbe.enabled && !didFlushPerfReportRef.current) {
+          didFlushPerfReportRef.current = true;
+          perfProbe.flushReport('CalendarScreen.unmount');
+        }
+      };
     }, [loadEntries, loadSettings])
   );
+
+  // Dev-only mount marker (helps correlate hitches with screen lifecycle).
+  useEffect(() => {
+    if (!perfProbe.enabled) return;
+    logger.perf('calendar.screen.mount', { phase: 'warm', source: 'ui', screen: 'CalendarScreen' });
+    return () => {
+      logger.perf('calendar.screen.unmount', { phase: 'warm', source: 'ui', screen: 'CalendarScreen' });
+      // NOTE: perf.report is flushed on focus-exit above to be reliable in tab navigation.
+    };
+  }, []);
 
   // Keep overlay month label in sync when we change the anchor (Today / params mount).
   useEffect(() => {
@@ -184,6 +243,8 @@ export default function CalendarScreen() {
   }, []);
 
   const handlePressDate = useCallback(async (isoDate: string) => {
+    const tapStartMs = perfProbe.enabled ? perfProbe.nowMs() : 0;
+    if (perfProbe.enabled) perfProbe.setCulpritPhase('CalendarScreen.dayTap');
     // Prevent stale async reads from overwriting newer taps.
     // (Fast taps can race `getEntry` calls; only the latest tap wins.)
     const reqId = (getEntryReqIdRef.current += 1);
@@ -202,6 +263,10 @@ export default function CalendarScreen() {
     }
     if (getEntryReqIdRef.current !== reqId) return;
     setIsEditOpen(true);
+    if (perfProbe.enabled) {
+      perfProbe.measureSince('calendar.dayTapToModalOpen', tapStartMs, { phase: 'warm', source: 'ui' });
+      perfProbe.setCulpritPhase(null);
+    }
   }, []);
 
   // ---------------------------------------------------------------------------
@@ -235,7 +300,20 @@ export default function CalendarScreen() {
   // Month timeline (bounded window + FlashList)
   // ----------------------------------------------------------------------------
   const monthsData: MonthItem[] = useMemo(
-    () => buildMonthWindow(currentDate, windowOffsets.start, windowOffsets.end),
+    () => {
+      const startMs = perfProbe.enabled ? perfProbe.nowMs() : 0;
+      if (perfProbe.enabled) perfProbe.setCulpritPhase('CalendarScreen.buildMonthWindow');
+      const data = buildMonthWindow(currentDate, windowOffsets.start, windowOffsets.end);
+      if (perfProbe.enabled) {
+        perfProbe.measureSince('calendar.monthWindow.build', startMs, {
+          phase: 'warm',
+          source: 'ui',
+          months: data.length,
+        });
+        perfProbe.setCulpritPhase(null);
+      }
+      return data;
+    },
     [currentDate, windowOffsets.end, windowOffsets.start]
   );
 
@@ -247,30 +325,49 @@ export default function CalendarScreen() {
   const initialMonthIndex = useMemo(() => Math.max(0, -windowOffsets.start), [windowOffsets.start]);
 
   const commitVisibleMonth = useCallback(
-    (next: { y: number; m: number }) => {
-      setVisibleMonth(next);
-      if (!reduceMotion) {
+    (next: { y: number; m: number }, reason: 'scrollEnd' | 'programmatic') => {
+      setVisibleMonth((prev) => (prev.y === next.y && prev.m === next.m ? prev : next));
+      logger.perf('calendar.visibleMonth.commit', {
+        phase: 'warm',
+        source: 'ui',
+        y: next.y,
+        m: next.m,
+        reason,
+      });
+      // Phase 3: haptics only for real scroll-end commits (not programmatic jumps).
+      if (reason === 'scrollEnd' && !reduceMotion) {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
       }
     },
     [reduceMotion]
   );
 
-  const commitVisibleMonthThrottled = useMemo(() => throttle(commitVisibleMonth, 200), [commitVisibleMonth]);
+  // Phase 3: no throttled commits. We commit at scroll end only.
 
   const maybeRecenterAfterWindowChange = useCallback(() => {
     if (!listReadyRef.current) return;
     const idx = recenterIndexRef.current;
     if (idx == null) return;
     recenterIndexRef.current = null;
-    requestAnimationFrame(() => {
+    // Phase 6: move recenter off the critical post-gesture frames.
+    // Behavior is identical (same index, same no-anim recenter). Only scheduling changes.
+    const task = InteractionManager.runAfterInteractions(() => {
+      if (perfProbe.enabled) perfProbe.setCulpritPhase('CalendarScreen.recenter');
       monthListRef.current?.scrollToIndex({ index: idx, animated: false });
+      // Keep tag alive briefly to attribute any mount/layout bursts to recenter.
+      perfProbe.enabled && perfProbe.clearCulpritAfterFrames(2);
     });
+    // If the interaction queue is cancelled (rare), avoid holding onto refs.
+    // (No-op otherwise; this is a perf-only best-effort.)
+    // NOTE: We intentionally do not store the task; it naturally completes quickly.
+    void task;
   }, []);
 
   useEffect(() => {
     maybeRecenterAfterWindowChange();
   }, [listReady, maybeRecenterAfterWindowChange, monthsData.length]);
+
+  const viewabilityConfig = useMemo(() => ({ itemVisiblePercentThreshold: 20 }), []);
 
   const onViewableItemsChanged = useCallback(
     ({ viewableItems }: { viewableItems: Array<{ item: MonthItem; index: number | null }> }) => {
@@ -282,53 +379,296 @@ export default function CalendarScreen() {
       if (lastVisibleMonthKeyRef.current !== k) {
         lastVisibleMonthKeyRef.current = k;
         pendingMonthRef.current = { y: it.y, m: it.m };
-        if (!isUserScrollingRef.current) {
-          commitVisibleMonthThrottled({ y: it.y, m: it.m });
-        }
       }
 
-      // Bounded window extension near edges (rare).
+      // Phase 3: during active scroll, do NOT do any React work.
+      // We only record intent to extend the window; we apply it at scroll end.
       const idx = first.index;
+      pendingFirstIndexRef.current = idx;
       const len = monthsData.length;
       if (idx <= WINDOW_NEAR_EDGE) {
-        const newStart = windowOffsets.start - WINDOW_EXTEND;
-        let newEnd = windowOffsets.end;
-        let newLen = newEnd - newStart + 1;
-        if (newLen > WINDOW_CAP) newEnd -= newLen - WINDOW_CAP;
-        const key2 = `${newStart}:${newEnd}`;
-        if (key2 !== lastWindowKeyRef.current) {
-          lastWindowKeyRef.current = key2;
-          recenterIndexRef.current = idx + WINDOW_EXTEND;
-          setWindowOffsets({ start: newStart, end: newEnd });
-        }
+        pendingWindowExtendRef.current = 'start';
       } else if (idx >= len - 1 - WINDOW_NEAR_EDGE) {
-        let newStart = windowOffsets.start;
-        const newEnd = windowOffsets.end + WINDOW_EXTEND;
-        let newLen = newEnd - newStart + 1;
-        let trimmed = 0;
-        if (newLen > WINDOW_CAP) {
-          trimmed = newLen - WINDOW_CAP;
-          newStart += trimmed;
-        }
-        const key2 = `${newStart}:${newEnd}`;
-        if (key2 !== lastWindowKeyRef.current) {
-          lastWindowKeyRef.current = key2;
-          recenterIndexRef.current = idx - trimmed;
-          setWindowOffsets({ start: newStart, end: newEnd });
-        }
+        pendingWindowExtendRef.current = 'end';
       }
     },
     [
-      commitVisibleMonthThrottled,
       monthsData.length,
-      windowOffsets.end,
-      windowOffsets.start,
+      // NOTE: we intentionally do NOT depend on windowOffsets here (no state updates in scroll callback).
     ]
   );
 
   const AnimatedFlashList = useMemo(
     () => Animated.createAnimatedComponent(FlashList) as any,
     []
+  );
+
+  // Phase 5: stable month item layout estimate.
+  // Perf-only hint: helps FlashList recycle/mount predictably and reduces layout churn.
+  // Conservative estimate (a bit larger is safer than smaller; avoids blank risk).
+  const overrideItemLayout = useCallback((layout: any) => {
+    layout.size = 420;
+  }, []);
+
+  const keyExtractor = useCallback((item: MonthItem) => item.key, []);
+
+  const onListLayout = useCallback(() => {
+    listReadyRef.current = true;
+    setListReady(true);
+  }, []);
+
+  const onScrollBeginDrag = useCallback(() => {
+    isUserScrollingRef.current = true;
+    if (perfProbe.enabled) perfProbe.setCulpritPhase('CalendarScreen.scroll');
+    perfProbe.enabled && perfProbe.breadcrumb('CalendarScreen.scrollBegin');
+    // If the user re-engages, stop any background prewarm work immediately.
+    if (prewarmRafRef.current != null) {
+      cancelAnimationFrame(prewarmRafRef.current);
+      prewarmRafRef.current = null;
+    }
+    prewarmTaskRef.current?.cancel?.();
+    prewarmTaskRef.current = null;
+  }, []);
+
+  const onMomentumScrollBegin = useCallback(() => {
+    isUserScrollingRef.current = true;
+    if (perfProbe.enabled) perfProbe.setCulpritPhase('CalendarScreen.scroll');
+    perfProbe.enabled && perfProbe.breadcrumb('CalendarScreen.scrollMomentumBegin');
+    if (prewarmRafRef.current != null) {
+      cancelAnimationFrame(prewarmRafRef.current);
+      prewarmRafRef.current = null;
+    }
+    prewarmTaskRef.current?.cancel?.();
+    prewarmTaskRef.current = null;
+  }, []);
+
+  const prewarmAround = useCallback(
+    (anchor: { y: number; m: number }) => {
+      if (!isFocusedRef.current) return;
+      const anchorKey = monthKey2(anchor.y, anchor.m);
+      if (lastPrewarmAnchorKeyRef.current === anchorKey) return;
+      lastPrewarmAnchorKeyRef.current = anchorKey;
+
+      // Cancel any previous prewarm job; only the latest anchor matters.
+      prewarmTaskRef.current?.cancel?.();
+      prewarmTaskRef.current = null;
+      if (prewarmRafRef.current != null) {
+        cancelAnimationFrame(prewarmRafRef.current);
+        prewarmRafRef.current = null;
+      }
+
+      const task = InteractionManager.runAfterInteractions(() => {
+        if (!isFocusedRef.current) return;
+        perfProbe.enabled && perfProbe.breadcrumb('CalendarScreen.prewarm.start');
+        const startMs = perfProbe.enabled ? perfProbe.nowMs() : 0;
+        const d = new Date();
+        const todayIso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+        // Chunk work across frames to avoid a single big JS stall.
+        const keys: string[] = [];
+        const baseAbs = anchor.y * 12 + anchor.m;
+        const rev = entriesRevisionRef.current;
+        const work: Array<{ y: number; m: number; mk: string }> = [];
+        // Prewarm a small radius; expanding beyond +/-1 increases stalls without clear gains.
+        for (let delta = -1; delta <= 1; delta++) {
+          const abs = baseAbs + delta;
+          const y = Math.floor(abs / 12);
+          const m = abs - y * 12;
+          if (m < 0 || m > 11) continue;
+          const mk = monthKey2(y, m);
+          work.push({ y, m, mk });
+        }
+
+        let i = 0;
+        const step = () => {
+          if (!isFocusedRef.current || isUserScrollingRef.current) {
+            // User started interacting again; bail.
+            logger.perf('calendar.month.prewarm', {
+              phase: 'warm',
+              source: 'ui',
+              screen: 'CalendarScreen',
+              anchor: anchorKey,
+              months: keys.length,
+              durationMs: perfProbe.enabled ? Number((perfProbe.nowMs() - startMs).toFixed(1)) : undefined,
+              cancelled: true,
+              cancelReason: !isFocusedRef.current ? 'blur' : 'scroll',
+            });
+            return;
+          }
+          const next = work[i++];
+          if (next) {
+            // Dev-only attribution: tag only the compute step.
+            perfProbe.enabled && perfProbe.breadcrumb('CalendarScreen.prewarm.chunk');
+            if (perfProbe.enabled) perfProbe.setCulpritPhase('CalendarScreen.prewarm');
+            keys.push(next.mk);
+            const monthEntries = entriesByMonthKey[next.mk] ?? EMPTY_MONTH_ENTRIES;
+            getMonthRenderModel({
+              year: next.y,
+              monthIndex0: next.m,
+              variant: 'full',
+              calendarMoodStyle,
+              monthEntries,
+              entriesRevision: rev,
+              selectedDate,
+              todayIso,
+              onPressDate: handlePressDate,
+              onHapticSelect: handleHapticSelect,
+            });
+            if (perfProbe.enabled) perfProbe.clearCulpritAfterFrames(1);
+            prewarmRafRef.current = requestAnimationFrame(step);
+            return;
+          }
+
+          logger.perf('calendar.month.prewarm', {
+            phase: 'warm',
+            source: 'ui',
+            screen: 'CalendarScreen',
+            anchor: anchorKey,
+            months: keys.length,
+            durationMs: perfProbe.enabled ? Number((perfProbe.nowMs() - startMs).toFixed(1)) : undefined,
+            cancelled: false,
+          });
+
+          prewarmRafRef.current = null;
+        };
+
+        step();
+
+      });
+
+      prewarmTaskRef.current = task as any;
+    },
+    [calendarMoodStyle, entriesByMonthKey, handleHapticSelect, handlePressDate, selectedDate]
+  );
+
+  // Ensure background prewarm never leaks across navigation/unmount.
+  useEffect(() => {
+    return () => {
+      prewarmTaskRef.current?.cancel?.();
+      prewarmTaskRef.current = null;
+      if (prewarmRafRef.current != null) {
+        cancelAnimationFrame(prewarmRafRef.current);
+        prewarmRafRef.current = null;
+      }
+    };
+  }, []);
+
+  const flushPendingMonth = useCallback(() => {
+    isUserScrollingRef.current = false;
+    perfProbe.enabled && perfProbe.breadcrumb('CalendarScreen.scrollEnd');
+
+    const next = pendingMonthRef.current;
+    if (next && (next.y !== visibleMonth.y || next.m !== visibleMonth.m)) {
+      commitVisibleMonth(next, 'scrollEnd');
+    }
+
+    // Phase 7 v2: prewarm around the month we just landed on (or current if unchanged).
+    // This does not change UI. It only shifts cached computations off the scroll path.
+    prewarmAround(next ?? { y: visibleMonth.y, m: visibleMonth.m });
+
+    // Phase 3: apply window expansion *only after scroll ends*.
+    const extend = pendingWindowExtendRef.current;
+    const idx = pendingFirstIndexRef.current;
+    pendingWindowExtendRef.current = null;
+    pendingFirstIndexRef.current = null;
+    if (extend && typeof idx === 'number') {
+      // Phase 6: move window extension off the critical post-gesture frames.
+      // This targets "freeze-class" hitches caused by list resizing/mount/layout bursts.
+      if (perfProbe.enabled) perfProbe.setCulpritPhase('CalendarScreen.windowExtend');
+      InteractionManager.runAfterInteractions(() => {
+        let didMutateWindow = false;
+        if (extend === 'start') {
+          const newStart = windowOffsets.start - WINDOW_EXTEND;
+          let newEnd = windowOffsets.end;
+          let newLen = newEnd - newStart + 1;
+          if (newLen > WINDOW_CAP) newEnd -= newLen - WINDOW_CAP;
+          const key2 = `${newStart}:${newEnd}`;
+          if (key2 !== lastWindowKeyRef.current) {
+            lastWindowKeyRef.current = key2;
+            recenterIndexRef.current = idx + WINDOW_EXTEND;
+            setWindowOffsets({ start: newStart, end: newEnd });
+            didMutateWindow = true;
+          }
+        } else {
+          let newStart = windowOffsets.start;
+          const newEnd = windowOffsets.end + WINDOW_EXTEND;
+          let newLen = newEnd - newStart + 1;
+          let trimmed = 0;
+          if (newLen > WINDOW_CAP) {
+            trimmed = newLen - WINDOW_CAP;
+            newStart += trimmed;
+          }
+          const key2 = `${newStart}:${newEnd}`;
+          if (key2 !== lastWindowKeyRef.current) {
+            lastWindowKeyRef.current = key2;
+            recenterIndexRef.current = idx - trimmed;
+            setWindowOffsets({ start: newStart, end: newEnd });
+            didMutateWindow = true;
+          }
+        }
+
+        if (!didMutateWindow) {
+          // Nothing changed; clear phase quickly to avoid "stuck" attribution.
+          perfProbe.enabled && perfProbe.clearCulpritAfterFrames(1);
+        }
+        // If we did mutate, keep `CalendarScreen.windowExtend` until recenter runs.
+        // `maybeRecenterAfterWindowChange` is triggered by the existing effect once monthsData changes,
+        // and it will switch the phase to `CalendarScreen.recenter` while it scrollToIndex's.
+      });
+      return;
+    }
+
+    if (perfProbe.enabled) perfProbe.setCulpritPhase(null);
+  }, [
+    commitVisibleMonth,
+    prewarmAround,
+    visibleMonth.m,
+    visibleMonth.y,
+    windowOffsets.end,
+    windowOffsets.start,
+  ]);
+
+  const renderMonthItem = useCallback(
+    ({ item }: { item: MonthItem }) => {
+      const monthEntries = entriesByMonthKey[item.key] ?? EMPTY_MONTH_ENTRIES;
+      const selectedForThisMonth = selectedDate.startsWith(item.key) ? selectedDate : undefined;
+      return (
+        <View style={styles.monthSection}>
+          <Text style={styles.monthSectionTitle} allowFontScaling>
+            {MONTHS[item.m]} {item.y}
+          </Text>
+          <View
+            style={[
+              styles.calendarCard,
+              monthCardMatchesScreenBackground ? styles.calendarCardMatchScreen : null,
+            ]}
+          >
+            <WeekdayRow variant="full" />
+            <MonthGrid
+              year={item.y}
+              monthIndex0={item.m}
+              variant="full"
+              entries={monthEntries}
+              entriesRevision={entriesRevisionRef.current}
+              calendarMoodStyle={calendarMoodStyle}
+              selectedDate={selectedForThisMonth}
+              onPressDate={handlePressDate}
+              reduceMotion={reduceMotion}
+              onHapticSelect={handleHapticSelect}
+            />
+          </View>
+        </View>
+      );
+    },
+    [
+      calendarMoodStyle,
+      entriesByMonthKey,
+      handleHapticSelect,
+      handlePressDate,
+      monthCardMatchesScreenBackground,
+      reduceMotion,
+      selectedDate,
+    ]
   );
 
   return (
@@ -389,71 +729,31 @@ export default function CalendarScreen() {
           key={timelineKey}
           ref={monthListRef}
           data={monthsData}
-          keyExtractor={(item: MonthItem) => item.key}
+          keyExtractor={keyExtractor}
           // FlashList v2 note: `estimatedItemSize` is deprecated/removed.
           estimatedListSize={{ width: windowWidth, height: 800 }}
-          drawDistance={800}
-          onLayout={() => {
-            listReadyRef.current = true;
-            setListReady(true);
-          }}
+          // Phase 5 perf knobs (tuning): tighten render-ahead/batching to reduce work during active scroll.
+          // Rollback: restore drawDistance={800} and remove batching props if blanking occurs.
+          drawDistance={500}
+          initialNumToRender={2}
+          maxToRenderPerBatch={2}
+          updateCellsBatchingPeriod={80}
+          // Phase 3: isolate scroll-path work; allow native to clip offscreen views.
+          removeClippedSubviews
+          overrideItemLayout={overrideItemLayout}
+          onLayout={onListLayout}
           initialScrollIndex={initialMonthIndex}
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.monthTimeline}
-          onScrollBeginDrag={() => {
-            isUserScrollingRef.current = true;
-          }}
-          onMomentumScrollBegin={() => {
-            isUserScrollingRef.current = true;
-          }}
-          onScrollEndDrag={() => {
-            isUserScrollingRef.current = false;
-            const next = pendingMonthRef.current;
-            if (next && (next.y !== visibleMonth.y || next.m !== visibleMonth.m)) {
-              commitVisibleMonthThrottled(next);
-            }
-          }}
-          onMomentumScrollEnd={() => {
-            isUserScrollingRef.current = false;
-            const next = pendingMonthRef.current;
-            if (next && (next.y !== visibleMonth.y || next.m !== visibleMonth.m)) {
-              commitVisibleMonthThrottled(next);
-            }
-          }}
+          onScrollBeginDrag={onScrollBeginDrag}
+          onMomentumScrollBegin={onMomentumScrollBegin}
+          onScrollEndDrag={flushPendingMonth}
+          onMomentumScrollEnd={flushPendingMonth}
           onScroll={scrollHandler}
           scrollEventThrottle={16}
-          viewabilityConfig={{ itemVisiblePercentThreshold: 20 }}
+          viewabilityConfig={viewabilityConfig}
           onViewableItemsChanged={onViewableItemsChanged as any}
-          renderItem={({ item }: { item: MonthItem }) => {
-            const monthEntries = entriesByMonthKey[item.key] ?? {};
-            const selectedForThisMonth = selectedDate.startsWith(item.key) ? selectedDate : undefined;
-            return (
-              <View style={styles.monthSection}>
-                <Text style={styles.monthSectionTitle} allowFontScaling>
-                  {MONTHS[item.m]} {item.y}
-                </Text>
-                <View
-                  style={[
-                    styles.calendarCard,
-                    monthCardMatchesScreenBackground ? styles.calendarCardMatchScreen : null,
-                  ]}
-                >
-                  <WeekdayRow variant="full" />
-                  <MonthGrid
-                    year={item.y}
-                    monthIndex0={item.m}
-                    variant="full"
-                    entries={monthEntries}
-                    calendarMoodStyle={calendarMoodStyle}
-                    selectedDate={selectedForThisMonth}
-                    onPressDate={handlePressDate}
-                    reduceMotion={reduceMotion}
-                    onHapticSelect={handleHapticSelect}
-                  />
-                </View>
-              </View>
-            );
-          }}
+          renderItem={renderMonthItem as any}
         />
       </PerfProfiler>
 
@@ -467,6 +767,8 @@ export default function CalendarScreen() {
             <Text style={styles.modalTitle}>{selectedDate}</Text>
             <TouchableOpacity
               onPress={async () => {
+                const saveStartMs = perfProbe.enabled ? perfProbe.nowMs() : 0;
+                if (perfProbe.enabled) perfProbe.setCulpritPhase('CalendarScreen.modalSave');
                 if (!editMood) {
                   Alert.alert('Pick a mood', 'Choose a mood before saving.');
                   return;
@@ -481,21 +783,29 @@ export default function CalendarScreen() {
                   setEntriesByMonthKey((prev) => {
                     const mk = selectedDate.slice(0, 7);
                     const monthMap = prev[mk] ?? {};
+                    entriesRevisionRef.current += 1;
                     return { ...prev, [mk]: { ...monthMap, [selectedDate]: next } };
                   });
                   if (!reduceMotion) {
                     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
                   }
                   setIsEditOpen(false);
+                  if (perfProbe.enabled) {
+                    perfProbe.measureSince('calendar.modalSave.success', saveStartMs, { phase: 'warm', source: 'ui' });
+                  }
                 } catch {
                   if (!reduceMotion) {
                     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
                   }
                   logger.warn('calendar.save.failed', { dateKey: selectedDate });
                   Alert.alert('Error', 'Failed to save. Please try again.');
+                  if (perfProbe.enabled) {
+                    perfProbe.measureSince('calendar.modalSave.failed', saveStartMs, { phase: 'warm', source: 'ui' });
+                  }
                 } finally {
                   isSavingRef.current = false;
                   setIsSaving(false);
+                  if (perfProbe.enabled) perfProbe.setCulpritPhase(null);
                 }
               }}
               activeOpacity={0.7}

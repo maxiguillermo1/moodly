@@ -41,6 +41,140 @@ let appStartMs: number | null = null;
 let navReadyMs: number | null = null;
 let lastNav: LastNav | null = null;
 
+// ---------------------------------------------------------------------------
+// Dev-only JS hitch detector (frame delta > 24ms)
+// ---------------------------------------------------------------------------
+// IMPORTANT:
+// - Dev-only + metadata-only.
+// - Best-effort: detects JS thread stalls (GC, heavy sync work, etc.), not UI-thread stalls.
+// - Screens may set a "culprit phase" to help attribute hitches to a rough operation window.
+let hitchRunning = false;
+let lastRafTs: number | null = null;
+let culpritPhase: string | null = null;
+
+// ---------------------------------------------------------------------------
+// Dev-only hitch breadcrumbs (ring buffer)
+// ---------------------------------------------------------------------------
+// Purpose:
+// - When a hitch happens without an explicit culpritPhase tag, we infer its phase
+//   from the nearest breadcrumb within a short time window.
+// - If no breadcrumb is nearby, classify as DEV_METRO_OR_GC (dev tooling stall, GC, etc).
+type Breadcrumb = { atMs: number; name: string };
+const BREADCRUMB_LAST_N = 50;
+const BREADCRUMB_EMIT_N = 20;
+const BREADCRUMB_INFER_WINDOW_MS = 50;
+const breadcrumbs: Breadcrumb[] = [];
+
+function addBreadcrumb(name: string): void {
+  if (!PERF_ENABLED) return;
+  // Keep names short/stable. Never include payload-like data.
+  const atMs = Number(nowMs().toFixed(1));
+  breadcrumbs.push({ atMs, name });
+  if (breadcrumbs.length > BREADCRUMB_LAST_N) breadcrumbs.splice(0, breadcrumbs.length - BREADCRUMB_LAST_N);
+}
+
+function inferPhaseForHitch(atMs: number): { phase: string; src: 'tag' | 'crumb' | 'dev' } {
+  const explicit = culpritPhase;
+  if (explicit) return { phase: explicit, src: 'tag' };
+
+  // Find nearest breadcrumb in the last ~50ms window.
+  // Note: breadcrumbs are append-only and time-ordered.
+  for (let i = breadcrumbs.length - 1; i >= 0; i--) {
+    const b = breadcrumbs[i]!;
+    const dt = Math.abs(atMs - b.atMs);
+    if (dt <= BREADCRUMB_INFER_WINDOW_MS) return { phase: b.name, src: 'crumb' };
+    // Since we're walking backward, once we're beyond the window, older will also be beyond.
+    if (b.atMs < atMs - BREADCRUMB_INFER_WINDOW_MS) break;
+  }
+
+  return { phase: 'DEV_METRO_OR_GC', src: 'dev' };
+}
+
+// In-memory hitch stats aggregator (dev-only).
+// We keep a small rolling sample per phase to approximate p95 without heavy memory cost.
+type HitchSample = { atMs: number; phase: string; deltaMs: number; src?: 'tag' | 'crumb' | 'dev' };
+type PhaseStats = {
+  count: number;
+  maxMs: number;
+  // Ring buffer of recent deltas for approximate p95.
+  samples: number[];
+  samplesCap: number;
+  samplesWriteIdx: number;
+  samplesFilled: number;
+};
+
+const HITCH_SAMPLES_PER_PHASE = 180;
+const HITCH_LAST_N = 120;
+const HITCH_LAST_EMIT_N = 20;
+
+let hitchTotal = 0;
+const hitchByPhase = new Map<string, PhaseStats>();
+const hitchLast: HitchSample[] = [];
+
+function recordHitch(deltaMs: number): void {
+  const atMs = nowMs();
+  const inferred = inferPhaseForHitch(atMs);
+  const phase = inferred.phase;
+  hitchTotal += 1;
+
+  // Rolling window of last N hitches (metadata-only).
+  hitchLast.push({
+    atMs: Number(atMs.toFixed(1)),
+    phase,
+    deltaMs: Number(deltaMs.toFixed(1)),
+    src: inferred.src,
+  });
+  if (hitchLast.length > HITCH_LAST_N) hitchLast.splice(0, hitchLast.length - HITCH_LAST_N);
+
+  const prev = hitchByPhase.get(phase);
+  if (!prev) {
+    hitchByPhase.set(phase, {
+      count: 1,
+      maxMs: deltaMs,
+      samples: [deltaMs],
+      samplesCap: HITCH_SAMPLES_PER_PHASE,
+      samplesWriteIdx: 1,
+      samplesFilled: 1,
+    });
+    return;
+  }
+
+  prev.count += 1;
+  prev.maxMs = Math.max(prev.maxMs, deltaMs);
+  if (prev.samplesFilled < prev.samplesCap) {
+    prev.samples.push(deltaMs);
+    prev.samplesFilled += 1;
+    prev.samplesWriteIdx = prev.samples.length % prev.samplesCap;
+  } else {
+    // Ring overwrite.
+    prev.samples[prev.samplesWriteIdx] = deltaMs;
+    prev.samplesWriteIdx = (prev.samplesWriteIdx + 1) % prev.samplesCap;
+  }
+}
+
+function approxP95Ms(samples: number[]): number {
+  if (!samples.length) return 0;
+  // Sort a copy on flush only (dev-only).
+  const arr = samples.slice().sort((a, b) => a - b);
+  const idx = Math.min(arr.length - 1, Math.floor(arr.length * 0.95));
+  return Number(arr[idx]!.toFixed(1));
+}
+
+function clearCulpritNextFrames(frames: number): void {
+  if (!PERF_ENABLED) return;
+  const n = Math.max(1, Math.min(frames, 6)); // hard cap; avoid accidental long chains
+  let i = 0;
+  const step = () => {
+    i += 1;
+    if (i >= n) {
+      culpritPhase = null;
+      return;
+    }
+    requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+}
+
 function nowMs(): number {
   const p: any = (globalThis as any).performance;
   return typeof p?.now === 'function' ? p.now() : Date.now();
@@ -80,6 +214,98 @@ export const perfProbe = {
       });
     }
     logger.perf('perf.appStart', { phase: 'cold', source: 'app', t0Ms: appStartMs });
+
+    // Start hitch detector once per app session (dev-only).
+    if (!hitchRunning) {
+      hitchRunning = true;
+      lastRafTs = null;
+      const loop = (ts: number) => {
+        if (!PERF_ENABLED) return;
+        if (typeof lastRafTs === 'number') {
+          const delta = ts - lastRafTs;
+          // 60fps ~ 16.7ms; anything > 24ms tends to feel like a hitch.
+          if (delta > 24) {
+            recordHitch(delta);
+            logger.perf('perf.hitch', {
+              phase: 'warm',
+              source: 'ui',
+              deltaMs: Number(delta.toFixed(1)),
+              // "CULPRIT PHASE" tag: helps correlate hitch clusters with code phases.
+              culpritPhase,
+            });
+          }
+        }
+        lastRafTs = ts;
+        requestAnimationFrame(loop);
+      };
+      requestAnimationFrame(loop);
+    }
+  },
+
+  /**
+   * Set a best-effort "CULPRIT PHASE" tag for the hitch detector.
+   * Keep these short, stable strings (e.g. "CalendarScreen.scroll", "CalendarScreen.dayTap").
+   */
+  setCulpritPhase(phase: string | null): void {
+    if (!PERF_ENABLED) return;
+    culpritPhase = phase;
+  },
+
+  clearCulpritAfterFrames(frames: number): void {
+    clearCulpritNextFrames(frames);
+  },
+
+  /**
+   * Dev-only: add a small "breadcrumb" marker used for hitch attribution.
+   * This does not log. It only stores the last N marker names in-memory.
+   */
+  breadcrumb(name: string): void {
+    addBreadcrumb(name);
+  },
+
+  /**
+   * Dev-only: log a single structured summary of hitches collected so far.
+   * This is intentionally metadata-only (counts, phases, timings).
+   */
+  flushReport(reason: string): void {
+    if (!PERF_ENABLED) return;
+
+    const phases = Array.from(hitchByPhase.entries())
+      .map(([phase, s]) => ({
+        phase,
+        count: s.count,
+        maxMs: Number(s.maxMs.toFixed(1)),
+        p95Ms: approxP95Ms(s.samples),
+      }))
+      .sort((a, b) => b.count - a.count || b.maxMs - a.maxMs)
+      .slice(0, 24); // cap to keep logs readable
+
+    // Phase 4A: emit a truncated `last` array so dev log-guard never blocks perf.report.
+    // Keep the internal ring buffer intact; only truncate the emitted payload.
+    const lastLen = hitchLast.length;
+    const last = lastLen > HITCH_LAST_EMIT_N ? hitchLast.slice(-HITCH_LAST_EMIT_N) : hitchLast;
+    const lastDropped = Math.max(0, lastLen - last.length);
+
+    const crumbLen = breadcrumbs.length;
+    const crumbLast = crumbLen > BREADCRUMB_EMIT_N ? breadcrumbs.slice(-BREADCRUMB_EMIT_N) : breadcrumbs;
+    const crumbDropped = Math.max(0, crumbLen - crumbLast.length);
+
+    logger.perf('perf.report', {
+      phase: 'warm',
+      source: 'ui',
+      reason,
+      totalHitches: hitchTotal,
+      phases,
+      last,
+      lastDropped,
+      crumbs: crumbLast,
+      crumbsDropped: crumbDropped,
+    });
+
+    // Reset after flush so per-screen sessions are comparable.
+    hitchTotal = 0;
+    hitchByPhase.clear();
+    hitchLast.length = 0;
   },
 
   mark(name: MarkName): void {
