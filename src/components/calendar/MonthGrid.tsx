@@ -12,7 +12,7 @@
 import React, { useEffect, useMemo } from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { MoodEntry } from '../../types';
-import { getMonthMatrix } from '../../utils';
+import { getMonthMatrix, isFutureDateKey } from '../../utils';
 import { colors } from '../../theme';
 import { getMonthRenderModel } from './monthModel';
 import type { CalendarMoodStyle as CalendarMoodStyle2 } from './monthModel';
@@ -31,6 +31,11 @@ interface MonthGridProps {
    * This allows MonthModel caches to invalidate without hashing or scanning.
    */
   entriesRevision?: number;
+  /**
+   * Optional: supply today's key once per screen mount to avoid per-MonthGrid Date work.
+   * Must be local-day `YYYY-MM-DD` key.
+   */
+  todayKey?: string;
   selectedDate?: string;
   onPressDate?: (isoDate: string) => void;
   reduceMotion?: boolean;
@@ -138,6 +143,7 @@ const DayCell = React.memo(
     isFill: boolean;
     isSelected: boolean;
     isToday: boolean;
+    isDisabled: boolean;
     forceBold: boolean;
     sizeKey: SizeKey;
     variant: 'mini' | 'full';
@@ -145,7 +151,20 @@ const DayCell = React.memo(
     onPress?: () => void;
     a11yLabel: string;
   }) {
-    const { day, moodColor, isFill, isSelected, isToday, forceBold, sizeKey, variant, reduceMotion, onPress, a11yLabel } =
+    const {
+      day,
+      moodColor,
+      isFill,
+      isSelected,
+      isToday,
+      isDisabled,
+      forceBold,
+      sizeKey,
+      variant,
+      reduceMotion,
+      onPress,
+      a11yLabel,
+    } =
       props;
     const isBold = isFill || forceBold;
     const shared = getSharedStyles(sizeKey);
@@ -158,13 +177,18 @@ const DayCell = React.memo(
     return (
       <Pressable
         onPress={onPress}
+        disabled={isDisabled}
         accessibilityRole="button"
         accessibilityLabel={a11yLabel}
-        accessibilityState={isSelected ? { selected: true } : undefined}
+        accessibilityState={
+          isSelected || isDisabled
+            ? { ...(isSelected ? { selected: true } : {}), ...(isDisabled ? { disabled: true } : {}) }
+            : undefined
+        }
         style={({ pressed }) => [
           styles.cell,
           shared.cellSizeStyle,
-          pressed ? styles.pressedOpacity : null,
+          !isDisabled && pressed ? styles.pressedOpacity : null,
           !reduceMotion && pressed && variant === 'full' ? styles.pressedFull : null,
         ]}
       >
@@ -202,6 +226,7 @@ const DayCell = React.memo(
       prev.isFill === next.isFill &&
       prev.isSelected === next.isSelected &&
       prev.isToday === next.isToday &&
+      prev.isDisabled === next.isDisabled &&
       prev.forceBold === next.forceBold &&
       prev.sizeKey === next.sizeKey &&
       prev.variant === next.variant &&
@@ -219,6 +244,7 @@ export const MonthGrid = React.memo(function MonthGrid({
   entries,
   calendarMoodStyle,
   entriesRevision = 0,
+  todayKey,
   selectedDate,
   onPressDate,
   reduceMotion = false,
@@ -229,11 +255,12 @@ export const MonthGrid = React.memo(function MonthGrid({
   }
   const weeks = useMemo(() => getMonthMatrix(year, monthIndex0), [year, monthIndex0]);
   const todayIso = useMemo(() => {
+    if (typeof todayKey === 'string' && todayKey.length === 10) return todayKey;
     const d = new Date();
     const mm = String(d.getMonth() + 1).padStart(2, '0');
     const dd = String(d.getDate()).padStart(2, '0');
     return `${d.getFullYear()}-${mm}-${dd}`;
-  }, []);
+  }, [todayKey]);
 
   useEffect(() => {
     if (!perfProbe.enabled) return;
@@ -292,12 +319,14 @@ export const MonthGrid = React.memo(function MonthGrid({
             const isFill = model.isFillTheme && !!moodColor;
             const isSelected = model.selectedDay === day;
             const isToday = model.todayDay === day;
+            const isFuture = isFutureDateKey(dateStr, todayIso);
 
             // iOS-like label without Date allocations.
             // Keep it cheap: avoid arrays/joins in the hot cell loop.
             let a11yLabel = `${model.monthName} ${day}, ${year}`;
             if (entry?.mood) a11yLabel += `. Mood: ${entry.mood}`;
             if (model.hasNoteByDay[day]) a11yLabel += '. Has note';
+            if (isFuture) a11yLabel += '. Future date';
 
             return (
               <DayCell
@@ -307,11 +336,12 @@ export const MonthGrid = React.memo(function MonthGrid({
                 isFill={isFill}
                 isSelected={isSelected}
                 isToday={isToday}
+                isDisabled={isFuture}
                 forceBold={forceBoldMiniWhenFillTheme}
                 sizeKey={model.sizeKey}
                 variant={variant}
                 reduceMotion={reduceMotion}
-                onPress={model.pressByDay ? model.pressByDay[day] : undefined}
+                onPress={isFuture ? undefined : model.pressByDay ? model.pressByDay[day] : undefined}
                 a11yLabel={a11yLabel}
               />
             );

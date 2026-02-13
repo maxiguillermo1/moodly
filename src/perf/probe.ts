@@ -111,9 +111,36 @@ let hitchTotal = 0;
 const hitchByPhase = new Map<string, PhaseStats>();
 const hitchLast: HitchSample[] = [];
 
-function recordHitch(deltaMs: number): void {
-  const atMs = nowMs();
-  const inferred = inferPhaseForHitch(atMs);
+// Logging policy: keep `perf.report` as the primary output.
+// `perf.hitch` is only emitted for large hitches or repeated DEV_METRO_OR_GC stalls.
+const DEV_HITCH_LOG_MIN_INTERVAL_MS = 750;
+const DEV_METRO_OR_GC_LOG_THRESHOLD_MS = 300;
+const DEV_METRO_OR_GC_REPEAT_WINDOW_MS = 10_000;
+const DEV_METRO_OR_GC_REPEAT_COUNT = 3; // "repeats > 3 times" -> log on 4th
+let lastHitchLogAtMs = 0;
+const devMetroOrGcAtMs: number[] = [];
+
+function shouldLogHitch(deltaMs: number, inferred: { phase: string; src: 'tag' | 'crumb' | 'dev' }, atMs: number): boolean {
+  // Rate-limit regardless of type.
+  if (atMs - lastHitchLogAtMs < DEV_HITCH_LOG_MIN_INTERVAL_MS) return false;
+
+  if (inferred.src === 'dev' || inferred.phase === 'DEV_METRO_OR_GC') {
+    // Only print DEV_METRO_OR_GC when huge OR repeats > 3 times in 10 seconds.
+    devMetroOrGcAtMs.push(atMs);
+    while (devMetroOrGcAtMs.length && devMetroOrGcAtMs[0]! < atMs - DEV_METRO_OR_GC_REPEAT_WINDOW_MS) devMetroOrGcAtMs.shift();
+    const repeats = devMetroOrGcAtMs.length > DEV_METRO_OR_GC_REPEAT_COUNT;
+    return deltaMs >= DEV_METRO_OR_GC_LOG_THRESHOLD_MS || repeats;
+  }
+
+  // Non-dev attribution: log only for meaningful hitches (avoid micro spam).
+  return deltaMs >= 120;
+}
+
+function recordHitchAt(
+  deltaMs: number,
+  atMs: number,
+  inferred: { phase: string; src: 'tag' | 'crumb' | 'dev' }
+): void {
   const phase = inferred.phase;
   hitchTotal += 1;
 
@@ -225,14 +252,20 @@ export const perfProbe = {
           const delta = ts - lastRafTs;
           // 60fps ~ 16.7ms; anything > 24ms tends to feel like a hitch.
           if (delta > 24) {
-            recordHitch(delta);
-            logger.perf('perf.hitch', {
-              phase: 'warm',
-              source: 'ui',
-              deltaMs: Number(delta.toFixed(1)),
-              // "CULPRIT PHASE" tag: helps correlate hitch clusters with code phases.
-              culpritPhase,
-            });
+            const atMs = nowMs();
+            const inferred = inferPhaseForHitch(atMs);
+            recordHitchAt(delta, atMs, inferred);
+            if (shouldLogHitch(delta, inferred, atMs)) {
+              lastHitchLogAtMs = atMs;
+              logger.perf('perf.hitch', {
+                phase: 'warm',
+                source: 'ui',
+                deltaMs: Number(delta.toFixed(1)),
+                culpritPhase,
+                inferredPhase: inferred.phase,
+                inferredSrc: inferred.src,
+              });
+            }
           }
         }
         lastRafTs = ts;
@@ -261,6 +294,16 @@ export const perfProbe = {
    */
   breadcrumb(name: string): void {
     addBreadcrumb(name);
+  },
+
+  /**
+   * Dev-only: log a single screen-session start marker.
+   * Use this (plus perf.report on blur) to keep perf logs grouped and readable.
+   */
+  screenSessionStart(screen: string): void {
+    if (!PERF_ENABLED) return;
+    addBreadcrumb(`${screen}.sessionStart`);
+    logger.perf('perf.sessionStart', { phase: 'warm', source: 'ui', screen });
   },
 
   /**

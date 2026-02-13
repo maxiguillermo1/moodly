@@ -441,6 +441,58 @@ v0.6 adds a reliability layer that makes storage writes **deterministic and race
 - CalendarView: swipe years → confirm paging is responsive.
 - Bounce CalendarView ↔ CalendarScreen rapidly → confirm no tap freezes.
 - Collect `perf.report` → confirm no `unknown` phase remains (should infer breadcrumb or `DEV_METRO_OR_GC`).
+
+---
+
+### v0.6 Phase 8 — Calendar smoothness + future-date restriction (2026-02-13)
+
+#### Why we did it (layman terms)
+- Make Calendar scrolling/paging feel closer to iOS Calendar by removing remaining avoidable JS work and reducing log noise.
+- Add one UX safety rule: **you can’t log moods for future dates**.
+
+#### Risks / problems discovered (ranked)
+- **1) Paging hitches in CalendarView**: year swipes can mount many mini-month cells and stall JS.
+- **2) Per-instance Date work**: repeated “today key” computation across many MonthGrid instances adds noise during paging/mount.
+- **3) Future-date edits**: without a guard, users can create entries for days that haven’t happened yet.
+- **4) Noisy hitch logs**: per-hitch logs can drown out summaries; we want “session start + session summary” reporting.
+- **5) Some stalls are dev tooling**: Metro/GC pauses should be clearly labeled (`DEV_METRO_OR_GC`) and gated to avoid spam.
+
+#### Fixes added (engineering summary)
+- **CalendarView paging perf**:
+  - Introduced memoized `YearPage` and `MiniMonthCard` components so `yearBase` updates don’t force re-render storms across offscreen pages.
+  - Passed `todayKey` into mini MonthGrids so each MonthGrid doesn’t create its own Date/padStart work.
+- **CalendarScreen perf hygiene**:
+  - Passed `todayKey` into full MonthGrids (same reason: avoid per-instance Date work).
+- **Future-date restriction (behavior-only)**:
+  - Added `isFutureDateKey(dateKey, todayKey)` (local-day keys) and blocked future date taps/saves in CalendarScreen.
+  - Disabled future-day presses at the MonthGrid cell level (no selection/edit possible).
+- **Logging cleanliness (dev-only)**:
+  - Added `perf.sessionStart` markers for Calendar screen sessions.
+  - Rate-limited per-hitch `perf.hitch` logs and only emits large/repeated `DEV_METRO_OR_GC` stalls (keep `perf.report` as primary).
+  - Updated `docs/logger.md` with a clear legend for breadcrumbs, `perf.report` fields, and attribution rules.
+
+#### Files touched (high signal)
+- `src/screens/CalendarView.tsx`
+- `src/screens/CalendarScreen.tsx`
+- `src/components/calendar/MonthGrid.tsx`
+- `src/lib/utils/date.ts`
+- `src/hooks/useMoodEntry.ts`
+- `src/perf/probe.ts`
+- `docs/logger.md`
+- `summary.md`
+
+#### Constraints confirmation
+- ✅ No layout/spacing/typography/color changes
+- ✅ No navigation route changes
+- ✅ No feature changes (except the single future-date restriction rule)
+- ✅ No storage semantic/key changes
+- ✅ Expo Go compatible
+
+#### Quick validation checklist (2–5 minutes)
+- CalendarView: swipe years quickly → confirm smoother paging (fewer freezes).
+- CalendarScreen: hard scroll across many months → confirm smooth and responsive.
+- Future date: attempt to tap/select a future day → confirm blocked (alert + no edit sheet).
+- Today/past: tap day → edit → save → confirm unchanged behavior.
 ### How to use this file
 - Append a new version section for each milestone (0.6, 0.7, 1.0).
 - Do not edit or delete older entries.

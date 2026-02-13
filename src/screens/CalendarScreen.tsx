@@ -33,7 +33,7 @@ import { LiquidGlass, MonthGrid, MoodPicker, WeekdayRow } from '../components';
 import { getMonthRenderModel } from '../components/calendar/monthModel';
 import { colors, spacing, borderRadius, typography, sizing } from '../theme';
 import { createEntry, getAllEntriesWithMonthIndex, getEntry, getLastAllEntriesSource, getSettings, upsertEntry } from '../storage';
-import { buildMonthWindow, MonthItem, monthKey as monthKey2, formatDateToISO } from '../utils';
+import { buildMonthWindow, MonthItem, monthKey as monthKey2, formatDateToISO, isFutureDateKey } from '../utils';
 import { logger } from '../security';
 import { PerfProfiler, usePerfScreen, perfProbe } from '../perf';
 
@@ -104,6 +104,8 @@ export default function CalendarScreen() {
   const isSavingRef = useRef(false);
   const [reduceMotion, setReduceMotion] = useState(false);
   const getEntryReqIdRef = useRef(0);
+  // Local-day today key computed once per mount; does not flip mid-session (intentional).
+  const todayKeyRef = useRef<string>(formatDateToISO(new Date()));
   const [visibleMonth, setVisibleMonth] = useState<{ y: number; m: number }>(() => {
     const d = initialAnchorDateRef.current as Date;
     return { y: d.getFullYear(), m: d.getMonth() };
@@ -180,6 +182,7 @@ export default function CalendarScreen() {
     useCallback(() => {
       if (perfProbe.enabled) perfProbe.setCulpritPhase('CalendarScreen.focus');
       isFocusedRef.current = true;
+      perfProbe.enabled && perfProbe.screenSessionStart('CalendarScreen');
       // New "session" for perf reporting on each focus.
       didFlushPerfReportRef.current = false;
       loadEntries();
@@ -243,6 +246,13 @@ export default function CalendarScreen() {
   }, []);
 
   const handlePressDate = useCallback(async (isoDate: string) => {
+    // UX rule: users cannot log moods for future dates.
+    // Keep behavior-only (no visual changes): show a lightweight alert and do nothing.
+    if (isFutureDateKey(isoDate, todayKeyRef.current)) {
+      Alert.alert("Can't log future moods", "You can’t log moods for future dates.");
+      return;
+    }
+
     const tapStartMs = perfProbe.enabled ? perfProbe.nowMs() : 0;
     if (perfProbe.enabled) perfProbe.setCulpritPhase('CalendarScreen.dayTap');
     // Prevent stale async reads from overwriting newer taps.
@@ -651,6 +661,7 @@ export default function CalendarScreen() {
               entries={monthEntries}
               entriesRevision={entriesRevisionRef.current}
               calendarMoodStyle={calendarMoodStyle}
+              todayKey={todayKeyRef.current}
               selectedDate={selectedForThisMonth}
               onPressDate={handlePressDate}
               reduceMotion={reduceMotion}
@@ -769,6 +780,12 @@ export default function CalendarScreen() {
               onPress={async () => {
                 const saveStartMs = perfProbe.enabled ? perfProbe.nowMs() : 0;
                 if (perfProbe.enabled) perfProbe.setCulpritPhase('CalendarScreen.modalSave');
+                // UX rule: users cannot log moods for future dates.
+                if (isFutureDateKey(selectedDate, todayKeyRef.current)) {
+                  Alert.alert("Can't log future moods", "You can’t log moods for future dates.");
+                  if (perfProbe.enabled) perfProbe.setCulpritPhase(null);
+                  return;
+                }
                 if (!editMood) {
                   Alert.alert('Pick a mood', 'Choose a mood before saving.');
                   return;
@@ -915,8 +932,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.system.secondaryBackground,
     borderRadius: 18,
     padding: spacing[4],
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.system.separator,
+    // User request: remove the subtle outline so the card matches the background.
+    borderWidth: 0,
   },
   calendarCardMatchScreen: {
     backgroundColor: colors.system.background,

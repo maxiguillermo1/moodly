@@ -104,6 +104,46 @@ Definitions:
 - **revalidate**: background refresh/verification (if/when we add it)
 
 ---
+## Calendar performance instrumentation (dev-only)
+
+Calendar performance work uses two complementary mechanisms:
+
+- **Phase tags** via `perfProbe.setCulpritPhase('...')`
+  - Best-effort: screens set a short phase string while a user-visible operation is expected to run.
+  - Example: `CalendarScreen.scroll`, `CalendarView.scroll`, `CalendarScreen.recenter`
+
+- **Breadcrumbs ring buffer** via `perfProbe.breadcrumb('...')`
+  - Very small in-memory markers (names only, no payloads) used to attribute hitches when there is no explicit phase tag.
+  - Breadcrumbs are emitted as a short tail in `perf.report` so you can correlate hitches with recent markers.
+
+### Hitch phase attribution rules
+
+Hitch detector attribution uses this priority order:
+
+- **explicit phase tag** (screen sets `culpritPhase`)
+- else **nearest breadcrumb within ±50ms**
+- else **`DEV_METRO_OR_GC`** (suspected Metro/dev tooling stall or JS runtime/GC pause)
+
+This makes “`unknown` hitches” effectively impossible in `perf.report`.
+
+### `perf.report` fields (legend)
+
+`perf.report` is the primary summary log and is emitted on screen focus-exit (blur).
+
+- **`totalHitches`**: count of JS hitches (>24ms frame delta) since last flush
+- **`phases[]`**: aggregated counts and p95/max per phase
+- **`last[]`**: tail of individual hitches (timestamp + delta)
+  - **`src`** (optional): `tag | crumb | dev` indicating attribution source
+- **`crumbs[]`**: tail of breadcrumb markers (timestamp + name)
+- **`DEV_METRO_OR_GC`**: “not attributable to app breadcrumbs/phases”, usually dev tooling or JS runtime pauses
+
+### Noise reduction policy
+
+To keep logs actionable:
+- `perf.report` is always emitted (dev-only, metadata-only).
+- Per-hitch `perf.hitch` logs are rate-limited and only emitted for large hitches or repeated `DEV_METRO_OR_GC` stalls.
+
+---
 ## Aggregation rules (avoid noise)
 
 Prefer **one summary log** over many micro logs.

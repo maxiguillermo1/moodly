@@ -24,6 +24,7 @@ import { perfProbe } from '../perf';
 import { logger } from '../security';
 import { PerfProfiler, usePerfScreen } from '../perf';
 import { colors, spacing, typography } from '../theme';
+import { formatDateToISO } from '../utils';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const MONTH_2 = ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12'] as const;
@@ -42,6 +43,111 @@ const YEARS_COUNT = YEARS_AROUND_INITIAL * 2 + 1;
 const HEADER_VISUAL_HEIGHT_ESTIMATE = 88; // iOS large-title header approx height
 const MINI_GRID_HEIGHT_ESTIMATE = 520; // ~ 3×4 mini-month grid height
 const GRID_SHIFT_DOWN_PX = 24; // positive moves grid down; tuned for iPhone 15 Pro
+
+type MiniMonthCardProps = {
+  y: number;
+  mIdx: number;
+  monthEntries: Record<string, MoodEntry>;
+  entriesRevision: number;
+  calendarMoodStyle: CalendarMoodStyle;
+  todayKey: string;
+  cardWidthStyle: { width: number };
+  marginStyle: { marginRight: number };
+  onOpenMonth: (y: number, mIdx: number) => void;
+};
+
+const MiniMonthCard = React.memo(function MiniMonthCard({
+  y,
+  mIdx,
+  monthEntries,
+  entriesRevision,
+  calendarMoodStyle,
+  todayKey,
+  cardWidthStyle,
+  marginStyle,
+  onOpenMonth,
+}: MiniMonthCardProps) {
+  return (
+    <TouchableOpacity
+      key={`${y}-${mIdx}`}
+      activeOpacity={0.7}
+      style={[styles.miniMonth, cardWidthStyle, marginStyle]}
+      onPress={() => onOpenMonth(y, mIdx)}
+    >
+      <Text style={styles.miniMonthTitle}>{MONTHS[mIdx]}</Text>
+      <WeekdayRow variant="mini" />
+      <MonthGrid
+        year={y}
+        monthIndex0={mIdx}
+        variant="mini"
+        entries={monthEntries}
+        entriesRevision={entriesRevision}
+        calendarMoodStyle={calendarMoodStyle}
+        todayKey={todayKey}
+      />
+    </TouchableOpacity>
+  );
+});
+
+type YearPageProps = {
+  y: number;
+  yearPageStyle: { width: number; paddingBottom: number };
+  gridWrapperPadStyle: { paddingTop: number; paddingBottom: number };
+  gridHorizontalPadStyle: { paddingHorizontal: number };
+  monthIndices: number[];
+  miniMonthWidthStyle: { width: number };
+  miniMonthMarginRightStyle: { marginRight: number };
+  miniMonthMarginZeroStyle: { marginRight: number };
+  entriesByMonthKey: Record<string, Record<string, MoodEntry>>;
+  entriesRevision: number;
+  calendarMoodStyle: CalendarMoodStyle;
+  todayKey: string;
+  onOpenMonth: (y: number, mIdx: number) => void;
+};
+
+const YearPage = React.memo(function YearPage({
+  y,
+  yearPageStyle,
+  gridWrapperPadStyle,
+  gridHorizontalPadStyle,
+  monthIndices,
+  miniMonthWidthStyle,
+  miniMonthMarginRightStyle,
+  miniMonthMarginZeroStyle,
+  entriesByMonthKey,
+  entriesRevision,
+  calendarMoodStyle,
+  todayKey,
+  onOpenMonth,
+}: YearPageProps) {
+  return (
+    <View style={yearPageStyle}>
+      <View style={[styles.gridWrapper, gridWrapperPadStyle]}>
+        <View style={[styles.grid, gridHorizontalPadStyle]}>
+          {monthIndices.map((mIdx) => {
+            const mk = `${y}-${MONTH_2[mIdx]}`;
+            const monthEntries = entriesByMonthKey[mk] ?? EMPTY_MONTH_ENTRIES;
+            const isEndOfRow = (mIdx + 1) % 3 === 0;
+            return (
+              <MiniMonthCard
+                key={`${y}-${mIdx}`}
+                y={y}
+                mIdx={mIdx}
+                monthEntries={monthEntries}
+                entriesRevision={entriesRevision}
+                calendarMoodStyle={calendarMoodStyle}
+                todayKey={todayKey}
+                cardWidthStyle={miniMonthWidthStyle}
+                marginStyle={isEndOfRow ? miniMonthMarginZeroStyle : miniMonthMarginRightStyle}
+                onOpenMonth={onOpenMonth}
+              />
+            );
+          })}
+        </View>
+      </View>
+    </View>
+  );
+});
 
 export default function CalendarView() {
   usePerfScreen('CalendarView', { listIds: ['list.calendarYearPager'] });
@@ -64,6 +170,8 @@ export default function CalendarView() {
   // Performance-only revision counter to invalidate month-level caches without hashing/scanning.
   const entriesRevisionRef = useRef(0);
   const [calendarMoodStyle, setCalendarMoodStyle] = useState<CalendarMoodStyle>('dot');
+  // Local-day today key computed once per mount; does not flip mid-session (intentional).
+  const todayKeyRef = useRef<string>(formatDateToISO(new Date()));
 
   const yearPagerRef = useRef<any>(null);
   const [pagerReady, setPagerReady] = useState(false);
@@ -89,6 +197,7 @@ export default function CalendarView() {
   useFocusEffect(
     useCallback(() => {
       isFocusedRef.current = true;
+      perfProbe.enabled && perfProbe.screenSessionStart('CalendarView');
       didFlushPerfReportRef.current = false;
       return () => {
         // On blur: cancel any background prewarm to prevent navigation/tap freezes.
@@ -222,31 +331,11 @@ export default function CalendarView() {
 
   const gridHorizontalPadStyle = useMemo(() => ({ paddingHorizontal: spacing[4] }), []);
 
-  const renderMiniMonth = useCallback(
-    (y: number, mIdx: number, cardWidthStyle: { width: number }, marginStyle: { marginRight: number }) => {
-      const mk = `${y}-${MONTH_2[mIdx]}`;
-      const monthEntries = entriesByMonthKey[mk] ?? EMPTY_MONTH_ENTRIES;
-      return (
-      <TouchableOpacity
-        key={`${y}-${mIdx}`}
-        activeOpacity={0.7}
-        style={[styles.miniMonth, cardWidthStyle, marginStyle]}
-        onPress={() => navigation.navigate('CalendarScreen', { year: y, month: mIdx })}
-      >
-        <Text style={styles.miniMonthTitle}>{MONTHS[mIdx]}</Text>
-        <WeekdayRow variant="mini" />
-        <MonthGrid
-          year={y}
-          monthIndex0={mIdx}
-          variant="mini"
-          entries={monthEntries}
-          entriesRevision={entriesRevisionRef.current}
-          calendarMoodStyle={calendarMoodStyle}
-        />
-      </TouchableOpacity>
-      );
+  const openMonth = useCallback(
+    (y: number, mIdx: number) => {
+      navigation.navigate('CalendarScreen', { year: y, month: mIdx });
     },
-    [calendarMoodStyle, entriesByMonthKey, navigation]
+    [navigation]
   );
 
   const keyExtractor = useCallback((y: number) => String(y), []);
@@ -268,8 +357,7 @@ export default function CalendarView() {
         if (!isFocusedRef.current) return;
         perfProbe.enabled && perfProbe.breadcrumb('CalendarView.prewarm.start');
         const startMs = perfProbe.enabled ? perfProbe.nowMs() : 0;
-        const d = new Date();
-        const todayIso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        const todayIso = todayKeyRef.current;
 
         const rev = entriesRevisionRef.current;
         let i = 0;
@@ -362,32 +450,34 @@ export default function CalendarView() {
   const renderYearPage = useCallback(
     ({ item: y }: { item: number }) => {
       return (
-        <View style={yearPageStyle}>
-          <View style={[styles.gridWrapper, gridWrapperPadStyle]}>
-            <View style={[styles.grid, gridHorizontalPadStyle]}>
-              {monthIndices.map((mIdx) => {
-                const isEndOfRow = (mIdx + 1) % 3 === 0;
-                return renderMiniMonth(
-                  y,
-                  mIdx,
-                  miniMonthWidthStyle,
-                  isEndOfRow ? miniMonthMarginZeroStyle : miniMonthMarginRightStyle
-                );
-              })}
-            </View>
-          </View>
-        </View>
+        <YearPage
+          y={y}
+          yearPageStyle={yearPageStyle as any}
+          gridWrapperPadStyle={gridWrapperPadStyle as any}
+          gridHorizontalPadStyle={gridHorizontalPadStyle as any}
+          monthIndices={monthIndices}
+          miniMonthWidthStyle={miniMonthWidthStyle as any}
+          miniMonthMarginRightStyle={miniMonthMarginRightStyle as any}
+          miniMonthMarginZeroStyle={miniMonthMarginZeroStyle as any}
+          entriesByMonthKey={entriesByMonthKey}
+          entriesRevision={entriesRevisionRef.current}
+          calendarMoodStyle={calendarMoodStyle}
+          todayKey={todayKeyRef.current}
+          onOpenMonth={openMonth}
+        />
       );
     },
     [
+      calendarMoodStyle,
+      entriesByMonthKey,
       gridHorizontalPadStyle,
       gridWrapperPadStyle,
+      monthIndices,
+      openMonth,
+      yearPageStyle,
       miniMonthMarginRightStyle,
       miniMonthMarginZeroStyle,
       miniMonthWidthStyle,
-      monthIndices,
-      renderMiniMonth,
-      yearPageStyle,
     ]
   );
 

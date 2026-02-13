@@ -22,6 +22,22 @@ export function formatDateToISO(date: Date): string {
 }
 
 /**
+ * Future-date guard (local-day keys).
+ *
+ * IMPORTANT:
+ * - This compares *local-day* date keys in `YYYY-MM-DD` form.
+ * - Lexicographic comparison matches chronological order for this format.
+ * - Do NOT derive keys from UTC (`toISOString`) anywhere in the app.
+ */
+export function isFutureDateKey(dateKey: string, todayKey: string): boolean {
+  // Defensive: if keys are malformed, fail closed (treat as not future) to avoid blocking valid usage.
+  if (typeof dateKey !== 'string' || typeof todayKey !== 'string') return false;
+  if (dateKey.length !== 10 || todayKey.length !== 10) return false;
+  // "YYYY-MM-DD" sorts naturally.
+  return dateKey > todayKey;
+}
+
+/**
  * Parse YYYY-MM-DD string to Date object
  */
 export function parseISODate(dateStr: string): Date {
