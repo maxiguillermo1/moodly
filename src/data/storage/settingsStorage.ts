@@ -3,9 +3,9 @@
  * @module data/storage/settingsStorage
  */
 
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AppSettings, CalendarMoodStyle } from '../../types';
 import { logger } from '../../lib/security/logger';
+import { storage } from './asyncStorage';
 
 const SETTINGS_KEY = 'moodly.settings';
 const CORRUPT_PREFIX = `${SETTINGS_KEY}.corrupt.`;
@@ -62,12 +62,12 @@ async function quarantineCorruptValue(rawJson: string): Promise<void> {
   const ts = Date.now();
   const backupKey = `${CORRUPT_PREFIX}${ts}`;
   try {
-    await AsyncStorage.setItem(backupKey, rawJson);
+    await storage.setItem(backupKey, rawJson);
   } catch (e) {
     logger.warn('storage.settings.corruptBackup.persistFailed', { key: SETTINGS_KEY, error: e });
   }
   try {
-    await AsyncStorage.setItem(SETTINGS_KEY, JSON.stringify(DEFAULT_SETTINGS));
+    await storage.setItem(SETTINGS_KEY, JSON.stringify(DEFAULT_SETTINGS));
   } catch (e) {
     logger.error('storage.settings.corruptReset.failed', { key: SETTINGS_KEY, error: e });
   }
@@ -82,7 +82,9 @@ export async function getSettings(): Promise<AppSettings> {
       const json = await logger.perfMeasure(
         'storage.getSettings.getItem',
         { phase: 'cold', source: 'storage' },
-        () => AsyncStorage.getItem(SETTINGS_KEY)
+        async () => {
+          return storage.getItem(SETTINGS_KEY);
+        }
       );
       const next = safeParseSettings(json);
       // If JSON exists but parsing yields defaults, quarantine to avoid repeated weird states.
@@ -132,7 +134,7 @@ export async function setSettings(next: AppSettings): Promise<void> {
     }
     try {
       // Persist first. Only update RAM cache after the write succeeds.
-      await AsyncStorage.setItem(SETTINGS_KEY, JSON.stringify(next));
+      await storage.setItem(SETTINGS_KEY, JSON.stringify(next));
       settingsCache = next;
     } catch (error) {
       logger.error('storage.settings.set.failed', { key: SETTINGS_KEY, error });

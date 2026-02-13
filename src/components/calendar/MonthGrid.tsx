@@ -6,13 +6,13 @@
  * Hidden decisions (intentional):
  * - Date keys are local `YYYY-MM-DD` strings (see `src/lib/utils/date.ts` and `src/data/model/entry.ts`).
  * - `monthIndex0` is 0-based (0..11) to match JS Date.
- * - `todayIso` is computed once per mount (does not update at midnight without remount) to keep the hot path cheap.
+ * - `todayKey` is supplied by screens (updates across midnight via a single day-boundary timer).
  */
 
 import React, { useEffect, useMemo } from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { MoodEntry } from '../../types';
-import { getMonthMatrix, isFutureDateKey } from '../../utils';
+import { getMonthMatrix } from '../../utils';
 import { colors } from '../../theme';
 import { getMonthRenderModel } from './monthModel';
 import type { CalendarMoodStyle as CalendarMoodStyle2 } from './monthModel';
@@ -143,7 +143,6 @@ const DayCell = React.memo(
     isFill: boolean;
     isSelected: boolean;
     isToday: boolean;
-    isDisabled: boolean;
     forceBold: boolean;
     sizeKey: SizeKey;
     variant: 'mini' | 'full';
@@ -157,7 +156,6 @@ const DayCell = React.memo(
       isFill,
       isSelected,
       isToday,
-      isDisabled,
       forceBold,
       sizeKey,
       variant,
@@ -174,47 +172,49 @@ const DayCell = React.memo(
       if (day === 1) perfProbe.breadcrumb(variant === 'mini' ? 'DayCell.render.mini' : 'DayCell.render.full');
     }
 
+    const content = (
+      <View
+        style={[
+          styles.pill,
+          shared.pillBaseStyle,
+          isFill && moodColor ? bgStyle(moodColor) : null,
+          isSelected ? styles.selectedRing : isToday ? shared.todayRingStyle : null,
+        ]}
+      >
+        <Text
+          style={[
+            styles.dayText,
+            shared.dayTextSizeStyle,
+            isFill ? styles.dayTextOnFill : styles.dayTextOnBg,
+            isBold ? styles.dayTextBold : styles.dayTextRegular,
+          ]}
+          allowFontScaling={variant === 'full'}
+        >
+          {day}
+        </Text>
+        {!isFill && moodColor ? <View style={[shared.dotBaseStyle, bgStyle(moodColor)]} /> : null}
+      </View>
+    );
+
+    // Perf: if there's no handler, avoid mounting a Pressable (especially in CalendarView mini grids).
+    if (!onPress) {
+      return <View style={[styles.cell, shared.cellSizeStyle]}>{content}</View>;
+    }
+
     return (
       <Pressable
         onPress={onPress}
-        disabled={isDisabled}
         accessibilityRole="button"
         accessibilityLabel={a11yLabel}
-        accessibilityState={
-          isSelected || isDisabled
-            ? { ...(isSelected ? { selected: true } : {}), ...(isDisabled ? { disabled: true } : {}) }
-            : undefined
-        }
+        accessibilityState={isSelected ? { selected: true } : undefined}
         style={({ pressed }) => [
           styles.cell,
           shared.cellSizeStyle,
-          !isDisabled && pressed ? styles.pressedOpacity : null,
+          pressed ? styles.pressedOpacity : null,
           !reduceMotion && pressed && variant === 'full' ? styles.pressedFull : null,
         ]}
       >
-        <View
-          style={[
-            styles.pill,
-            shared.pillBaseStyle,
-            isFill && moodColor ? bgStyle(moodColor) : null,
-            isSelected ? styles.selectedRing : isToday ? shared.todayRingStyle : null,
-          ]}
-        >
-          <Text
-            style={[
-              styles.dayText,
-              shared.dayTextSizeStyle,
-              isFill ? styles.dayTextOnFill : styles.dayTextOnBg,
-              isBold ? styles.dayTextBold : styles.dayTextRegular,
-            ]}
-            allowFontScaling={variant === 'full'}
-          >
-            {day}
-          </Text>
-          {!isFill && moodColor ? (
-            <View style={[shared.dotBaseStyle, bgStyle(moodColor)]} />
-          ) : null}
-        </View>
+        {content}
       </Pressable>
     );
   },
@@ -226,7 +226,6 @@ const DayCell = React.memo(
       prev.isFill === next.isFill &&
       prev.isSelected === next.isSelected &&
       prev.isToday === next.isToday &&
-      prev.isDisabled === next.isDisabled &&
       prev.forceBold === next.forceBold &&
       prev.sizeKey === next.sizeKey &&
       prev.variant === next.variant &&
@@ -264,8 +263,10 @@ export const MonthGrid = React.memo(function MonthGrid({
 
   useEffect(() => {
     if (!perfProbe.enabled) return;
+    // Keep breadcrumbs useful: mini grids mount 12× per year page; sample to avoid drowning the ring buffer.
+    if (variant === 'mini' && monthIndex0 !== 0) return;
     perfProbe.breadcrumb(variant === 'mini' ? 'MonthGrid.commit.mini' : 'MonthGrid.commit.full');
-  }, [variant]);
+  }, [monthIndex0, variant]);
 
   const model = useMemo(() => {
     return getMonthRenderModel({
@@ -319,14 +320,12 @@ export const MonthGrid = React.memo(function MonthGrid({
             const isFill = model.isFillTheme && !!moodColor;
             const isSelected = model.selectedDay === day;
             const isToday = model.todayDay === day;
-            const isFuture = isFutureDateKey(dateStr, todayIso);
 
             // iOS-like label without Date allocations.
             // Keep it cheap: avoid arrays/joins in the hot cell loop.
             let a11yLabel = `${model.monthName} ${day}, ${year}`;
             if (entry?.mood) a11yLabel += `. Mood: ${entry.mood}`;
             if (model.hasNoteByDay[day]) a11yLabel += '. Has note';
-            if (isFuture) a11yLabel += '. Future date';
 
             return (
               <DayCell
@@ -336,12 +335,11 @@ export const MonthGrid = React.memo(function MonthGrid({
                 isFill={isFill}
                 isSelected={isSelected}
                 isToday={isToday}
-                isDisabled={isFuture}
                 forceBold={forceBoldMiniWhenFillTheme}
                 sizeKey={model.sizeKey}
                 variant={variant}
                 reduceMotion={reduceMotion}
-                onPress={isFuture ? undefined : model.pressByDay ? model.pressByDay[day] : undefined}
+                onPress={model.pressByDay ? model.pressByDay[day] : undefined}
                 a11yLabel={a11yLabel}
               />
             );

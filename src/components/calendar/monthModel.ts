@@ -10,11 +10,12 @@
  *
  * ABSOLUTE RULES:
  * - No UI/UX behavior changes.
- * - Dev-only logging must remain metadata-only (this module does not log).
+ * - Dev-only logging must remain metadata-only (this module logs only slow-build guards).
  */
 
 import type { MoodEntry, MoodGrade } from '../../types';
 import { getMoodColor } from '../../utils';
+import { logger } from '../../security';
 
 export type CalendarMoodStyle = 'dot' | 'fill';
 
@@ -173,6 +174,23 @@ type MonthModelCacheEntry = {
 
 const monthModelCache = new Map<string, MonthModelCacheEntry>();
 
+// -----------------------------------------------------------------------------
+// Dev perf guard (sampled + once) to detect regressions on large datasets.
+// -----------------------------------------------------------------------------
+const DEV_SLOW_BUILD_THRESHOLD_MS = 12;
+let devBuildSample = 0;
+let didLogSlowBuild = false;
+function nowMs(): number {
+  const p: any = (globalThis as any).performance;
+  return typeof p?.now === 'function' ? p.now() : Date.now();
+}
+function shouldSampleSlowBuild(): boolean {
+  if (typeof __DEV__ === 'undefined' || !__DEV__) return false;
+  if (didLogSlowBuild) return false;
+  // Sample ~1/128 calls until we see a slow build, then log once.
+  return ((devBuildSample++ & 0x7f) === 0);
+}
+
 function dayFromIsoIfInMonth(monthKey: string, iso: string | undefined): number {
   if (!iso || iso.length < 10) return 0;
   if (!iso.startsWith(monthKey)) return 0;
@@ -196,6 +214,7 @@ export function getMonthRenderModel(opts: {
   const { year, monthIndex0, variant, calendarMoodStyle, monthEntries, entriesRevision, selectedDate, todayIso, onPressDate, onHapticSelect } =
     opts;
 
+  const t0 = shouldSampleSlowBuild() ? nowMs() : 0;
   const mk = monthKeyOf(year, monthIndex0);
   const isFillTheme = calendarMoodStyle === 'fill';
   const selectedDay = dayFromIsoIfInMonth(mk, selectedDate);
@@ -271,6 +290,22 @@ export function getMonthRenderModel(opts: {
     variant,
     model,
   });
+
+  if (t0 > 0) {
+    const dt = nowMs() - t0;
+    if (dt >= DEV_SLOW_BUILD_THRESHOLD_MS) {
+      didLogSlowBuild = true;
+      logger.perf('calendar.monthModel.slowBuild', {
+        phase: 'warm',
+        source: 'ui',
+        monthKey: mk,
+        variant,
+        calendarMoodStyle,
+        hasAnyEntry,
+        durationMs: Number(dt.toFixed(1)),
+      });
+    }
+  }
 
   return model;
 }

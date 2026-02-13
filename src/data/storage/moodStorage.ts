@@ -13,10 +13,10 @@
  * - Immutable-on-write to keep state predictable and memoization-friendly
  */
 
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { MoodEntry, MoodEntriesRecord, MoodGrade } from '../../types';
 import { logger } from '../../lib/security/logger';
 import { isValidISODateKey, normalizeNote, validateEntriesRecord, VALID_MOOD_SET, MAX_NOTE_LEN } from '../model/entry';
+import { storage } from './asyncStorage';
 
 const STORAGE_KEY = 'moodly.entries';
 const CORRUPT_PREFIX = `${STORAGE_KEY}.corrupt.`;
@@ -109,13 +109,13 @@ async function quarantineCorruptValue(rawJson: string): Promise<void> {
   const backupKey = `${CORRUPT_PREFIX}${ts}`;
   try {
     // Store the raw value for forensic/debug recovery.
-    await AsyncStorage.setItem(backupKey, rawJson);
+    await storage.setItem(backupKey, rawJson);
   } catch (e) {
     logger.warn('storage.entries.corruptBackup.persistFailed', { key: STORAGE_KEY, error: e });
   }
   try {
     // Reset the primary key to keep the app functional.
-    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify({}));
+    await storage.setItem(STORAGE_KEY, JSON.stringify({}));
   } catch (e) {
     logger.error('storage.entries.corruptReset.failed', { key: STORAGE_KEY, error: e });
   }
@@ -351,7 +351,7 @@ export async function setAllEntries(next: MoodEntriesRecord): Promise<void> {
   await withEntriesWriteLock(async () => {
     // Persist first. Only update RAM caches after the write succeeds.
     // This prevents a failed write from leaving the app in a "looks saved but isn't" state.
-    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+    await storage.setItem(STORAGE_KEY, JSON.stringify(next));
     setEntriesCache(next);
     invalidateDerivedCaches();
   });
@@ -376,7 +376,9 @@ export async function getAllEntries(): Promise<MoodEntriesRecord> {
       const json = await logger.perfMeasure(
         'storage.getAllEntries.getItem',
         { phase: 'cold', source: 'storage' },
-        () => AsyncStorage.getItem(STORAGE_KEY)
+        async () => {
+          return storage.getItem(STORAGE_KEY);
+        }
       );
       const parsed = safeParseEntries(json);
       if (!parsed.ok && typeof json === 'string' && json.length > 0) {
@@ -486,7 +488,7 @@ export async function upsertEntry(entry: MoodEntry): Promise<void> {
     const entries: MoodEntriesRecord = { ...prev, [entry.date]: next };
 
     // Persist first. Only update RAM caches after the write succeeds.
-    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
+    await storage.setItem(STORAGE_KEY, JSON.stringify(entries));
 
     // Update derived caches (RAM-heavy, CPU-light) *after* persistence commits.
     const mk = monthKeyFromIso(entry.date);
@@ -523,7 +525,7 @@ export async function deleteEntry(date: string): Promise<void> {
     delete entries[date];
 
     // Persist first. Only update RAM caches after the write succeeds.
-    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
+    await storage.setItem(STORAGE_KEY, JSON.stringify(entries));
 
     if (entriesByMonthCache) {
       const mk = monthKeyFromIso(date);
@@ -702,7 +704,7 @@ export function createEntry(
 export async function clearAllEntries(): Promise<void> {
   await withEntriesWriteLock(async () => {
     // Persist first. Only update RAM caches after the write succeeds.
-    await AsyncStorage.removeItem(STORAGE_KEY);
+    await storage.removeItem(STORAGE_KEY);
     setEntriesCache({});
     entriesLoadPromise = null;
     invalidateDerivedCaches();

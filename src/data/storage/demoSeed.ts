@@ -6,9 +6,9 @@
  */
 
 import type { MoodEntry, MoodEntriesRecord, MoodGrade } from '../../types';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getAllEntries, setAllEntries } from './moodStorage';
 import { logger } from '../../lib/security/logger';
+import { storage } from './asyncStorage';
 
 const SEEDED_KEY = 'moodly.demoSeeded'; // legacy
 const SEEDED_VERSION_KEY = 'moodly.demoSeedVersion';
@@ -280,8 +280,8 @@ export async function seedDemoEntriesIfEmpty(): Promise<void> {
     // Never seed demo data in production builds (privacy + App Store trust).
     if (typeof __DEV__ !== 'undefined' && !__DEV__) return;
 
-    const version = await AsyncStorage.getItem(SEEDED_VERSION_KEY);
-    const legacy = await AsyncStorage.getItem(SEEDED_KEY);
+    const version = await storage.getItem(SEEDED_VERSION_KEY);
+    const legacy = await storage.getItem(SEEDED_KEY);
 
     const existing = await getAllEntries();
     const hasAnyData = Object.keys(existing).length > 0;
@@ -339,8 +339,10 @@ export async function seedDemoEntriesIfEmpty(): Promise<void> {
     }
 
     await setAllEntries(next);
-    await AsyncStorage.setItem(SEEDED_VERSION_KEY, SEEDED_VERSION);
-    if (!legacy) await AsyncStorage.setItem(SEEDED_KEY, '1');
+    await storage.setItem(SEEDED_VERSION_KEY, SEEDED_VERSION);
+    if (!legacy) {
+      await storage.setItem(SEEDED_KEY, '1');
+    }
   } catch {
     // Non-fatal: app should still work without demo data.
     logger.warn('storage.demoSeed.failed');

@@ -14,6 +14,7 @@ import {
   TextInput,
   Alert,
   AccessibilityInfo,
+  AppState,
   InteractionManager,
 } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
@@ -30,12 +31,12 @@ import Animated, {
 import * as Haptics from 'expo-haptics';
 import { CalendarMoodStyle, MoodEntry, MoodGrade } from '../types';
 import { LiquidGlass, MonthGrid, MoodPicker, WeekdayRow } from '../components';
-import { getMonthRenderModel } from '../components/calendar/monthModel';
 import { colors, spacing, borderRadius, typography, sizing } from '../theme';
 import { createEntry, getAllEntriesWithMonthIndex, getEntry, getLastAllEntriesSource, getSettings, upsertEntry } from '../storage';
-import { buildMonthWindow, MonthItem, monthKey as monthKey2, formatDateToISO, isFutureDateKey } from '../utils';
+import { buildMonthWindow, MonthItem, monthKey as monthKey2, formatDateToISO, isLatestRequest, nextRequestId } from '../utils';
 import { logger } from '../security';
 import { PerfProfiler, usePerfScreen, perfProbe } from '../perf';
+import { useTodayKey } from '../hooks/useTodayKey';
 
 const MONTHS = [
   'January', 'February', 'March', 'April', 'May', 'June',
@@ -60,6 +61,12 @@ export default function CalendarScreen() {
   const { width: windowWidth } = useWindowDimensions();
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
+  const isMountedRef = useRef(true);
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   /**
    * Single source of truth for initial "anchor month" (computed once per mount).
@@ -104,8 +111,7 @@ export default function CalendarScreen() {
   const isSavingRef = useRef(false);
   const [reduceMotion, setReduceMotion] = useState(false);
   const getEntryReqIdRef = useRef(0);
-  // Local-day today key computed once per mount; does not flip mid-session (intentional).
-  const todayKeyRef = useRef<string>(formatDateToISO(new Date()));
+  const { todayKey } = useTodayKey();
   const [visibleMonth, setVisibleMonth] = useState<{ y: number; m: number }>(() => {
     const d = initialAnchorDateRef.current as Date;
     return { y: d.getFullYear(), m: d.getMonth() };
@@ -122,10 +128,7 @@ export default function CalendarScreen() {
   const pendingWindowExtendRef = useRef<null | 'start' | 'end'>(null);
   const pendingFirstIndexRef = useRef<number | null>(null);
 
-  // Phase 7 v2: prewarm month render models after scroll settles to reduce mount bursts.
-  const lastPrewarmAnchorKeyRef = useRef<string | null>(null);
-  const prewarmTaskRef = useRef<{ cancel: () => void } | null>(null);
-  const prewarmRafRef = useRef<number | null>(null);
+  // Phase 7 v2 prewarm is disabled; keep only the focused ref used elsewhere.
   const isFocusedRef = useRef(true);
 
   // Large window around the anchor month. Avoid shifting/recentering during normal scrolling.
@@ -136,14 +139,21 @@ export default function CalendarScreen() {
 
   const entriesLoadCountRef = useRef(0);
   const didFlushPerfReportRef = useRef(false);
+  // Separate request ids so `loadEntries()` and `loadSettings()` do not cancel each other.
+  const loadEntriesReqIdRef = useRef(0);
+  const loadSettingsReqIdRef = useRef(0);
 
   const loadEntries = useCallback(async () => {
     if (perfProbe.enabled) perfProbe.setCulpritPhase('CalendarScreen.loadEntries');
+    const reqId = (loadEntriesReqIdRef.current += 1);
     const phase = entriesLoadCountRef.current === 0 ? 'cold' : 'warm';
     entriesLoadCountRef.current += 1;
     const p: any = (globalThis as any).performance;
     const start = typeof p?.now === 'function' ? p.now() : Date.now();
     const { byMonthKey } = await getAllEntriesWithMonthIndex();
+    if (!isMountedRef.current) return;
+    if (!isFocusedRef.current) return;
+    if (reqId !== loadEntriesReqIdRef.current) return;
     // Avoid pointless rerenders when focus fires but data is unchanged (cache hit).
     setEntriesByMonthKey((prev) => {
       if (prev === (byMonthKey as any)) return prev;
@@ -162,9 +172,13 @@ export default function CalendarScreen() {
 
   const loadSettings = useCallback(async () => {
     if (perfProbe.enabled) perfProbe.setCulpritPhase('CalendarScreen.loadSettings');
+    const reqId = (loadSettingsReqIdRef.current += 1);
     const p: any = (globalThis as any).performance;
     const start = typeof p?.now === 'function' ? p.now() : Date.now();
     const settings = await getSettings();
+    if (!isMountedRef.current) return;
+    if (!isFocusedRef.current) return;
+    if (reqId !== loadSettingsReqIdRef.current) return;
     setCalendarMoodStyle((prev) => (prev === settings.calendarMoodStyle ? prev : settings.calendarMoodStyle));
     setMonthCardMatchesScreenBackground((prev) =>
       prev === !!settings.monthCardMatchesScreenBackground ? prev : !!settings.monthCardMatchesScreenBackground
@@ -190,13 +204,7 @@ export default function CalendarScreen() {
       return () => {
         // On blur: cancel any background prewarm work to avoid navigation freezes.
         isFocusedRef.current = false;
-        prewarmTaskRef.current?.cancel?.();
-        prewarmTaskRef.current = null;
-        if (prewarmRafRef.current != null) {
-          cancelAnimationFrame(prewarmRafRef.current);
-          prewarmRafRef.current = null;
-        }
-        perfProbe.enabled && perfProbe.breadcrumb('CalendarScreen.prewarm.cancel.blur');
+        // (Prewarm disabled.)
 
         // Tabs/stacks often keep screens mounted; flush on focus-exit so the report is observable.
         // Guarantee: exactly one perf.report per focus session (dev-only).
@@ -238,6 +246,17 @@ export default function CalendarScreen() {
     };
   }, []);
 
+  // Background/resume safety: if the app backgrounds mid-save, make sure the
+  // "saving" indicator remains consistent on resume. (No UX change; purely defensive.)
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (next) => {
+      if (next !== 'active') return;
+      if (!isMountedRef.current) return;
+      if (isSavingRef.current) setIsSaving(true);
+    });
+    return () => sub.remove();
+  }, []);
+
   // loadEntries/loadSettings are memoized above (useCallback) for focus effect correctness.
 
   // (No year-mode behavior here anymore.)
@@ -246,32 +265,25 @@ export default function CalendarScreen() {
   }, []);
 
   const handlePressDate = useCallback(async (isoDate: string) => {
-    // UX rule: users cannot log moods for future dates.
-    // Keep behavior-only (no visual changes): show a lightweight alert and do nothing.
-    if (isFutureDateKey(isoDate, todayKeyRef.current)) {
-      Alert.alert("Can't log future moods", "You can’t log moods for future dates.");
-      return;
-    }
-
     const tapStartMs = perfProbe.enabled ? perfProbe.nowMs() : 0;
     if (perfProbe.enabled) perfProbe.setCulpritPhase('CalendarScreen.dayTap');
     // Prevent stale async reads from overwriting newer taps.
     // (Fast taps can race `getEntry` calls; only the latest tap wins.)
-    const reqId = (getEntryReqIdRef.current += 1);
+    const reqId = nextRequestId(getEntryReqIdRef);
     setSelectedDate(isoDate);
     try {
       const existing = await getEntry(isoDate);
-      if (getEntryReqIdRef.current !== reqId) return;
+      if (!isLatestRequest(getEntryReqIdRef, reqId)) return;
       setEditMood(existing?.mood ?? null);
       setEditNote(existing?.note ?? '');
     } catch {
       // Defensive: if storage read fails, still allow editing (user can re-save).
       logger.warn('calendar.getEntry.failed', { dateKey: isoDate });
-      if (getEntryReqIdRef.current !== reqId) return;
+      if (!isLatestRequest(getEntryReqIdRef, reqId)) return;
       setEditMood(null);
       setEditNote('');
     }
-    if (getEntryReqIdRef.current !== reqId) return;
+    if (!isLatestRequest(getEntryReqIdRef, reqId)) return;
     setIsEditOpen(true);
     if (perfProbe.enabled) {
       perfProbe.measureSince('calendar.dayTapToModalOpen', tapStartMs, { phase: 'warm', source: 'ui' });
@@ -431,137 +443,17 @@ export default function CalendarScreen() {
     isUserScrollingRef.current = true;
     if (perfProbe.enabled) perfProbe.setCulpritPhase('CalendarScreen.scroll');
     perfProbe.enabled && perfProbe.breadcrumb('CalendarScreen.scrollBegin');
-    // If the user re-engages, stop any background prewarm work immediately.
-    if (prewarmRafRef.current != null) {
-      cancelAnimationFrame(prewarmRafRef.current);
-      prewarmRafRef.current = null;
-    }
-    prewarmTaskRef.current?.cancel?.();
-    prewarmTaskRef.current = null;
   }, []);
 
   const onMomentumScrollBegin = useCallback(() => {
     isUserScrollingRef.current = true;
     if (perfProbe.enabled) perfProbe.setCulpritPhase('CalendarScreen.scroll');
     perfProbe.enabled && perfProbe.breadcrumb('CalendarScreen.scrollMomentumBegin');
-    if (prewarmRafRef.current != null) {
-      cancelAnimationFrame(prewarmRafRef.current);
-      prewarmRafRef.current = null;
-    }
-    prewarmTaskRef.current?.cancel?.();
-    prewarmTaskRef.current = null;
   }, []);
 
-  const prewarmAround = useCallback(
-    (anchor: { y: number; m: number }) => {
-      if (!isFocusedRef.current) return;
-      const anchorKey = monthKey2(anchor.y, anchor.m);
-      if (lastPrewarmAnchorKeyRef.current === anchorKey) return;
-      lastPrewarmAnchorKeyRef.current = anchorKey;
+  // (Prewarm disabled; keep refs for safe cancellation on blur/unmount.)
 
-      // Cancel any previous prewarm job; only the latest anchor matters.
-      prewarmTaskRef.current?.cancel?.();
-      prewarmTaskRef.current = null;
-      if (prewarmRafRef.current != null) {
-        cancelAnimationFrame(prewarmRafRef.current);
-        prewarmRafRef.current = null;
-      }
-
-      const task = InteractionManager.runAfterInteractions(() => {
-        if (!isFocusedRef.current) return;
-        perfProbe.enabled && perfProbe.breadcrumb('CalendarScreen.prewarm.start');
-        const startMs = perfProbe.enabled ? perfProbe.nowMs() : 0;
-        const d = new Date();
-        const todayIso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-
-        // Chunk work across frames to avoid a single big JS stall.
-        const keys: string[] = [];
-        const baseAbs = anchor.y * 12 + anchor.m;
-        const rev = entriesRevisionRef.current;
-        const work: Array<{ y: number; m: number; mk: string }> = [];
-        // Prewarm a small radius; expanding beyond +/-1 increases stalls without clear gains.
-        for (let delta = -1; delta <= 1; delta++) {
-          const abs = baseAbs + delta;
-          const y = Math.floor(abs / 12);
-          const m = abs - y * 12;
-          if (m < 0 || m > 11) continue;
-          const mk = monthKey2(y, m);
-          work.push({ y, m, mk });
-        }
-
-        let i = 0;
-        const step = () => {
-          if (!isFocusedRef.current || isUserScrollingRef.current) {
-            // User started interacting again; bail.
-            logger.perf('calendar.month.prewarm', {
-              phase: 'warm',
-              source: 'ui',
-              screen: 'CalendarScreen',
-              anchor: anchorKey,
-              months: keys.length,
-              durationMs: perfProbe.enabled ? Number((perfProbe.nowMs() - startMs).toFixed(1)) : undefined,
-              cancelled: true,
-              cancelReason: !isFocusedRef.current ? 'blur' : 'scroll',
-            });
-            return;
-          }
-          const next = work[i++];
-          if (next) {
-            // Dev-only attribution: tag only the compute step.
-            perfProbe.enabled && perfProbe.breadcrumb('CalendarScreen.prewarm.chunk');
-            if (perfProbe.enabled) perfProbe.setCulpritPhase('CalendarScreen.prewarm');
-            keys.push(next.mk);
-            const monthEntries = entriesByMonthKey[next.mk] ?? EMPTY_MONTH_ENTRIES;
-            getMonthRenderModel({
-              year: next.y,
-              monthIndex0: next.m,
-              variant: 'full',
-              calendarMoodStyle,
-              monthEntries,
-              entriesRevision: rev,
-              selectedDate,
-              todayIso,
-              onPressDate: handlePressDate,
-              onHapticSelect: handleHapticSelect,
-            });
-            if (perfProbe.enabled) perfProbe.clearCulpritAfterFrames(1);
-            prewarmRafRef.current = requestAnimationFrame(step);
-            return;
-          }
-
-          logger.perf('calendar.month.prewarm', {
-            phase: 'warm',
-            source: 'ui',
-            screen: 'CalendarScreen',
-            anchor: anchorKey,
-            months: keys.length,
-            durationMs: perfProbe.enabled ? Number((perfProbe.nowMs() - startMs).toFixed(1)) : undefined,
-            cancelled: false,
-          });
-
-          prewarmRafRef.current = null;
-        };
-
-        step();
-
-      });
-
-      prewarmTaskRef.current = task as any;
-    },
-    [calendarMoodStyle, entriesByMonthKey, handleHapticSelect, handlePressDate, selectedDate]
-  );
-
-  // Ensure background prewarm never leaks across navigation/unmount.
-  useEffect(() => {
-    return () => {
-      prewarmTaskRef.current?.cancel?.();
-      prewarmTaskRef.current = null;
-      if (prewarmRafRef.current != null) {
-        cancelAnimationFrame(prewarmRafRef.current);
-        prewarmRafRef.current = null;
-      }
-    };
-  }, []);
+  // (Prewarm disabled.)
 
   const flushPendingMonth = useCallback(() => {
     isUserScrollingRef.current = false;
@@ -572,9 +464,9 @@ export default function CalendarScreen() {
       commitVisibleMonth(next, 'scrollEnd');
     }
 
-    // Phase 7 v2: prewarm around the month we just landed on (or current if unchanged).
-    // This does not change UI. It only shifts cached computations off the scroll path.
-    prewarmAround(next ?? { y: visibleMonth.y, m: visibleMonth.m });
+    // Perf-only: disable CalendarScreen prewarm. It can create stall-class hitches and scroll-end freezes.
+    // Re-enable only if a future profile shows a net win.
+    // prewarmAround(next ?? { y: visibleMonth.y, m: visibleMonth.m });
 
     // Phase 3: apply window expansion *only after scroll ends*.
     const extend = pendingWindowExtendRef.current;
@@ -631,7 +523,6 @@ export default function CalendarScreen() {
     if (perfProbe.enabled) perfProbe.setCulpritPhase(null);
   }, [
     commitVisibleMonth,
-    prewarmAround,
     visibleMonth.m,
     visibleMonth.y,
     windowOffsets.end,
@@ -661,7 +552,7 @@ export default function CalendarScreen() {
               entries={monthEntries}
               entriesRevision={entriesRevisionRef.current}
               calendarMoodStyle={calendarMoodStyle}
-              todayKey={todayKeyRef.current}
+              todayKey={todayKey}
               selectedDate={selectedForThisMonth}
               onPressDate={handlePressDate}
               reduceMotion={reduceMotion}
@@ -679,6 +570,7 @@ export default function CalendarScreen() {
       monthCardMatchesScreenBackground,
       reduceMotion,
       selectedDate,
+      todayKey,
     ]
   );
 
@@ -780,24 +672,18 @@ export default function CalendarScreen() {
               onPress={async () => {
                 const saveStartMs = perfProbe.enabled ? perfProbe.nowMs() : 0;
                 if (perfProbe.enabled) perfProbe.setCulpritPhase('CalendarScreen.modalSave');
-                // UX rule: users cannot log moods for future dates.
-                if (isFutureDateKey(selectedDate, todayKeyRef.current)) {
-                  Alert.alert("Can't log future moods", "You can’t log moods for future dates.");
-                  if (perfProbe.enabled) perfProbe.setCulpritPhase(null);
-                  return;
-                }
                 if (!editMood) {
                   Alert.alert('Pick a mood', 'Choose a mood before saving.');
                   return;
                 }
                 if (isSavingRef.current) return;
                 isSavingRef.current = true;
-                setIsSaving(true);
+                isMountedRef.current && setIsSaving(true);
                 try {
                   const next = createEntry(selectedDate, editMood, editNote);
                   await upsertEntry(next);
                   // Update local state without reloading everything (keeps scroll smooth).
-                  setEntriesByMonthKey((prev) => {
+                  isMountedRef.current && setEntriesByMonthKey((prev) => {
                     const mk = selectedDate.slice(0, 7);
                     const monthMap = prev[mk] ?? {};
                     entriesRevisionRef.current += 1;
@@ -806,7 +692,7 @@ export default function CalendarScreen() {
                   if (!reduceMotion) {
                     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
                   }
-                  setIsEditOpen(false);
+                  isMountedRef.current && setIsEditOpen(false);
                   if (perfProbe.enabled) {
                     perfProbe.measureSince('calendar.modalSave.success', saveStartMs, { phase: 'warm', source: 'ui' });
                   }
@@ -821,7 +707,7 @@ export default function CalendarScreen() {
                   }
                 } finally {
                   isSavingRef.current = false;
-                  setIsSaving(false);
+                  isMountedRef.current && setIsSaving(false);
                   if (perfProbe.enabled) perfProbe.setCulpritPhase(null);
                 }
               }}
@@ -932,8 +818,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.system.secondaryBackground,
     borderRadius: 18,
     padding: spacing[4],
-    // User request: remove the subtle outline so the card matches the background.
-    borderWidth: 0,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.system.separator,
   },
   calendarCardMatchScreen: {
     backgroundColor: colors.system.background,

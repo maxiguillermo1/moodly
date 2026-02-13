@@ -3,10 +3,10 @@
  * @module hooks/useMoodEntry
  */
 
-import { useRef, useState, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import { MoodGrade } from '../types';
 import { getEntry, upsertEntry, createEntry } from '../storage';
-import { getToday, isFutureDateKey } from '../utils';
+import { getToday } from '../utils';
 import { logger } from '../security';
 
 interface UseMoodEntryOptions {
@@ -43,8 +43,6 @@ interface UseMoodEntryReturn {
  */
 export function useMoodEntry(options: UseMoodEntryOptions = {}): UseMoodEntryReturn {
   const { date = getToday(), onSaveSuccess, onSaveError } = options;
-  // Local-day today key computed once per hook instance; does not flip mid-session (intentional).
-  const todayKeyRef = useRef(getToday());
 
   const [mood, setMood] = useState<MoodGrade | null>(null);
   const [note, setNote] = useState('');
@@ -76,11 +74,6 @@ export function useMoodEntry(options: UseMoodEntryOptions = {}): UseMoodEntryRet
 
   const save = useCallback(async (): Promise<boolean> => {
     if (!mood) return false;
-    // UX rule: never allow saving future dates via any pathway using this hook.
-    if (isFutureDateKey(date, todayKeyRef.current)) {
-      logger.warn('today.save.futureBlocked', { dateKey: date });
-      return false;
-    }
 
     setIsSaving(true);
     try {

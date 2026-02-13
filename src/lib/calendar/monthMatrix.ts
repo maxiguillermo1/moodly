@@ -27,10 +27,12 @@ export function getMonthMatrix(year: number, monthIndex0: number): MonthMatrix {
 
   const weeks: MonthMatrix = [];
   for (let i = 0; i < cells.length; i += 7) {
-    weeks.push(cells.slice(i, i + 7));
+    // Freeze for safety (shared cache), but cast back to mutable type for TS compatibility.
+    weeks.push(Object.freeze(cells.slice(i, i + 7)) as any);
   }
 
-  cache.set(key, weeks);
-  return weeks;
+  const frozen = Object.freeze(weeks) as any as MonthMatrix;
+  cache.set(key, frozen);
+  return frozen;
 }
 

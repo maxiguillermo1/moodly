@@ -444,16 +444,16 @@ v0.6 adds a reliability layer that makes storage writes **deterministic and race
 
 ---
 
-### v0.6 Phase 8 — Calendar smoothness + future-date restriction (2026-02-13)
+### v0.6 Phase 8 — Calendar smoothness + release hardening (2026-02-13)
 
 #### Why we did it (layman terms)
 - Make Calendar scrolling/paging feel closer to iOS Calendar by removing remaining avoidable JS work and reducing log noise.
-- Add one UX safety rule: **you can’t log moods for future dates**.
+- Harden correctness/reliability under edge cases (dev-only chaos injection; safer async UI cleanup).
 
 #### Risks / problems discovered (ranked)
 - **1) Paging hitches in CalendarView**: year swipes can mount many mini-month cells and stall JS.
 - **2) Per-instance Date work**: repeated “today key” computation across many MonthGrid instances adds noise during paging/mount.
-- **3) Future-date edits**: without a guard, users can create entries for days that haven’t happened yet.
+- **3) Async UI lifecycle races**: navigating away mid-save can trigger state updates after unmount (warnings/crashes in worst cases).
 - **4) Noisy hitch logs**: per-hitch logs can drown out summaries; we want “session start + session summary” reporting.
 - **5) Some stalls are dev tooling**: Metro/GC pauses should be clearly labeled (`DEV_METRO_OR_GC`) and gated to avoid spam.
 
@@ -463,9 +463,9 @@ v0.6 adds a reliability layer that makes storage writes **deterministic and race
   - Passed `todayKey` into mini MonthGrids so each MonthGrid doesn’t create its own Date/padStart work.
 - **CalendarScreen perf hygiene**:
   - Passed `todayKey` into full MonthGrids (same reason: avoid per-instance Date work).
-- **Future-date restriction (behavior-only)**:
-  - Added `isFutureDateKey(dateKey, todayKey)` (local-day keys) and blocked future date taps/saves in CalendarScreen.
-  - Disabled future-day presses at the MonthGrid cell level (no selection/edit possible).
+- **Reliability hardening (no UX change)**:
+  - Added an `isMountedRef` guard in CalendarScreen save flow to avoid setState-after-unmount.
+  - Added a DEV-only chaos injector for AsyncStorage operations to simulate failures/timeouts safely.
 - **Logging cleanliness (dev-only)**:
   - Added `perf.sessionStart` markers for Calendar screen sessions.
   - Rate-limited per-hitch `perf.hitch` logs and only emits large/repeated `DEV_METRO_OR_GC` stalls (keep `perf.report` as primary).
@@ -475,8 +475,11 @@ v0.6 adds a reliability layer that makes storage writes **deterministic and race
 - `src/screens/CalendarView.tsx`
 - `src/screens/CalendarScreen.tsx`
 - `src/components/calendar/MonthGrid.tsx`
-- `src/lib/utils/date.ts`
-- `src/hooks/useMoodEntry.ts`
+- `src/lib/calendar/monthMatrix.ts`
+- `src/data/storage/chaos.ts`
+- `src/data/storage/moodStorage.ts`
+- `src/data/storage/settingsStorage.ts`
+- `src/data/storage/demoSeed.ts`
 - `src/perf/probe.ts`
 - `docs/logger.md`
 - `summary.md`
@@ -484,7 +487,7 @@ v0.6 adds a reliability layer that makes storage writes **deterministic and race
 #### Constraints confirmation
 - ✅ No layout/spacing/typography/color changes
 - ✅ No navigation route changes
-- ✅ No feature changes (except the single future-date restriction rule)
+- ✅ No feature changes
 - ✅ No storage semantic/key changes
 - ✅ Expo Go compatible
 
@@ -497,4 +500,54 @@ v0.6 adds a reliability layer that makes storage writes **deterministic and race
 - Append a new version section for each milestone (0.6, 0.7, 1.0).
 - Do not edit or delete older entries.
 - Focus on fundamentals, not features.
+
+---
+
+### v0.6 Phase 9 — Edge case hardening (midnight/DST/chaos/tests) (2026-02-13)
+
+#### Why we did it (layman terms)
+- Fix subtle correctness/reliability issues that only show up under stress (midnight rollover, DST, rapid taps, backgrounding mid-save, storage faults).
+- Add deterministic test coverage + a dev harness to reproduce tricky scenarios without changing UI/UX.
+
+#### Fixes added (engineering summary)
+- **Midnight staleness**:
+  - Added a day-boundary observer hook that updates `todayKey` at local midnight and on foreground resume (no polling).
+  - Calendar screens now consume this `todayKey` so “today” highlights don’t go stale when the app stays open across midnight.
+- **DST-safe date keying**:
+  - Canonicalized local-day keys via `toLocalDayKey(date)` (YYYY-MM-DD from local calendar components).
+  - Added `msUntilNextLocalMidnight(now)` with tests to support a single midnight timer (DST-safe).
+- **Tap reliability + navigation gating**:
+  - Added a tiny “last tap wins” frame coalescer used to gate rapid month taps (prevents transition stacking / freezes).
+  - Formalized “latest-only” async guard helpers to prevent stale async reads from overriding newer taps.
+- **Save/background safety**:
+  - Added defensive AppState resume handling so the “saving” indicator remains consistent if the app backgrounds mid-save.
+  - Added request-id + mounted/focus guards around async loads to prevent setState after unmount/blur.
+- **Deterministic storage chaos + single injection point**:
+  - Centralized AsyncStorage I/O through a wrapper (`storage.*`) so chaos/fault injection has exactly one integration point.
+  - Chaos injection is deterministic by seed and supports per-op and per-key fail plans; logs are rate-limited.
+- **Tests + dev harness**:
+  - Introduced Jest tests for date keying, midnight scheduling, chaos determinism, corrupt JSON quarantine/reset, persist-first behavior, remove failure safety, and write serialization.
+  - Added a dev-only “Debug Scenarios” runner callable from Metro console (no UI changes).
+
+#### Files touched (high signal)
+- `src/hooks/useTodayKey.ts`
+- `src/lib/utils/date.ts`
+- `src/screens/CalendarScreen.tsx`
+- `src/screens/CalendarView.tsx`
+- `src/data/storage/asyncStorage.ts`
+- `src/data/storage/chaos.ts`
+- `src/data/storage/moodStorage.ts`
+- `src/data/storage/settingsStorage.ts`
+- `src/data/storage/demoSeed.ts`
+- `src/dev/debugScenarios.ts`
+- `docs/logger.md`
+- `summary.md`
+
+#### Constraints confirmation
+- ✅ No UI/UX layout/styling changes
+- ✅ No navigation route changes
+- ✅ No storage semantic/key changes
+- ✅ No heavy work added to scroll/paging hot paths
+- ✅ Expo Go compatible
+
 

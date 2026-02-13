@@ -239,3 +239,28 @@ Add a new log when it helps answer one of:
 
 If a log is not actionable or explainable, don’t add it.
 
+---
+## Dev/test: deterministic AsyncStorage chaos injection
+
+The storage layer supports an opt-in, deterministic fault injector used for edge case hardening.
+
+### Enable (Metro console)
+
+Set `globalThis.__MOODLY_CHAOS__`:
+
+- **enabled**: boolean (required)
+- **seed**: number (recommended) deterministic RNG seed
+- **minDelayMs / maxDelayMs**: injected delay window (deterministic per seed)
+- **pFail**: probability of failure per op (deterministic per seed)
+- **failNext**: fail next N calls per op (deterministic)
+- **failNextByKey**: fail next N calls for an op+key (deterministic)
+- **failOps**: allowlist of ops to affect
+
+Supported ops: `getItem`, `setItem`, `removeItem`, `multiGet`, `multiSet`, `multiRemove`.
+
+### Logging behavior
+
+- Failures log `storage.chaos.injectedFailure` (WARN) with metadata only: `{ op, key, mode }`
+- Chaos failure logs are rate-limited to avoid spam under high failure configs.
+
+

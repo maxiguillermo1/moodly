@@ -23,6 +23,30 @@ import { perfNavigation, perfProbe } from '../perf';
 
 export function RootApp() {
   useEffect(() => {
+    if (typeof __DEV__ === 'undefined' || !__DEV__) return;
+    // Dev-only debug harness (no UI changes). Trigger from Metro console:
+    //   globalThis.MoodlyDebug.list()
+    //   globalThis.MoodlyDebug.run('rapidMonthTaps')
+    const dbg = require('../dev/debugScenarios') as typeof import('../dev/debugScenarios');
+    (globalThis as any).MoodlyDebug = {
+      list: dbg.listDebugScenarios,
+      run: dbg.runDebugScenario,
+      runAll: dbg.runAllDebugScenarios,
+      // Deterministic fault injection config for storage (dev-only).
+      setChaos(config: any) {
+        (globalThis as any).__MOODLY_CHAOS__ = config;
+      },
+    };
+    return () => {
+      try {
+        delete (globalThis as any).MoodlyDebug;
+      } catch {
+        (globalThis as any).MoodlyDebug = undefined;
+      }
+    };
+  }, []);
+
+  useEffect(() => {
     // Dev-only seed. Deferred to avoid blocking first paint / nav transitions.
     const task = InteractionManager.runAfterInteractions(() => {
       // Approximate "first interaction readiness" (dev-only, metadata-only).

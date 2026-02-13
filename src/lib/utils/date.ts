@@ -8,13 +8,17 @@
  */
 export function getToday(): string {
   const now = new Date();
-  return formatDateToISO(now);
+  return toLocalDayKey(now);
 }
 
 /**
- * Format a Date object to YYYY-MM-DD string
+ * Canonical local-day key for persistence and comparisons.
+ *
+ * IMPORTANT:
+ * - Derived strictly from local calendar components (getFullYear/getMonth/getDate).
+ * - Never derive keys from UTC (`toISOString`) anywhere in the app.
  */
-export function formatDateToISO(date: Date): string {
+export function toLocalDayKey(date: Date): string {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, '0');
   const day = String(date.getDate()).padStart(2, '0');
@@ -22,19 +26,23 @@ export function formatDateToISO(date: Date): string {
 }
 
 /**
- * Future-date guard (local-day keys).
- *
- * IMPORTANT:
- * - This compares *local-day* date keys in `YYYY-MM-DD` form.
- * - Lexicographic comparison matches chronological order for this format.
- * - Do NOT derive keys from UTC (`toISOString`) anywhere in the app.
+ * Back-compat alias: this app historically used `formatDateToISO` for local-day keys.
  */
-export function isFutureDateKey(dateKey: string, todayKey: string): boolean {
-  // Defensive: if keys are malformed, fail closed (treat as not future) to avoid blocking valid usage.
-  if (typeof dateKey !== 'string' || typeof todayKey !== 'string') return false;
-  if (dateKey.length !== 10 || todayKey.length !== 10) return false;
-  // "YYYY-MM-DD" sorts naturally.
-  return dateKey > todayKey;
+export function formatDateToISO(date: Date): string {
+  return toLocalDayKey(date);
+}
+
+/**
+ * Milliseconds until the next local midnight.
+ *
+ * Used to schedule a single day-boundary timer (no polling).
+ * DST-safe: uses local Date construction for the next day at 00:00.
+ */
+export function msUntilNextLocalMidnight(now: Date): number {
+  const next = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 0, 0);
+  const ms = next.getTime() - now.getTime();
+  // Defensive clamp: timers cannot accept negative/NaN delays.
+  return Number.isFinite(ms) && ms > 0 ? ms : 1;
 }
 
 /**
