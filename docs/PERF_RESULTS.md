@@ -13,10 +13,12 @@ This document compares **baseline** probe numbers (`docs/PERF_BASELINE.md`) to *
 
 ## Changes evaluated
 
-- **Change 1 (implemented)**:
-  - **What**: Add a reversible toggle to run Journal as `FlatList` (baseline) or `FlashList` (experiment) in `src/screens/JournalScreen.tsx`
-  - **Why it should help**: Better virtualization + lower memory pressure on large lists, reducing scroll hitching and big render commits.
-  - **Rollback**: Set `JOURNAL_LIST_IMPL` back to `'flatlist'` (no other code changes).
+- Use this doc as a **PR-friendly template** when you ship a performance change.
+
+Example of an existing “reversible switch” in the repo:
+- `src/screens/JournalScreen.tsx` has `JOURNAL_LIST_IMPL: 'flatlist' | 'flashlist'`
+  - Default is currently `'flatlist'`
+  - Rollback is a one-line change back to `'flatlist'`
 
 ---
 

@@ -15,8 +15,17 @@ Use this checklist after any performance-only change (including library swaps).
   - `perf.navReady`, `perf.firstInteractionReady`
   - `perf.navRouteChange`, `perf.navToFocus`
   - `perf.listRenderSummary` (CalendarScreen/CalendarView/Journal)
+  - `perf.report` after leaving Calendar screens (blur)
 - Confirm **no sensitive logs**:
   - No journal notes
   - No full entries objects
   - No settings blobs
+
+### Quality gates
+
+```bash
+npm run lint
+npx tsc --noEmit
+npm test
+```
 

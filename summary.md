@@ -550,4 +550,46 @@ v0.6 adds a reliability layer that makes storage writes **deterministic and race
 - ✅ No heavy work added to scroll/paging hot paths
 - ✅ Expo Go compatible
 
+---
+
+### v0.6 Phase 10 — Docs refresh + onboarding (2026-02-14)
+
+#### Why we did it (layman terms)
+- Make it possible for a new engineer to onboard in ~10 minutes without tribal knowledge.
+- Ensure all documentation matches the current code reality (calendar performance strategy, storage hardening, logging contract, lint guardrails).
+
+#### Current state snapshot (high-signal)
+- **Calendar smoothness**:
+  - The big periodic “every ~7 months” freeze is addressed by using a **large mostly-static month window** in `CalendarScreen` (about 100 years; `WINDOW_CAP = 1201`, `start=-600`, `end=600`).
+  - Window extension only happens near extreme edges and is deferred via `InteractionManager`.
+  - Year paging avoids rerender storms via memoized page/card components and stable props; month taps are coalesced (last tap wins).
+- **Observability**:
+  - Dev-only JS hitch detector + `perf.report` summary on screen blur.
+  - Hitch attribution is always classified (explicit tag → breadcrumb → `DEV_METRO_OR_GC`).
+- **Storage reliability**:
+  - Storage is untrusted: safe parse + validate + quarantine/reset on corruption.
+  - Persist-first and serialized writes prevent “looks saved but isn’t” and lost updates.
+  - Deterministic chaos injection exists for dev/tests to reproduce failures.
+- **Scope note**:
+  - There is currently **no future-date restriction** feature (it was explored and then rolled back to preserve “no UX change” constraints).
+
+#### Docs updated (what changed)
+- Consolidated “source of truth” docs for:
+  - **Architecture boundaries + import rules** (ESLint-enforced)
+  - **Logger/perf probe legend** + how to interpret `perf.report`
+  - **Security/privacy checklist** (App Store-friendly language)
+  - **README** with exact run/quality commands and pointers
+
+#### Files touched (docs only)
+- `README.md`
+- `docs/architecture.md` (canonical) + `ARCHITECTURE.md` (pointer)
+- `docs/DECISIONS.md`
+- `docs/logger.md`
+- `SECURITY_CHECKLIST.md`
+- `summary.md`
+
+#### Guarantees
+- ✅ No app code/UX changes from this docs pass
+- ✅ Docs now match the implemented architecture + invariants
+
 

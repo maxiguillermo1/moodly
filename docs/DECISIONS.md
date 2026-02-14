@@ -7,7 +7,7 @@ If you change one of these, update this doc and the relevant module comments.
 
 - **Decision**: The canonical day identifier is a local date key string `YYYY-MM-DD`.
 - **Where enforced**:
-  - `src/lib/utils/date.ts` (formatting/parsing uses local `Date` fields)
+  - `src/lib/utils/date.ts` (`toLocalDayKey`, `formatDateToISO`, `parseISODate`)
   - `src/data/model/entry.ts` (`isValidISODateKey`)
 - **Why**: Product semantics are “how was *my day*”, which is naturally local time.
 - **Failure mode**: using `toISOString().slice(0,10)` (UTC) can shift days near midnight and break streaks/history.
@@ -21,20 +21,22 @@ If you change one of these, update this doc and the relevant module comments.
   - `src/screens/CalendarView.tsx`, `src/screens/CalendarScreen.tsx`
 - **Failure mode**: off-by-one month bugs when mixing with `YYYY-MM` strings (which are 1-based).
 
-### 3) “Today” highlighting is computed on mount (no midnight rollover)
+### 3) “Today” is a **single source of truth** that updates across midnight (no polling)
 
-- **Decision**: `MonthGrid` computes `todayIso` once per mount for performance/stability.
-- **Where**: `src/components/calendar/MonthGrid.tsx`
-- **Why**: avoids per-render date work on a hot path.
-- **Failure mode**: if the app stays open across midnight, the ring may not move until remount.
-- **If you change**: do it intentionally and test across midnight/DST; keep it cheap.
+- **Decision**: Calendar screens own `todayKey` via `useTodayKey()` (one timer to next local midnight + AppState “active” resync).
+- **Where**:
+  - `src/hooks/useTodayKey.ts`
+  - `src/screens/CalendarScreen.tsx`, `src/screens/CalendarView.tsx` (pass `todayKey` to `MonthGrid`)
+- **Why**: fixes “app open across midnight” staleness **without polling** and without putting `new Date()` calls in hot loops.
+- **Failure mode**: stale “today” highlight/title until remount if this hook is bypassed.
+- **Enforcement**: keep `todayKey` a primitive string; avoid propagating new objects/arrays that could cause rerenders during scroll.
 
 ### 4) Storage is treated as untrusted input (quarantine on corruption)
 
 - **Decision**: AsyncStorage values are runtime-validated; corrupt values are quarantined to a backup key and the primary key is reset to a safe default.
 - **Where**:
-  - `src/storage` (facade)
   - `src/data/storage/*` (current implementation)
+  - `src/storage` (facade used by UI)
   - contract: `src/data/DATA_CONTRACT.md`
 - **Why**: local storage can be partially written, manually edited in dev, or corrupted; the app must never crash.
 - **Failure mode**: removing validation/quarantine can turn one bad write into a crash loop.
@@ -43,14 +45,14 @@ If you change one of these, update this doc and the relevant module comments.
 
 - **Decision**: data layer uses in-memory caches and derived caches (group-by-month, sorted lists).
 - **Where**: `src/data/storage/moodStorage.ts`
-- **Invariant**: *all writes must be immutable-on-write and must invalidate derived caches*.
+- **Invariant**: *all writes must be immutable-on-write and must invalidate/update derived caches*.
 - **Failure mode**: stale derived caches causing UI to show outdated data until restart.
 
 ### 6) Screens should not import AsyncStorage or deep storage modules
 
-- **Decision**: Screens/components/hooks use the `src/data` public API, never AsyncStorage directly.
+- **Decision**: Screens/components/hooks import persistence APIs from `src/storage` (facade), never AsyncStorage or deep data modules directly.
 - **Where enforced**: `eslint.config.cjs` (`no-restricted-imports`)
-- **Why**: prevents bypassing caches/validation and keeps storage changes localized.
+- **Why**: prevents bypassing caches/validation and keeps persistence changes localized.
 
 ### 6.1) UTC date-key derivation is blocked
 
@@ -62,8 +64,8 @@ If you change one of these, update this doc and the relevant module comments.
 
 - **Decision**: UI code must not call `console.*`; use `logger` which redacts and is production-safe.
 - **Where**:
-  - `src/lib/security/logger.ts`
-  - `src/lib/logging/patchConsole.ts`
+  - `src/security/*` facade (impl: `src/lib/security/logger.ts`)
+  - console patch: `src/lib/logging/patchConsole.ts`
   - enforced in UI: `eslint.config.cjs` (`no-console`)
 - **Failure mode**: leaking notes/entries into device logs or crash reports.
 
@@ -82,6 +84,23 @@ If you change one of these, update this doc and the relevant module comments.
   - `src/data/storage/moodStorage.ts` (`getEntry`, `upsertEntry`, `createEntry`, range helpers)
   - `src/data/storage/settingsStorage.ts` (settings invariants)
 - **Production behavior**: remains resilient (logs metadata and uses safe fallbacks instead of crashing).
+
+### 10) Writes are serialized (no lost updates)
+
+- **Decision**: Overlapping writes must not race. Storage uses a simple promise “tail” lock per key to serialize mutations.
+- **Where**:
+  - `src/data/storage/moodStorage.ts`
+  - `src/data/storage/settingsStorage.ts`
+- **Failure mode**: two saves overlap → last writer wins → silent data loss.
+
+### 11) Deterministic fault injection exists (dev/test only)
+
+- **Decision**: Storage has a deterministic chaos injector (seeded) to reproduce AsyncStorage failures/delays.
+- **Where**:
+  - injection point: `src/data/storage/asyncStorage.ts`
+  - chaos config: `src/data/storage/chaos.ts`
+  - dev runner: `src/dev/debugScenarios.ts` (installed in dev by `src/app/RootApp.tsx`)
+- **Why**: reliability issues must be reproducible, not “it happened once”.
 
 ### Good vs bad extensions
 

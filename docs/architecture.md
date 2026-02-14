@@ -1,86 +1,117 @@
-## Moodly Architecture (Team-Scalable Guide)
+## Moodly architecture (10‑minute onboarding)
 
-This is the canonical architecture guide for Moodly.
+This is the **canonical** architecture doc. The root `ARCHITECTURE.md` file is just a pointer here.
 
-> Note: On some macOS filesystems, `docs/ARCHITECTURE.md` and `docs/architecture.md` cannot coexist.
-> We treat **this file** as the source of truth, and `ARCHITECTURE.md` at repo root points here.
+### Layer model (plain English)
 
-### Repo map (mental model)
+- **Screens (`src/screens/`)**: user intent + orchestration (“what happens when the user taps?”)
+- **Components (`src/components/`)**: reusable UI (“how it looks / renders”)
+- **Hooks (`src/hooks/`)**: reusable UI wiring (React‑only helpers)
+- **Pure rules (`src/utils/`, `src/logic/`, `src/insights/`)**: deterministic helpers/selectors (no React, no storage)
+- **Storage facade (`src/storage/`)**: the **only** persistence API UI should import
+- **Storage implementation (`src/data/storage/`)**: AsyncStorage + caching + validation + quarantine + write locks
+- **Security (`src/security/`)**: privacy‑safe logger + redaction + console patch
+- **Perf probes (`src/perf/`)**: dev‑only observability (hitch detector, `perf.report`, list profiler summaries)
+- **Theme/types (`src/theme/`, `src/types/`)**: design tokens + shared types
 
-Beginner-friendly “where do I put this?” map:
+### Repo map (“where do I put this?”)
 
-- **`src/app/`**: app bootstrap & wiring (providers, navigation container, startup tasks)
-- **`src/screens/`**: full screens (composition + user intent only)
-- **`src/components/`**: reusable UI components (calendar/mood/ui subfolders)
-- **`src/navigation/`**: navigators + tab bar only
-- **`src/storage/`**: local persistence + caching + parsing + corruption quarantine (AsyncStorage only here)
-- **`src/logic/`**: pure rules + canonical model (no React, no storage)
-- **`src/insights/`**: pure derived selectors/aggregations (daily/weekly/monthly/streaks)
-- **`src/security/`**: redaction/logger/console patch helpers
-- **`src/utils/`**: small, pure helpers (date formatting, throttles, calendar math)
-- **`src/theme/`**: design tokens only
-- **`src/types/`**: shared TypeScript types
+- **Bootstrap**: `src/app/RootApp.tsx`
+- **Navigation**: `src/navigation/`
+- **Calendar hot paths**:
+  - `src/screens/CalendarScreen.tsx` (month timeline)
+  - `src/screens/CalendarView.tsx` (year pager)
+  - `src/components/calendar/MonthGrid.tsx` + `src/components/calendar/monthModel.ts`
+- **Storage + contract**:
+  - Public API: `src/storage/index.ts`
+  - Contract: `src/data/DATA_CONTRACT.md`
+  - Entries: `src/data/storage/moodStorage.ts`
+  - Settings: `src/data/storage/settingsStorage.ts`
 
-Legacy surfaces (kept for compatibility; prefer the folders above):
-- `src/data/*`, `src/domain/*`, `src/lib/*`
+### Import rules (enforced by ESLint)
 
-### Folder responsibilities (single source of truth)
+These rules exist to prevent accidental performance/privacy regressions:
 
-- **Screens**
-  - Own: layout composition, wiring user intent to domain/data calls.
-  - Avoid: heavy transforms, analytics math, persistence details.
+- **UI (screens/components/hooks)**:
+  - ✅ may import: `components`, `utils`, `theme`, `types`, `security`, `storage`, `perf` (dev‑only)
+  - ❌ must not import: AsyncStorage, `src/data/storage/*`, deep `src/data/*`, or deep `src/lib/*`
+- **Pure layers (`utils`/`logic`/`insights`)**:
+  - ✅ may import: `types` (+ other pure helpers)
+  - ❌ must not import: React, React Native, navigation, storage
+- **Storage implementation (`src/data/`)**:
+  - ✅ may import: `security` (logger), pure validation helpers
+  - ❌ must not import: screens/components/navigation
 
-- **Components**
-  - Own: reusable rendering primitives and feature components.
-  - Avoid: calling data/storage directly.
+See `eslint.config.cjs` for the exact restrictions.
 
-- **Logic (`src/logic`)**
-  - Own: invariants, validation helpers, deterministic transforms (canonical “rules of the system”).
-  - Must be: pure and deterministic (same input → same output).
-  - Must not: import React / React Native / navigation / AsyncStorage.
+### Wrong vs right imports (examples)
 
-- **Insights (`src/insights`)**
-  - Own: deterministic derived views (aggregations/selectors) built on validated data.
-  - Must not: import React / AsyncStorage.
+#### Example 1 — storage in UI
 
-- **Storage (`src/storage`)**
-  - Own: AsyncStorage access, caching, in-flight coalescing, corruption quarantine, versioning hooks.
-  - Must not: import screens/components/navigation.
+Bad:
 
-### Import rules (direction)
+```ts
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getAllEntries } from '../data/storage/moodStorage';
+```
 
-- `screens` → may import: `components`, `logic`, `insights`, `storage`, `security`, `utils`, `theme`, `types`
-- `components` → may import: `logic`/`insights` (pure), `security`, `utils`, `theme`, `types`
-- `logic`/`insights`/`utils` → may import: `types` (+ other pure modules), but **not** React/navigation/storage
-- `storage` → may import: `types`, `logic` (validation), `security` (logger/redaction)
-- No “upward” imports: storage/logic/insights must not import screens/components/navigation
+Good:
 
-### Common patterns (standardize these)
+```ts
+import { getAllEntries } from '../storage';
+```
 
-- **Data loading in screens**
-  - Prefer `useFocusEffect(useCallback(() => { load(); }, [load]))`
-  - Keep `load*` callbacks memoized with `useCallback`
-  - Avoid heavy sync work during transitions; defer via `InteractionManager.runAfterInteractions` where appropriate
+#### Example 2 — logger in UI
 
-- **Error handling / logging**
-  - UI code never calls `console.*`
-  - Use `logger` (`src/lib/security/logger.ts`) and log metadata only
+Bad:
 
-- **List rendering**
-  - Memoize `renderItem`, `keyExtractor`, and derived list props (`contentContainerStyle`, `viewabilityConfig`)
-  - Avoid creating inline objects inside `renderItem` loops for hot lists/grids
+```ts
+import { logger } from '../lib/security/logger';
+```
 
-### Adding a new feature (example)
+Good:
 
-If you add “Weekly Insights” (no UI guidance here — just file placement):
+```ts
+import { logger } from '../security';
+```
 
-- **Domain**: `src/domain/insights/weekly.ts` (pure selectors)
-- **Data**: `src/data/insights/weeklyRepository.ts` (storage reads/writes if needed)
-- **UI**: `src/screens/WeeklyInsightsScreen.tsx` (orchestration only)
-- **Exports**: add to `src/domain/index.ts` and/or `src/data/index.ts` if it’s part of the public surface
+#### Example 3 — date keys
+
+Bad:
+
+```ts
+const key = new Date().toISOString().slice(0, 10); // UTC (banned)
+```
+
+Good:
+
+```ts
+import { toLocalDayKey } from '../utils';
+const key = toLocalDayKey(new Date());
+```
+
+### Hot paths (what to be careful with)
+
+#### Calendar month timeline (`CalendarScreen`)
+
+- Uses a **large mostly‑static month window** (about 100 years) to avoid periodic “window shift” freezes.
+- Avoid state updates during scroll; use refs + deferred work (`InteractionManager`) for non‑urgent operations.
+
+#### Calendar year pager (`CalendarView`)
+
+- Must avoid “re‑render storms” while paging years.
+- Month taps are **coalesced** (last tap wins) to avoid stacking transitions during pager settle.
+
+#### MonthGrid / DayCell (hottest UI code)
+
+- Avoid per‑cell allocations (no inline objects/arrays/closures in tight loops).
+- Keep props stable (memoized callbacks + stable style objects).
+- Month computations should be cached per month (`monthModel` + `monthMatrix` cache).
 
 ### Reference docs
 
+- **Engineering handoff**: `ENGINEERING_HANDOFF.md`
+- **Owner decisions**: `docs/DECISIONS.md`
+- **Logging contract**: `docs/logger.md`
 - **Data contract**: `src/data/DATA_CONTRACT.md`
-- **Root pointer**: `ARCHITECTURE.md`
 

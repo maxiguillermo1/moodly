@@ -29,6 +29,8 @@ npm run start
 - **Journal** → scroll a bit
 - Open **Settings** modal → close it
 
+Tip: leave Calendar screens (blur) after you interact so you capture `perf.report` summaries.
+
 4) Copy the **PERF** lines from the dev console and paste summary numbers below.
 
 ---
@@ -52,6 +54,10 @@ All events are emitted via the structured `logger.perf(...)` API.
 
 - **List render cost**
   - `perf.listRenderSummary`: React Profiler summary for key lists
+ - **Hitch summary (calendar hot paths)**
+   - `perf.report`: aggregated hitch summary flushed on Calendar screen blur
+     - includes `phases[]` with `p95Ms/maxMs`
+     - classifies unattributed stalls as `DEV_METRO_OR_GC` (Metro/GC/tooling)
     - `maxActualMs`: worst commit cost observed during focus window
     - `avgActualMs`: average commit cost observed during focus window
     - `commits`: number of commits recorded (higher can indicate churn)

@@ -7,7 +7,9 @@ This file is intentionally strict: **only** libraries with clear benefit, low ri
 - RN: **0.81.5**
 - React: **19.1**
 - Navigation: **React Navigation v7**, `native-stack` already in use
-- List perf: Calendar uses **FlashList** already; Journal uses **FlatList** currently
+- List perf:
+  - Calendar uses **FlashList** already
+  - Journal defaults to **FlatList**, with an existing reversible `FlashList` toggle in code (`src/screens/JournalScreen.tsx`)
 
 ---
 

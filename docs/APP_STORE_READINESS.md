@@ -111,3 +111,19 @@ This document defines the **minimum bar** for “App Store–ready” quality fo
   - Dynamic Type up: text remains readable (no major clipping)
   - Reduce Motion on: interactions still feel smooth
 
+---
+## Quality gates (must pass)
+
+```bash
+npm run lint
+npx tsc --noEmit
+npm test
+```
+
+## References (where the “rules” live)
+
+- Architecture + boundaries: `docs/architecture.md` (enforced by `eslint.config.cjs`)
+- Decisions/invariants: `docs/DECISIONS.md`
+- Logging contract: `docs/logger.md`
+- Security checklist: `SECURITY_CHECKLIST.md`
+

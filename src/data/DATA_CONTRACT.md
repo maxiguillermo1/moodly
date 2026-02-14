@@ -16,6 +16,12 @@ If a stored value cannot be parsed/validated, Moodly will:
 - Reset the primary key to a safe default (`{}` for entries; default settings for settings)
 - Continue running without crashing
 
+### Persistence invariants (required)
+
+- **Persist-first**: update RAM caches only after AsyncStorage writes succeed.
+- **Writes are serialized** per key (prevents lost updates under concurrent saves).
+- **UI never touches AsyncStorage** directly; UI imports persistence APIs from `src/storage`.
+
 ## Persisted domain types
 
 ### `MoodEntry`

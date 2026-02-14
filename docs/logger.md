@@ -21,6 +21,29 @@ Logs exist to make system behavior **provable and readable**:
 This is not debugging spam. If a log does not help future maintainers understand system behavior, it should not exist.
 
 ---
+## Quick start (copy/paste friendly)
+
+### How to collect calendar perf data
+
+1) Run the app in dev.
+2) Do the action (scroll months, swipe years, tap a day).
+3) **Leave the screen** (blur) to flush the session summary:
+   - `CalendarScreen` flushes `perf.report` on blur as `reason: "CalendarScreen.unmount"`
+   - `CalendarView` flushes `perf.report` on blur as `reason: "CalendarView.unmount"`
+4) Find the `perf.report` line in logs and read `phases[]` (counts + p95/max).
+
+### Dev-only debug harness (no UI changes)
+
+In Metro console:
+
+```js
+globalThis.MoodlyDebug.list()
+globalThis.MoodlyDebug.runAll()
+globalThis.MoodlyDebug.run('rapidMonthTaps')
+globalThis.MoodlyDebug.setChaos({ enabled: true, seed: 1, failNext: { getItem: 1 } })
+```
+
+---
 ## How to enable / disable (developer ergonomics)
 
 - **Dev mode** (`__DEV__ = true`):
@@ -130,12 +153,20 @@ This makes “`unknown` hitches” effectively impossible in `perf.report`.
 
 `perf.report` is the primary summary log and is emitted on screen focus-exit (blur).
 
-- **`totalHitches`**: count of JS hitches (>24ms frame delta) since last flush
-- **`phases[]`**: aggregated counts and p95/max per phase
-- **`last[]`**: tail of individual hitches (timestamp + delta)
-  - **`src`** (optional): `tag | crumb | dev` indicating attribution source
-- **`crumbs[]`**: tail of breadcrumb markers (timestamp + name)
-- **`DEV_METRO_OR_GC`**: “not attributable to app breadcrumbs/phases”, usually dev tooling or JS runtime pauses
+| Field | Meaning |
+|---|---|
+| `reason` | Why the report was flushed (screen-provided string, e.g. `CalendarScreen.unmount`) |
+| `totalHitches` | Count of JS hitches (frame delta > 24ms) since last flush |
+| `phases[]` | Aggregated per-phase stats: `{ phase, count, p95Ms, maxMs }` |
+| `last[]` | Tail of individual hitches: `{ atMs, phase, deltaMs, src? }` |
+| `lastDropped` | How many `last` items were omitted from the emitted payload (to avoid dev log-guard limits) |
+| `crumbs[]` | Tail of breadcrumb markers: `{ atMs, name }` |
+| `crumbsDropped` | How many breadcrumb items were omitted from emitted payload |
+
+**Attribution**:
+- `src: "tag"` → explicit `perfProbe.setCulpritPhase(...)`
+- `src: "crumb"` → inferred from nearest breadcrumb within ±50ms
+- `src: "dev"` → classified as `DEV_METRO_OR_GC` (dev tooling/GC/runtime stall)
 
 ### Noise reduction policy
 
@@ -238,6 +269,43 @@ Add a new log when it helps answer one of:
 - “Did storage recovery happen? Was it safe and recoverable?”
 
 If a log is not actionable or explainable, don’t add it.
+
+---
+## Example log lines (what they mean)
+
+These are **representative shapes** (exact metadata keys vary by callsite):
+
+```ts
+// Screen session boundary markers (dev-only)
+[PERF][calendar] perf.sessionStart { screen: "CalendarScreen", ... }
+[PERF][calendar] perf.report { reason, totalHitches, phases: [...], ... }
+
+// Storage lifecycle
+[PERF][storage] storage.getAllEntries.getItem { phase: "cold", source: "storage", durationMs }
+[WARN][storage] storage.entries.corrupt.detected { key: "moodly.entries", action: "quarantineAndReset" }
+
+// Calendar interactions
+[PERF][calendar] calendar.dayTapToModalOpen { durationMs, ... }
+[PERF][calendar] calendar.modalSave.success { durationMs, ... }
+
+// Dev-only chaos injection (rate-limited)
+[WARN][storage] storage.chaos.injectedFailure { op, key, mode }
+```
+
+---
+## How to debug jank (step-by-step)
+
+1) **Confirm it’s a real app hitch**: look at `perf.report.phases`.
+   - If the worst phase is `DEV_METRO_OR_GC`, it’s usually Metro/GC/dev tooling (directional, not actionable app code).
+2) **If it’s app code**: the phase name should be a screen tag (e.g. `CalendarView.scroll`) or a breadcrumb.
+3) **Use `last[]` + `crumbs[]`**:
+   - Find the biggest `deltaMs` in `last[]`
+   - Look for nearby breadcrumb names in `crumbs[]`
+4) **Fix shape** (small, reversible):
+   - stable props/callbacks
+   - avoid state writes during scroll
+   - move non-urgent work to `InteractionManager.runAfterInteractions`
+5) **Re-run the same gesture** and compare `p95Ms/maxMs` for the relevant phase.
 
 ---
 ## Dev/test: deterministic AsyncStorage chaos injection
