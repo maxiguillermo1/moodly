@@ -4,11 +4,10 @@
  */
 
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import Ionicons from '@expo/vector-icons/Ionicons';
-import { colors, spacing, typography, sizing } from '../../theme';
-import { LiquidGlass } from './LiquidGlass';
+import { colors, spacing, typography } from '../../theme';
+import { CapsuleButton } from './CapsuleButton';
 
 interface ScreenHeaderProps {
   title: string;
@@ -30,28 +29,15 @@ export function ScreenHeader({ title, showSettings = true, onPressSettings }: Sc
       </Text>
       
       {showSettings && (
-        <TouchableOpacity
-          style={styles.settingsPill}
+        <CapsuleButton
+          kind="icon"
+          iconName="settings-outline"
+          iconColor={colors.system.label}
           onPress={() => (onPressSettings ? onPressSettings() : navigation.navigate('Settings'))}
           hitSlop={settingsHitSlop}
-          accessibilityRole="button"
           accessibilityLabel="Settings"
           accessibilityHint="Opens settings"
-        >
-          <LiquidGlass
-            style={StyleSheet.absoluteFill}
-            radius={sizing.capsuleRadius}
-            // Small pills: keep shadow very subtle
-            shadow={false}
-          >
-            {null}
-          </LiquidGlass>
-          <Ionicons
-            name="settings-outline"
-            size={sizing.iconSm}
-            color={colors.system.label}
-          />
-        </TouchableOpacity>
+        />
       )}
     </View>
   );
@@ -69,14 +55,5 @@ const styles = StyleSheet.create({
   title: {
     ...typography.largeTitle,
     color: colors.system.label,
-  },
-  settingsPill: {
-    height: sizing.capsuleHeight,
-    minWidth: sizing.capsuleHeight,
-    paddingHorizontal: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: sizing.capsuleRadius,
-    overflow: 'hidden',
   },
 });

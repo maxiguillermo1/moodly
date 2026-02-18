@@ -7,7 +7,6 @@ import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import {
   View,
   Text,
-  TouchableOpacity,
   StyleSheet,
   useWindowDimensions,
   Modal,
@@ -20,7 +19,6 @@ import {
 import { FlashList } from '@shopify/flash-list';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
-import Ionicons from '@expo/vector-icons/Ionicons';
 import Animated, {
   Extrapolate,
   interpolate,
@@ -28,15 +26,17 @@ import Animated, {
   useAnimatedStyle,
   useSharedValue,
 } from 'react-native-reanimated';
-import * as Haptics from 'expo-haptics';
 import { CalendarMoodStyle, MoodEntry, MoodGrade } from '../types';
-import { LiquidGlass, MonthGrid, MoodPicker, WeekdayRow } from '../components';
-import { colors, spacing, borderRadius, typography, sizing } from '../theme';
+import { CapsuleButton, MonthGrid, MoodPicker, WeekdayRow } from '../components';
+import { colors, spacing, borderRadius, typography } from '../theme';
 import { createEntry, getAllEntriesWithMonthIndex, getEntry, getLastAllEntriesSource, getSettings, upsertEntry } from '../storage';
 import { buildMonthWindow, MonthItem, monthKey as monthKey2, formatDateToISO, isLatestRequest, nextRequestId } from '../utils';
 import { logger } from '../security';
 import { PerfProfiler, usePerfScreen, perfProbe } from '../perf';
 import { useTodayKey } from '../hooks/useTodayKey';
+import { haptics } from '../system/haptics';
+import { interactionQueue } from '../system/interactionQueue';
+import { Touchable } from '../ui/Touchable';
 
 const MONTHS = [
   'January', 'February', 'March', 'April', 'May', 'June',
@@ -105,6 +105,8 @@ export default function CalendarScreen() {
   const [monthCardMatchesScreenBackground, setMonthCardMatchesScreenBackground] = useState(false);
   const [selectedDate, setSelectedDate] = useState<string>(() => initialSelectedDateRef.current as string);
   const [isEditOpen, setIsEditOpen] = useState(false);
+  const noteInputRef = useRef<TextInput | null>(null);
+  const prevEditOpenRef = useRef(false);
   const [editMood, setEditMood] = useState<MoodGrade | null>(null);
   const [editNote, setEditNote] = useState('');
   const [isSaving, setIsSaving] = useState(false);
@@ -257,11 +259,27 @@ export default function CalendarScreen() {
     return () => sub.remove();
   }, []);
 
+  // Sheet polish: haptic + focus after open animation commits (no layout/styling changes).
+  useEffect(() => {
+    const prev = prevEditOpenRef.current;
+    prevEditOpenRef.current = isEditOpen;
+    if (isEditOpen && !prev) {
+      haptics.sheet();
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          noteInputRef.current?.focus();
+        });
+      });
+    } else if (!isEditOpen && prev) {
+      haptics.sheet();
+    }
+  }, [isEditOpen]);
+
   // loadEntries/loadSettings are memoized above (useCallback) for focus effect correctness.
 
   // (No year-mode behavior here anymore.)
   const handleHapticSelect = useCallback(() => {
-    Haptics.selectionAsync().catch(() => {});
+    haptics.select();
   }, []);
 
   const handlePressDate = useCallback(async (isoDate: string) => {
@@ -358,7 +376,7 @@ export default function CalendarScreen() {
       });
       // Phase 3: haptics only for real scroll-end commits (not programmatic jumps).
       if (reason === 'scrollEnd' && !reduceMotion) {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+        haptics.select();
       }
     },
     [reduceMotion]
@@ -441,12 +459,16 @@ export default function CalendarScreen() {
 
   const onScrollBeginDrag = useCallback(() => {
     isUserScrollingRef.current = true;
+    interactionQueue.setUserScrolling(true);
+    interactionQueue.setMomentum(false);
     if (perfProbe.enabled) perfProbe.setCulpritPhase('CalendarScreen.scroll');
     perfProbe.enabled && perfProbe.breadcrumb('CalendarScreen.scrollBegin');
   }, []);
 
   const onMomentumScrollBegin = useCallback(() => {
     isUserScrollingRef.current = true;
+    interactionQueue.setUserScrolling(true);
+    interactionQueue.setMomentum(true);
     if (perfProbe.enabled) perfProbe.setCulpritPhase('CalendarScreen.scroll');
     perfProbe.enabled && perfProbe.breadcrumb('CalendarScreen.scrollMomentumBegin');
   }, []);
@@ -457,6 +479,7 @@ export default function CalendarScreen() {
 
   const flushPendingMonth = useCallback(() => {
     isUserScrollingRef.current = false;
+    interactionQueue.setUserScrolling(false);
     perfProbe.enabled && perfProbe.breadcrumb('CalendarScreen.scrollEnd');
 
     const next = pendingMonthRef.current;
@@ -529,6 +552,18 @@ export default function CalendarScreen() {
     windowOffsets.start,
   ]);
 
+  const onScrollEndDrag = useCallback(() => {
+    // Drag ended; momentum may continue.
+    isUserScrollingRef.current = false;
+    interactionQueue.setUserScrolling(false);
+    flushPendingMonth();
+  }, [flushPendingMonth]);
+
+  const onMomentumScrollEnd = useCallback(() => {
+    interactionQueue.setMomentum(false);
+    flushPendingMonth();
+  }, [flushPendingMonth]);
+
   const renderMonthItem = useCallback(
     ({ item }: { item: MonthItem }) => {
       const monthEntries = entriesByMonthKey[item.key] ?? EMPTY_MONTH_ENTRIES;
@@ -578,41 +613,24 @@ export default function CalendarScreen() {
     <SafeAreaView style={styles.container} edges={['top']}>
       {/* iOS Calendar-style top bar */}
       <View style={styles.topBar}>
-        <TouchableOpacity
-          style={styles.yearBack}
+        <CapsuleButton
+          kind="back"
+          iconName="chevron-back"
+          iconColor={colors.system.blue}
+          label={String(visibleMonth.y)}
+          labelColor={colors.system.blue}
           onPress={() => navigation.navigate('CalendarView', { year: visibleMonth.y })}
-          activeOpacity={0.7}
-          accessibilityRole="button"
           accessibilityLabel="Back to year view"
-        >
-          <LiquidGlass
-            style={StyleSheet.absoluteFill}
-            radius={sizing.capsuleRadius}
-            shadow={false}
-          >
-            {null}
-          </LiquidGlass>
-          <Ionicons name="chevron-back" size={20} color={colors.system.blue} />
-          <Text style={styles.yearBackText}>{visibleMonth.y}</Text>
-        </TouchableOpacity>
+        />
 
         <View style={styles.topBarRight}>
-          <TouchableOpacity
-            style={styles.iconButton}
+          <CapsuleButton
+            kind="icon"
+            iconName="settings-outline"
+            iconColor={colors.system.label}
             onPress={() => navigation.navigate('Settings')}
-            activeOpacity={0.7}
-            accessibilityRole="button"
             accessibilityLabel="Settings"
-          >
-            <LiquidGlass
-              style={StyleSheet.absoluteFill}
-              radius={sizing.capsuleRadius}
-              shadow={false}
-            >
-              {null}
-            </LiquidGlass>
-            <Ionicons name="settings-outline" size={20} color={colors.system.label} />
-          </TouchableOpacity>
+          />
         </View>
       </View>
 
@@ -650,10 +668,11 @@ export default function CalendarScreen() {
           contentContainerStyle={styles.monthTimeline}
           onScrollBeginDrag={onScrollBeginDrag}
           onMomentumScrollBegin={onMomentumScrollBegin}
-          onScrollEndDrag={flushPendingMonth}
-          onMomentumScrollEnd={flushPendingMonth}
+          onScrollEndDrag={onScrollEndDrag}
+          onMomentumScrollEnd={onMomentumScrollEnd}
           onScroll={scrollHandler}
           scrollEventThrottle={16}
+          keyboardShouldPersistTaps="handled"
           viewabilityConfig={viewabilityConfig}
           onViewableItemsChanged={onViewableItemsChanged as any}
           renderItem={renderMonthItem as any}
@@ -664,11 +683,17 @@ export default function CalendarScreen() {
       <Modal visible={isEditOpen} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setIsEditOpen(false)}>
         <SafeAreaView style={styles.modalContainer} edges={['top']}>
           <View style={styles.modalHeader}>
-            <TouchableOpacity onPress={() => setIsEditOpen(false)} activeOpacity={0.7}>
+            <Touchable
+              onPress={() => setIsEditOpen(false)}
+              accessibilityRole="button"
+              accessibilityLabel="Cancel"
+              hitSlop={{ top: 10, left: 10, right: 10, bottom: 10 }}
+              style={(s: any) => [s?.pressed ? styles.pressedOpacity : null]}
+            >
               <Text style={styles.modalCancel}>Cancel</Text>
-            </TouchableOpacity>
+            </Touchable>
             <Text style={styles.modalTitle}>{selectedDate}</Text>
-            <TouchableOpacity
+            <Touchable
               onPress={async () => {
                 const saveStartMs = perfProbe.enabled ? perfProbe.nowMs() : 0;
                 if (perfProbe.enabled) perfProbe.setCulpritPhase('CalendarScreen.modalSave');
@@ -689,17 +714,13 @@ export default function CalendarScreen() {
                     entriesRevisionRef.current += 1;
                     return { ...prev, [mk]: { ...monthMap, [selectedDate]: next } };
                   });
-                  if (!reduceMotion) {
-                    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-                  }
+                  if (!reduceMotion) haptics.success();
                   isMountedRef.current && setIsEditOpen(false);
                   if (perfProbe.enabled) {
                     perfProbe.measureSince('calendar.modalSave.success', saveStartMs, { phase: 'warm', source: 'ui' });
                   }
                 } catch {
-                  if (!reduceMotion) {
-                    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
-                  }
+                  if (!reduceMotion) haptics.error();
                   logger.warn('calendar.save.failed', { dateKey: selectedDate });
                   Alert.alert('Error', 'Failed to save. Please try again.');
                   if (perfProbe.enabled) {
@@ -711,11 +732,14 @@ export default function CalendarScreen() {
                   if (perfProbe.enabled) perfProbe.setCulpritPhase(null);
                 }
               }}
-              activeOpacity={0.7}
               disabled={isSaving}
+              accessibilityRole="button"
+              accessibilityLabel="Save"
+              hitSlop={{ top: 10, left: 10, right: 10, bottom: 10 }}
+              style={(s: any) => [s?.pressed ? styles.pressedOpacity : null]}
             >
               <Text style={styles.modalSave}>{isSaving ? 'Saving…' : 'Save'}</Text>
-            </TouchableOpacity>
+            </Touchable>
           </View>
 
           <View style={styles.modalContent}>
@@ -724,6 +748,7 @@ export default function CalendarScreen() {
 
             <Text style={[styles.modalSectionLabel, { marginTop: spacing[6] }]}>Note</Text>
             <TextInput
+              ref={noteInputRef}
               style={styles.modalNoteInput}
               placeholder="Add a short note…"
               placeholderTextColor={colors.system.tertiaryLabel}
@@ -756,33 +781,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing[4],
     paddingTop: spacing[2],
   },
-  yearBack: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    height: sizing.capsuleHeight,
-    paddingHorizontal: 12,
-    borderRadius: sizing.capsuleRadius,
-    overflow: 'hidden',
-  },
-  yearBackText: {
-    ...typography.subhead,
-    color: colors.system.blue,
-    fontWeight: '600',
-  },
   topBarRight: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing[2],
-  },
-  iconButton: {
-    height: sizing.capsuleHeight,
-    minWidth: sizing.capsuleHeight,
-    paddingHorizontal: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: sizing.capsuleRadius,
-    overflow: 'hidden',
   },
   yearTitle: {
     ...typography.title2,
@@ -956,6 +958,7 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.system.separator,
     backgroundColor: colors.system.secondaryBackground,
   },
+  pressedOpacity: { opacity: 0.7 },
   modalCancel: {
     ...typography.body,
     color: colors.system.secondaryLabel,

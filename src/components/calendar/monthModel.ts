@@ -34,6 +34,7 @@ export type MonthRenderModel = {
   isoByDay: string[]; // index 1..31 used; 0 unused
   moodColorByDay: Array<string | null>; // 1..31
   hasNoteByDay: boolean[]; // 1..31
+  weekdayByDay: number[]; // 1..31 (0..6)
   // `pressByDay` is optional (mini grids do not handle presses).
   pressByDay: PressByDay | null;
   // Selected day (1..31) if selectedDate is in this month; otherwise 0.
@@ -74,6 +75,7 @@ function hasNonWhitespace(note: string | undefined | null): boolean {
 // Shared immutable arrays for empty months (safe: MonthGrid treats these as read-only).
 const ALL_NULL_32: ReadonlyArray<string | null> = Object.freeze(new Array(32).fill(null));
 const ALL_FALSE_32: ReadonlyArray<boolean> = Object.freeze(new Array(32).fill(false));
+const ALL_ZERO_32: ReadonlyArray<number> = Object.freeze(new Array(32).fill(0));
 
 function monthKeyOf(year: number, monthIndex0: number): string {
   const mm2 = String(monthIndex0 + 1).padStart(2, '0');
@@ -250,6 +252,10 @@ export function getMonthRenderModel(opts: {
   // Derive per-day values once per month render.
   const moodColorByDay: Array<string | null> = hasAnyEntry ? new Array<string | null>(32) : (ALL_NULL_32 as any);
   const hasNoteByDay: boolean[] = hasAnyEntry ? new Array<boolean>(32) : (ALL_FALSE_32 as any);
+  // `weekdayByDay` is only needed for VoiceOver labels on *pressable* days.
+  // CalendarView mini grids do not create day press handlers, so avoid 31 Date allocations per mini month.
+  const weekdayByDay: number[] = onPressDate ? new Array<number>(32) : (ALL_ZERO_32 as any);
+  if (onPressDate) weekdayByDay[0] = 0;
   if (hasAnyEntry) {
     moodColorByDay[0] = null;
     hasNoteByDay[0] = false;
@@ -258,6 +264,11 @@ export function getMonthRenderModel(opts: {
       const mood = (e?.mood ?? null) as MoodGrade | null;
       moodColorByDay[d] = mood ? getMoodColor(mood) : null;
       hasNoteByDay[d] = e ? hasNonWhitespace(e.note) : false;
+      if (onPressDate) weekdayByDay[d] = new Date(year, monthIndex0, d).getDay();
+    }
+  } else {
+    if (onPressDate) {
+      for (let d = 1; d <= 31; d++) weekdayByDay[d] = new Date(year, monthIndex0, d).getDay();
     }
   }
 
@@ -269,6 +280,7 @@ export function getMonthRenderModel(opts: {
     isoByDay,
     moodColorByDay,
     hasNoteByDay,
+    weekdayByDay,
     pressByDay,
     selectedDay,
     todayDay,

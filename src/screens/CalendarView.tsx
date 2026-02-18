@@ -4,7 +4,7 @@
  */
 
 import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, FlatList, useWindowDimensions, InteractionManager } from 'react-native';
+import { View, Text, StyleSheet, FlatList, useWindowDimensions, InteractionManager } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 
@@ -17,6 +17,8 @@ import { PerfProfiler, usePerfScreen } from '../perf';
 import { colors, spacing, typography } from '../theme';
 import { useTodayKey } from '../hooks/useTodayKey';
 import { createFrameCoalescer, type FrameCoalescer } from '../utils';
+import { Touchable } from '../ui/Touchable';
+import { interactionQueue } from '../system/interactionQueue';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const MONTH_2 = ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12'] as const;
@@ -59,12 +61,14 @@ const MiniMonthCard = React.memo(function MiniMonthCard({
   marginStyle,
   onOpenMonth,
 }: MiniMonthCardProps) {
+  const handlePress = useCallback(() => onOpenMonth(y, mIdx), [mIdx, onOpenMonth, y]);
   return (
-    <TouchableOpacity
+    <Touchable
       key={`${y}-${mIdx}`}
-      activeOpacity={0.7}
       style={[styles.miniMonth, cardWidthStyle, marginStyle]}
-      onPress={() => onOpenMonth(y, mIdx)}
+      onPress={handlePress}
+      accessibilityRole="button"
+      accessibilityLabel={`Open ${MONTHS[mIdx]} ${y}`}
     >
       <Text style={styles.miniMonthTitle}>{MONTHS[mIdx]}</Text>
       <WeekdayRow variant="mini" />
@@ -77,7 +81,7 @@ const MiniMonthCard = React.memo(function MiniMonthCard({
         calendarMoodStyle={calendarMoodStyle}
         todayKey={todayKey}
       />
-    </TouchableOpacity>
+    </Touchable>
   );
 });
 
@@ -351,6 +355,8 @@ export default function CalendarView() {
 
   const onMomentumScrollEnd = useCallback(
     (e: any) => {
+      interactionQueue.setMomentum(false);
+      interactionQueue.setUserScrolling(false);
       if (perfProbe.enabled) perfProbe.setCulpritPhase('CalendarView.pageSettle');
       perfProbe.enabled && perfProbe.breadcrumb('CalendarView.scrollEnd');
       const startMs = momentumStartMsRef.current;
@@ -373,6 +379,8 @@ export default function CalendarView() {
   );
 
   const onMomentumScrollBegin = useCallback(() => {
+    interactionQueue.setUserScrolling(true);
+    interactionQueue.setMomentum(true);
     if (!perfProbe.enabled) return;
     momentumStartMsRef.current = perfProbe.nowMs();
     perfProbe.setCulpritPhase('CalendarView.scroll');

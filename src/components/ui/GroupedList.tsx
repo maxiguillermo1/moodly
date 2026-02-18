@@ -4,9 +4,10 @@
  */
 
 import React, { ReactNode } from 'react';
-import { View, Text, Pressable, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { colors, spacing, borderRadius, typography } from '../../theme';
+import { Touchable } from '../../ui/Touchable';
 
 interface GroupedSectionProps {
   header?: string;
@@ -105,13 +106,13 @@ export function GroupedRow({
 
   if (onPress) {
     return (
-      <Pressable
+      <Touchable
         onPress={onPress}
         accessibilityRole="button"
         style={({ pressed }) => (pressed ? styles.rowPressed : undefined)}
       >
         {content}
-      </Pressable>
+      </Touchable>
     );
   }
 

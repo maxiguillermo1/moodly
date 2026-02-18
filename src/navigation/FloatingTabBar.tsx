@@ -4,11 +4,12 @@
  */
 
 import React from 'react';
-import { View, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, StyleSheet } from 'react-native';
 import { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { colors, spacing, borderRadius, sizing } from '../theme';
 import { LiquidGlass } from '../components';
+import { Touchable } from '../ui/Touchable';
 
 const TAB_ICONS: Record<string, any> = {
   Calendar: 'calendar-outline',
@@ -43,15 +44,14 @@ export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
           };
 
           return (
-            <TouchableOpacity
+            <Touchable
               key={route.key}
               accessibilityRole="button"
               accessibilityLabel={label}
               accessibilityHint={isFocused ? 'Current tab' : `Switches to ${route.name}`}
               accessibilityState={isFocused ? { selected: true } : {}}
               onPress={onPress}
-              style={styles.tab}
-              activeOpacity={0.7}
+              style={({ pressed }) => [styles.tab, pressed ? styles.pressedOpacity : null]}
               hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
             >
               <Ionicons
@@ -60,7 +60,7 @@ export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
                 color={isFocused ? colors.system.blue : colors.system.secondaryLabel}
               />
               <View style={[styles.indicator, isFocused && styles.indicatorActive]} />
-            </TouchableOpacity>
+            </Touchable>
           );
         })}
       </LiquidGlass>
@@ -93,6 +93,7 @@ const styles = StyleSheet.create({
     minHeight: sizing.minTouchTarget,
     borderRadius: borderRadius.full,
   },
+  pressedOpacity: { opacity: 0.7 },
   indicator: {
     width: 3,
     height: 3,

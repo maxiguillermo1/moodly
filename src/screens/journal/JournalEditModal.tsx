@@ -11,14 +11,16 @@
  * - Perform navigation
  */
 
-import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Modal, TextInput } from 'react-native';
+import React, { useEffect, useRef } from 'react';
+import { View, Text, StyleSheet, Modal, TextInput } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import type { MoodEntry, MoodGrade } from '../../types';
 import { MoodPicker } from '../../components';
 import { formatDateForDisplay } from '../../utils';
 import { colors, spacing, borderRadius, typography } from '../../theme';
+import { Touchable } from '../../ui/Touchable';
+import { haptics } from '../../system/haptics';
 
 export function JournalEditModal(props: {
   editingEntry: MoodEntry | null;
@@ -30,6 +32,24 @@ export function JournalEditModal(props: {
   onSave: () => void;
 }): React.ReactElement {
   const { editingEntry, editMood, editNote, setEditMood, setEditNote, onCancel, onSave } = props;
+  const prevVisibleRef = useRef(false);
+  const noteInputRef = useRef<TextInput | null>(null);
+
+  useEffect(() => {
+    const visible = editingEntry !== null;
+    const prev = prevVisibleRef.current;
+    prevVisibleRef.current = visible;
+    if (visible && !prev) {
+      haptics.sheet();
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          noteInputRef.current?.focus();
+        });
+      });
+    } else if (!visible && prev) {
+      haptics.sheet();
+    }
+  }, [editingEntry]);
 
   return (
     <Modal
@@ -40,19 +60,31 @@ export function JournalEditModal(props: {
     >
       <SafeAreaView style={styles.modalContainer} edges={['top']}>
         <View style={styles.modalHeader}>
-          <TouchableOpacity onPress={onCancel} activeOpacity={0.7} accessibilityRole="button">
+          <Touchable
+            onPress={onCancel}
+            accessibilityRole="button"
+            accessibilityLabel="Cancel"
+            hitSlop={{ top: 10, left: 10, right: 10, bottom: 10 }}
+            style={({ pressed }) => (pressed ? styles.pressedOpacity : undefined)}
+          >
             <Text style={styles.modalCancel} allowFontScaling>
               Cancel
             </Text>
-          </TouchableOpacity>
+          </Touchable>
           <Text style={styles.modalTitle} allowFontScaling>
             {editingEntry ? formatDateForDisplay(editingEntry.date) : ''}
           </Text>
-          <TouchableOpacity onPress={onSave} activeOpacity={0.7} accessibilityRole="button">
+          <Touchable
+            onPress={onSave}
+            accessibilityRole="button"
+            accessibilityLabel="Save"
+            hitSlop={{ top: 10, left: 10, right: 10, bottom: 10 }}
+            style={({ pressed }) => (pressed ? styles.pressedOpacity : undefined)}
+          >
             <Text style={styles.modalSave} allowFontScaling>
               Save
             </Text>
-          </TouchableOpacity>
+          </Touchable>
         </View>
 
         <View style={styles.modalContent}>
@@ -63,6 +95,7 @@ export function JournalEditModal(props: {
               NOTE
             </Text>
             <TextInput
+              ref={noteInputRef}
               style={styles.modalNoteInput}
               placeholder="What made this day special?"
               placeholderTextColor={colors.system.tertiaryLabel}
@@ -109,6 +142,7 @@ const styles = StyleSheet.create({
   modalContent: {
     padding: spacing[4],
   },
+  pressedOpacity: { opacity: 0.7 },
   modalNoteSection: {
     marginTop: spacing[6],
   },

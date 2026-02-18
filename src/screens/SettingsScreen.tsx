@@ -20,6 +20,7 @@ import { logger } from '../security';
 import { usePerfScreen } from '../perf';
 import { CalendarMoodStyle, MoodGrade } from '../types';
 import { colors, spacing } from '../theme';
+import { haptics } from '../system/haptics';
 
 export default function SettingsScreen() {
   usePerfScreen('Settings');
@@ -139,6 +140,7 @@ export default function SettingsScreen() {
               <Switch
                 value={calendarMoodStyle === 'fill'}
                 onValueChange={async (next) => {
+                  haptics.toggle();
                   const style: CalendarMoodStyle = next ? 'fill' : 'dot';
                   setCalendarMoodStyleState(style);
                   try {
@@ -163,6 +165,7 @@ export default function SettingsScreen() {
               <Switch
                 value={monthCardMatchesScreenBackground}
                 onValueChange={async (next) => {
+                  haptics.toggle();
                   setMonthCardMatchesScreenBackgroundState(!!next);
                   try {
                     await setMonthCardMatchesScreenBackground(!!next);

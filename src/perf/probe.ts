@@ -51,6 +51,12 @@ let lastNav: LastNav | null = null;
 let hitchRunning = false;
 let lastRafTs: number | null = null;
 let culpritPhase: string | null = null;
+let didWarnSlowFrameDuringCalendarScroll = false;
+
+const SLOW_FRAME_WARN_THRESHOLD_MS = 16;
+function isCalendarScrollPhase(phase: string | null): boolean {
+  return phase === 'CalendarScreen.scroll' || phase === 'CalendarView.scroll';
+}
 
 // ---------------------------------------------------------------------------
 // Dev-only hitch breadcrumbs (ring buffer)
@@ -250,6 +256,20 @@ export const perfProbe = {
         if (!PERF_ENABLED) return;
         if (typeof lastRafTs === 'number') {
           const delta = ts - lastRafTs;
+          // Dev-only micro-warning: if a frame exceeds ~16ms during calendar scroll, log once.
+          // This is intentionally separate from the hitch (>24ms) classifier and does not affect perf.report.
+          if (
+            !didWarnSlowFrameDuringCalendarScroll &&
+            delta > SLOW_FRAME_WARN_THRESHOLD_MS &&
+            isCalendarScrollPhase(culpritPhase)
+          ) {
+            didWarnSlowFrameDuringCalendarScroll = true;
+            logger.dev('calendar.slowFrame', {
+              phase: culpritPhase,
+              deltaMs: Number(delta.toFixed(1)),
+              thresholdMs: SLOW_FRAME_WARN_THRESHOLD_MS,
+            });
+          }
           // 60fps ~ 16.7ms; anything > 24ms tends to feel like a hitch.
           if (delta > 24) {
             const atMs = nowMs();
@@ -349,6 +369,7 @@ export const perfProbe = {
     hitchTotal = 0;
     hitchByPhase.clear();
     hitchLast.length = 0;
+    didWarnSlowFrameDuringCalendarScroll = false;
   },
 
   mark(name: MarkName): void {

@@ -4,10 +4,12 @@
  */
 
 import React, { useMemo } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
 import { MoodGrade } from '../../types';
 import { getAllMoodConfigs } from '../../utils';
 import { colors, spacing, borderRadius, typography } from '../../theme';
+import { Touchable } from '../../ui/Touchable';
+import { haptics } from '../../system/haptics';
 
 interface MoodPickerProps {
   selectedMood: MoodGrade | null;
@@ -32,15 +34,17 @@ export function MoodPicker({
         {moods.map((mood) => {
           const isSelected = selectedMood === mood.grade;
           return (
-            <TouchableOpacity
+            <Touchable
               key={mood.grade}
               style={[
                 styles.segment,
                 isSelected ? styles.segmentSelected : null,
                 isSelected ? { backgroundColor: colors.moodBackground[mood.grade] } : null,
               ]}
-              onPress={() => onSelect(mood.grade)}
-              activeOpacity={0.7}
+              onPress={() => {
+                haptics.select();
+                onSelect(mood.grade);
+              }}
               accessibilityRole="button"
               accessibilityLabel={`Mood ${mood.grade}, ${mood.label}`}
               accessibilityHint={isSelected ? 'Selected' : 'Select mood'}
@@ -55,7 +59,7 @@ export function MoodPicker({
               >
                 {mood.grade}
               </Text>
-            </TouchableOpacity>
+            </Touchable>
           );
         })}
       </View>
@@ -75,15 +79,17 @@ export function MoodPicker({
           const isSelected = selectedMood === mood.grade;
           
           return (
-            <TouchableOpacity
+            <Touchable
               key={mood.grade}
               style={[
                 styles.moodButton,
                 isSelected ? styles.moodButtonSelected : null,
                 isSelected ? { borderColor: mood.color, backgroundColor: colors.moodBackground[mood.grade] } : null,
               ]}
-              onPress={() => onSelect(mood.grade)}
-              activeOpacity={0.7}
+              onPress={() => {
+                haptics.select();
+                onSelect(mood.grade);
+              }}
               accessibilityRole="button"
               accessibilityLabel={`Mood ${mood.grade}, ${mood.label}`}
               accessibilityHint={isSelected ? 'Selected' : 'Select mood'}
@@ -95,7 +101,7 @@ export function MoodPicker({
               <Text style={styles.label} allowFontScaling>
                 {mood.label}
               </Text>
-            </TouchableOpacity>
+            </Touchable>
           );
         })}
       </View>

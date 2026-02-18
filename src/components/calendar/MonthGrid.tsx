@@ -10,13 +10,15 @@
  */
 
 import React, { useEffect, useMemo } from 'react';
-import { View, Text, StyleSheet, Pressable } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
 import { MoodEntry } from '../../types';
 import { getMonthMatrix } from '../../utils';
 import { colors } from '../../theme';
 import { getMonthRenderModel } from './monthModel';
 import type { CalendarMoodStyle as CalendarMoodStyle2 } from './monthModel';
 import { perfProbe } from '../../perf';
+import { Touchable } from '../../ui/Touchable';
+import { formatDayCellA11yLabel } from '../../system/accessibility';
 
 export type CalendarMoodStyle = CalendarMoodStyle2;
 
@@ -202,20 +204,20 @@ const DayCell = React.memo(
     }
 
     return (
-      <Pressable
+      <Touchable
         onPress={onPress}
         accessibilityRole="button"
         accessibilityLabel={a11yLabel}
         accessibilityState={isSelected ? { selected: true } : undefined}
+        scaleTo={reduceMotion ? 1 : 0.99}
         style={({ pressed }) => [
           styles.cell,
           shared.cellSizeStyle,
           pressed ? styles.pressedOpacity : null,
-          !reduceMotion && pressed && variant === 'full' ? styles.pressedFull : null,
         ]}
       >
         {content}
-      </Pressable>
+      </Touchable>
     );
   },
   (prev, next) => {
@@ -321,11 +323,18 @@ export const MonthGrid = React.memo(function MonthGrid({
             const isSelected = model.selectedDay === day;
             const isToday = model.todayDay === day;
 
-            // iOS-like label without Date allocations.
-            // Keep it cheap: avoid arrays/joins in the hot cell loop.
-            let a11yLabel = `${model.monthName} ${day}, ${year}`;
-            if (entry?.mood) a11yLabel += `. Mood: ${entry.mood}`;
-            if (model.hasNoteByDay[day]) a11yLabel += '. Has note';
+            // Only compute VoiceOver labels when the day is actually pressable.
+            // Mini grids do not mount Pressables, so this avoids wasted work during year paging.
+            const a11yLabel = model.pressByDay
+              ? formatDayCellA11yLabel({
+                  weekdayIndex0: model.weekdayByDay[day] ?? 0,
+                  monthName: model.monthName,
+                  day,
+                  year,
+                  mood: entry?.mood ?? null,
+                  hasNote: model.hasNoteByDay[day],
+                })
+              : '';
 
             return (
               <DayCell
@@ -355,7 +364,6 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', justifyContent: 'space-between' },
   cell: { alignItems: 'center', justifyContent: 'center' },
   pressedOpacity: { opacity: 0.85 },
-  pressedFull: { transform: [{ scale: 0.985 }] },
   pill: { alignItems: 'center', justifyContent: 'center' },
   selectedRing: { borderWidth: 2, borderColor: colors.system.blue },
   dayText: { textAlign: 'center' },

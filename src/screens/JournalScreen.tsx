@@ -8,7 +8,6 @@ import {
   View,
   Text,
   FlatList,
-  TouchableOpacity,
   StyleSheet,
   Alert,
 } from 'react-native';
@@ -27,6 +26,9 @@ import { logger } from '../security';
 import { PerfProfiler, usePerfScreen } from '../perf';
 import { colors, spacing, borderRadius, typography } from '../theme';
 import { JournalEditModal } from './journal/JournalEditModal';
+import { Touchable } from '../ui/Touchable';
+import { interactionQueue } from '../system/interactionQueue';
+import { haptics } from '../system/haptics';
 
 /**
  * PERF experiment toggle (small + reversible).
@@ -72,6 +74,7 @@ export default function JournalScreen() {
   );
 
   const handleTapEntry = useCallback((entry: MoodEntry) => {
+    haptics.select();
     setEditingEntry(entry);
     setEditMood(entry.mood);
     setEditNote(entry.note);
@@ -115,9 +118,11 @@ export default function JournalScreen() {
         updatedAt: Date.now(),
       });
 
+      haptics.success();
       setEditingEntry(null);
       reloadJournalEntries();
     } catch {
+      haptics.error();
       logger.warn('journal.edit.save.failed', { dateKey: editingEntry.date });
       Alert.alert('Error', 'Failed to save. Please try again.');
     }
@@ -125,25 +130,44 @@ export default function JournalScreen() {
 
   const keyExtractor = useCallback((item: MoodEntry) => item.date, []);
 
-  const renderEntry = useCallback(({ item }: { item: MoodEntry }) => {
-    return (
-      <TouchableOpacity
-        style={styles.row}
-        onPress={() => handleTapEntry(item)}
-        onLongPress={() => handleLongPressEntry(item)}
-        activeOpacity={0.7}
-      >
-        <View style={styles.rowLeft}>
-          <Text style={styles.rowTitle}>{getRelativeDayLabel(item.date)}</Text>
-          <Text style={styles.rowSubtitle} numberOfLines={1}>
-            {item.note || 'No note'}
-          </Text>
-        </View>
+  const JournalRow = useMemo(() => {
+    return React.memo(function Row(props: {
+      entry: MoodEntry;
+      onTap: (e: MoodEntry) => void;
+      onLongPress: (e: MoodEntry) => void;
+    }) {
+      const { entry, onTap, onLongPress } = props;
+      const handlePress = useCallback(() => onTap(entry), [entry, onTap]);
+      const handleLong = useCallback(() => onLongPress(entry), [entry, onLongPress]);
+      return (
+        <Touchable
+          style={styles.row}
+          onPress={handlePress}
+          onLongPress={handleLong}
+          accessibilityRole="button"
+          accessibilityLabel={`${getRelativeDayLabel(entry.date)} entry`}
+        >
+          <View style={styles.rowLeft}>
+            <Text style={styles.rowTitle} allowFontScaling>
+              {getRelativeDayLabel(entry.date)}
+            </Text>
+            <Text style={styles.rowSubtitle} allowFontScaling numberOfLines={1}>
+              {entry.note || 'No note'}
+            </Text>
+          </View>
 
-        <MoodBadge grade={item.mood} size="sm" />
-      </TouchableOpacity>
-    );
-  }, [handleLongPressEntry, handleTapEntry]);
+          <MoodBadge grade={entry.mood} size="sm" />
+        </Touchable>
+      );
+    });
+  }, []);
+
+  const renderEntry = useCallback(
+    ({ item }: { item: MoodEntry }) => {
+      return <JournalRow entry={item} onTap={handleTapEntry} onLongPress={handleLongPressEntry} />;
+    },
+    [JournalRow, handleLongPressEntry, handleTapEntry]
+  );
 
   const renderEmptyState = useCallback(() => {
     return (
@@ -161,6 +185,25 @@ export default function JournalScreen() {
     () => [styles.listContent, entries.length === 0 && styles.emptyContainer],
     [entries.length]
   );
+
+  const onScrollBeginDrag = useCallback(() => {
+    interactionQueue.setUserScrolling(true);
+    interactionQueue.setMomentum(false);
+  }, []);
+
+  const onScrollEndDrag = useCallback(() => {
+    interactionQueue.setUserScrolling(false);
+  }, []);
+
+  const onMomentumScrollBegin = useCallback(() => {
+    interactionQueue.setUserScrolling(true);
+    interactionQueue.setMomentum(true);
+  }, []);
+
+  const onMomentumScrollEnd = useCallback(() => {
+    interactionQueue.setMomentum(false);
+    interactionQueue.setUserScrolling(false);
+  }, []);
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -183,6 +226,11 @@ export default function JournalScreen() {
             contentContainerStyle={listContentStyle as any}
             showsVerticalScrollIndicator={false}
             removeClippedSubviews
+            onScrollBeginDrag={onScrollBeginDrag}
+            onScrollEndDrag={onScrollEndDrag}
+            onMomentumScrollBegin={onMomentumScrollBegin}
+            onMomentumScrollEnd={onMomentumScrollEnd}
+            keyboardShouldPersistTaps="handled"
           />
         ) : (
           <FlatList
@@ -197,6 +245,11 @@ export default function JournalScreen() {
             windowSize={7}
             maxToRenderPerBatch={12}
             updateCellsBatchingPeriod={50}
+            onScrollBeginDrag={onScrollBeginDrag}
+            onScrollEndDrag={onScrollEndDrag}
+            onMomentumScrollBegin={onMomentumScrollBegin}
+            onMomentumScrollEnd={onMomentumScrollEnd}
+            keyboardShouldPersistTaps="handled"
           />
         )}
       </PerfProfiler>

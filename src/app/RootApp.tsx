@@ -20,8 +20,14 @@ import { RootNavigator } from '../navigation';
 import { seedDemoEntriesIfEmpty, warmSessionStore, logSessionStoreDiagnostics } from '../storage';
 import { logger } from '../security';
 import { perfNavigation, perfProbe } from '../perf';
+import { installAccessibilityObservers } from '../system/accessibility';
 
 export function RootApp() {
+  useEffect(() => {
+    // Install once; no UI changes.
+    installAccessibilityObservers();
+  }, []);
+
   useEffect(() => {
     if (typeof __DEV__ === 'undefined' || !__DEV__) return;
     // Dev-only debug harness (no UI changes). Trigger from Metro console:

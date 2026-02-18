@@ -13,7 +13,6 @@ import {
   ScrollView,
   KeyboardAvoidingView,
   Platform,
-  TouchableOpacity,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
@@ -22,6 +21,8 @@ import { ScreenHeader, MoodPicker } from '../components';
 import { getToday, formatDateForDisplay } from '../utils';
 import { colors, spacing, borderRadius, typography } from '../theme';
 import { usePerfScreen } from '../perf';
+import { Touchable } from '../ui/Touchable';
+import { haptics } from '../system/haptics';
 
 export default function TodayScreen() {
   usePerfScreen('Today');
@@ -40,10 +41,12 @@ export default function TodayScreen() {
   } = useMoodEntry({
     date: today,
     onSaveSuccess: () => {
+      haptics.success();
       setSaveMessage('✓ Saved');
       setTimeout(() => setSaveMessage(''), 2000);
     },
     onSaveError: () => {
+      haptics.error();
       Alert.alert('Error', 'Failed to save. Please try again.');
     },
   });
@@ -80,17 +83,18 @@ export default function TodayScreen() {
           <View style={styles.sheet}>
             <View style={styles.sheetHeader}>
               <Text style={styles.sheetTitle}>{formatDateForDisplay(today)}</Text>
-              <TouchableOpacity
+              <Touchable
                 onPress={handleSave}
                 disabled={!mood || isSaving}
-                activeOpacity={0.7}
                 accessibilityRole="button"
                 accessibilityLabel="Save"
+                hitSlop={{ top: 10, left: 10, right: 10, bottom: 10 }}
+                style={({ pressed }) => [pressed ? styles.pressedOpacity : null]}
               >
                 <Text style={[styles.sheetSave, (!mood || isSaving) && styles.sheetSaveDisabled]}>
                   {isSaving ? 'Saving…' : 'Save'}
                 </Text>
-              </TouchableOpacity>
+              </Touchable>
             </View>
 
             <View style={styles.sheetContent}>
@@ -161,6 +165,7 @@ const styles = StyleSheet.create({
   sheetSaveDisabled: {
     color: colors.system.secondaryLabel,
   },
+  pressedOpacity: { opacity: 0.7 },
   sheetContent: {
     padding: spacing[4],
   },
