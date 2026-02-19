@@ -3,8 +3,8 @@
  * @module navigation/FloatingTabBar
  */
 
-import React from 'react';
-import { View, StyleSheet } from 'react-native';
+import React, { useMemo } from 'react';
+import { View, StyleSheet, useWindowDimensions } from 'react-native';
 import { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { colors, spacing, borderRadius, sizing } from '../theme';
@@ -18,10 +18,21 @@ const TAB_ICONS: Record<string, any> = {
 };
 
 export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
+  const { width: windowWidth } = useWindowDimensions();
+  // Wider capsule so the 3 tabs don't feel squished (explicit user request).
+  // Keep it bounded so it still feels iOS-like on small screens.
+  const tabBarWidthStyle = useMemo(() => {
+    const maxW = 340;
+    const minW = 272;
+    const sideGutter = spacing[6]; // visual gutter from screen edges
+    const w = Math.min(maxW, Math.max(minW, windowWidth - sideGutter * 2));
+    return { width: w };
+  }, [windowWidth]);
+
   return (
     <View style={styles.container}>
       <LiquidGlass
-        style={styles.tabBar}
+        style={[styles.tabBar, tabBarWidthStyle]}
         radius={borderRadius.full}
         intensity={60}
         shadow
@@ -54,12 +65,14 @@ export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
               style={({ pressed }) => [styles.tab, pressed ? styles.pressedOpacity : null]}
               hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
             >
-              <Ionicons
-                name={TAB_ICONS[route.name]}
-                size={sizing.iconSm}
-                color={isFocused ? colors.system.blue : colors.system.secondaryLabel}
-              />
-              <View style={[styles.indicator, isFocused && styles.indicatorActive]} />
+              <View style={styles.iconStack} pointerEvents="none">
+                <Ionicons
+                  name={TAB_ICONS[route.name]}
+                  size={sizing.iconSm}
+                  color={isFocused ? colors.system.blue : colors.system.secondaryLabel}
+                />
+                <View style={[styles.indicator, isFocused && styles.indicatorActive]} />
+              </View>
             </Touchable>
           );
         })}
@@ -79,13 +92,15 @@ const styles = StyleSheet.create({
   tabBar: {
     flexDirection: 'row',
     // iOS Calendar-like capsule
-    height: 52,
-    paddingHorizontal: spacing[2],
+    height: 46,
+    paddingHorizontal: spacing[3],
     paddingVertical: 0,
     alignItems: 'center',
+    justifyContent: 'space-between',
     // LiquidGlass handles background/border/shadow. Keep layout-only props here.
   },
   tab: {
+    flex: 1,
     flexDirection: 'column',
     alignItems: 'center',
     justifyContent: 'center',
@@ -94,11 +109,20 @@ const styles = StyleSheet.create({
     borderRadius: borderRadius.full,
   },
   pressedOpacity: { opacity: 0.7 },
+  iconStack: {
+    // Fixed height + absolute dot guarantees perfect centering under the icon.
+    position: 'relative',
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: 28,
+    width: 28,
+  },
   indicator: {
+    position: 'absolute',
+    bottom: 0,
     width: 3,
     height: 3,
     borderRadius: 1.5,
-    marginTop: spacing[1],
     backgroundColor: 'transparent',
   },
   indicatorActive: {

@@ -769,11 +769,6 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.system.background,
   },
-  todayButtonText: {
-    ...typography.subhead,
-    color: colors.system.blue,
-    fontWeight: '600',
-  },
   topBar: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -785,11 +780,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing[2],
-  },
-  yearTitle: {
-    ...typography.title2,
-    color: colors.system.label,
-    fontWeight: '700',
   },
   largeMonthTitle: {
     ...typography.largeTitle,
@@ -825,122 +815,6 @@ const styles = StyleSheet.create({
   },
   calendarCardMatchScreen: {
     backgroundColor: colors.system.background,
-  },
-  weekdayRow: {
-    flexDirection: 'row',
-    marginBottom: spacing[3],
-  },
-  weekdayRowMini: {
-    marginBottom: 1,
-  },
-  weekdayCell: {
-    flex: 1,
-    alignItems: 'center',
-    paddingVertical: spacing[2],
-  },
-  weekdayCellMini: {
-    paddingVertical: 1,
-  },
-  weekdayText: {
-    ...typography.caption2,
-    color: colors.system.secondaryLabel,
-    fontWeight: '600',
-  },
-  weekdayTextMini: {
-    fontSize: 9,
-    lineHeight: 10,
-  },
-  calendarGrid: {
-    flexDirection: 'column',
-  },
-  calendarGridMini: {
-    marginTop: 2,
-  },
-  weekRow: {
-    flexDirection: 'row',
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: 'rgba(60, 60, 67, 0.08)', // subtle iOS-like separator
-  },
-  weekCol: {
-    flex: 1,
-  },
-  dayCell: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 1,
-    aspectRatio: 1,
-  },
-  dayCellMini: {
-    padding: 0.5,
-  },
-  dayContent: {
-    width: '100%',
-    height: '100%',
-    borderRadius: borderRadius.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.system.secondaryBackground,
-  },
-  dayContentMini: {
-    borderRadius: 6,
-  },
-  dayText: {
-    ...typography.body,
-    color: colors.system.label,
-  },
-  dayTextMini: {
-    fontSize: 9,
-    lineHeight: 11,
-  },
-  dayTextOnFill: {
-    color: '#fff',
-    fontWeight: '700',
-  },
-  todayCell: {
-    borderWidth: 2,
-    borderColor: colors.system.blue,
-  },
-  selectedCell: {
-    borderWidth: 2,
-    borderColor: colors.system.blue,
-  },
-  dayTapArea: {
-    width: '100%',
-    height: '100%',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  todayText: {
-    color: colors.system.blue,
-    fontWeight: '700',
-  },
-  moodDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    marginTop: 4,
-  },
-  moodDotMini: {
-    width: 4,
-    height: 4,
-    borderRadius: 2,
-    marginTop: 2,
-  },
-  // Year view styles moved to `CalendarView`.
-  miniMonthCard: {
-    // iOS year view: no cards, just months floating on the background.
-    backgroundColor: 'transparent',
-    borderRadius: 0,
-    paddingVertical: spacing[1],
-    paddingHorizontal: 0,
-    borderWidth: 0,
-    marginBottom: spacing[3],
-  },
-  miniMonthTitle: {
-    ...typography.caption2,
-    color: colors.system.secondaryLabel,
-    fontWeight: '700',
-    marginBottom: 2,
   },
 
   // Modal
