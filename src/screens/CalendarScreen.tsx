@@ -8,13 +8,13 @@ import {
   View,
   Text,
   StyleSheet,
-  useWindowDimensions,
   Modal,
   TextInput,
   Alert,
   AccessibilityInfo,
   AppState,
   InteractionManager,
+  type LayoutChangeEvent,
 } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -27,16 +27,17 @@ import Animated, {
   useSharedValue,
 } from 'react-native-reanimated';
 import { CalendarMoodStyle, MoodEntry, MoodGrade } from '../types';
-import { CapsuleButton, MonthGrid, MoodPicker, WeekdayRow } from '../components';
-import { colors, spacing, borderRadius, typography } from '../theme';
+import { CapsuleButton, MonthGrid, MoodEntryFields, SheetGrabber, WeekdayRow } from '../components';
+import { useAppTheme, getCalendarTextLimits, getMonthTimelineSpacing, spacing, typography } from '../theme';
 import { createEntry, getAllEntriesWithMonthIndex, getEntry, getLastAllEntriesSource, getSettings, upsertEntry } from '../storage';
-import { buildMonthWindow, MonthItem, monthKey as monthKey2, formatDateToISO, isLatestRequest, nextRequestId } from '../utils';
+import { buildMonthWindow, MonthItem, monthKey as monthKey2, formatDateToISO, formatDateForDisplay, isLatestRequest, nextRequestId } from '../utils';
 import { logger } from '../security';
 import { PerfProfiler, usePerfScreen, perfProbe } from '../perf';
 import { useTodayKey } from '../hooks/useTodayKey';
 import { haptics } from '../system/haptics';
 import { interactionQueue } from '../system/interactionQueue';
 import { Touchable } from '../ui/Touchable';
+import { buildFullGridMetrics } from '../components/calendar/fullGridLayout';
 
 const MONTHS = [
   'January', 'February', 'March', 'April', 'May', 'June',
@@ -58,7 +59,12 @@ const WINDOW_NEAR_EDGE = 8; // threshold (items) considered "near edge" for exte
 export default function CalendarScreen() {
   usePerfScreen('CalendarScreen', { listIds: ['list.calendarMonthTimeline'] });
 
-  const { width: windowWidth } = useWindowDimensions();
+  const appTheme = useAppTheme();
+  const sys = appTheme.system;
+  const windowWidth = appTheme.windowWidth;
+  const moodGradeColorStyle = appTheme.moodGradeColorStyle;
+  const isDark = appTheme.isDark;
+
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
   const isMountedRef = useRef(true);
@@ -102,7 +108,6 @@ export default function CalendarScreen() {
   // Performance-only revision counter to invalidate month-level caches without hashing/scanning.
   const entriesRevisionRef = useRef(0);
   const [calendarMoodStyle, setCalendarMoodStyle] = useState<CalendarMoodStyle>('dot');
-  const [monthCardMatchesScreenBackground, setMonthCardMatchesScreenBackground] = useState(false);
   const [selectedDate, setSelectedDate] = useState<string>(() => initialSelectedDateRef.current as string);
   const [isEditOpen, setIsEditOpen] = useState(false);
   const noteInputRef = useRef<TextInput | null>(null);
@@ -112,6 +117,7 @@ export default function CalendarScreen() {
   const [isSaving, setIsSaving] = useState(false);
   const isSavingRef = useRef(false);
   const [reduceMotion, setReduceMotion] = useState(false);
+  const rm = reduceMotion || appTheme.a11y.reduceMotion;
   const getEntryReqIdRef = useRef(0);
   const { todayKey } = useTodayKey();
   const [visibleMonth, setVisibleMonth] = useState<{ y: number; m: number }>(() => {
@@ -121,6 +127,8 @@ export default function CalendarScreen() {
 
   const [listReady, setListReady] = useState(false);
   const listReadyRef = useRef(false);
+  /** Bumped on each calendar focus so FlashList recycled rows refresh (selection / today rings). */
+  const [calendarListEpoch, setCalendarListEpoch] = useState(0);
   const recenterIndexRef = useRef<number | null>(null);
 
   const monthListRef = useRef<any>(null);
@@ -182,9 +190,6 @@ export default function CalendarScreen() {
     if (!isFocusedRef.current) return;
     if (reqId !== loadSettingsReqIdRef.current) return;
     setCalendarMoodStyle((prev) => (prev === settings.calendarMoodStyle ? prev : settings.calendarMoodStyle));
-    setMonthCardMatchesScreenBackground((prev) =>
-      prev === !!settings.monthCardMatchesScreenBackground ? prev : !!settings.monthCardMatchesScreenBackground
-    );
     const end = typeof p?.now === 'function' ? p.now() : Date.now();
     logger.perf('calendar.loadSettings', {
       phase: 'warm',
@@ -199,6 +204,7 @@ export default function CalendarScreen() {
       if (perfProbe.enabled) perfProbe.setCulpritPhase('CalendarScreen.focus');
       isFocusedRef.current = true;
       perfProbe.enabled && perfProbe.screenSessionStart('CalendarScreen');
+      setCalendarListEpoch((x) => x + 1);
       // New "session" for perf reporting on each focus.
       didFlushPerfReportRef.current = false;
       loadEntries();
@@ -326,7 +332,7 @@ export default function CalendarScreen() {
   const largeTitleStyle = useAnimatedStyle(() => {
     const t = Math.min(Math.max(scrollY.value / COLLAPSE_RANGE, 0), 1);
     const opacity = 1 - t;
-    if (reduceMotion) return { opacity };
+    if (rm) return { opacity };
     return {
       opacity,
       transform: [
@@ -334,7 +340,7 @@ export default function CalendarScreen() {
         { scale: interpolate(t, [0, 1], [1, TITLE_SCALE_MIN], Extrapolate.CLAMP) },
       ],
     };
-  }, [reduceMotion]);
+  }, [rm]);
 
   // ----------------------------------------------------------------------------
   // Month timeline (bounded window + FlashList)
@@ -375,11 +381,11 @@ export default function CalendarScreen() {
         reason,
       });
       // Phase 3: haptics only for real scroll-end commits (not programmatic jumps).
-      if (reason === 'scrollEnd' && !reduceMotion) {
+      if (reason === 'scrollEnd' && !rm) {
         haptics.select();
       }
     },
-    [reduceMotion]
+    [rm]
   );
 
   // Phase 3: no throttled commits. We commit at scroll end only.
@@ -564,22 +570,150 @@ export default function CalendarScreen() {
     flushPendingMonth();
   }, [flushPendingMonth]);
 
+  const calLimits = useMemo(
+    () => getCalendarTextLimits(appTheme.fontScale, appTheme.windowWidth),
+    [appTheme.fontScale, appTheme.windowWidth]
+  );
+  const monthPad = useMemo(
+    () => getMonthTimelineSpacing(appTheme.fontScale, appTheme.windowWidth),
+    [appTheme.fontScale, appTheme.windowWidth]
+  );
+
+  const [measuredCalendarInnerW, setMeasuredCalendarInnerW] = useState(0);
+  const estimatedCalendarInnerW = useMemo(
+    () =>
+      Math.max(0, appTheme.windowWidth - 2 * spacing[4] - 2 * monthPad.monthCardPadding),
+    [appTheme.windowWidth, monthPad.monthCardPadding]
+  );
+  const effectiveCalendarInnerW =
+    measuredCalendarInnerW > 0 ? measuredCalendarInnerW : estimatedCalendarInnerW;
+  const fullGridMetrics = useMemo(
+    () => buildFullGridMetrics(effectiveCalendarInnerW),
+    [effectiveCalendarInnerW]
+  );
+  const onCalendarCardInnerLayout = useCallback(
+    (e: LayoutChangeEvent) => {
+      const outer = e.nativeEvent.layout.width;
+      if (outer <= 0) return;
+      const pad = monthPad.monthCardPadding;
+      const inner = Math.max(0, outer - 2 * pad);
+      setMeasuredCalendarInnerW((prev) => (Math.abs(prev - inner) > 0.5 ? inner : prev));
+    },
+    [monthPad.monthCardPadding]
+  );
+
+  const monthListSurfaceStyle = useMemo(
+    () => ({ flex: 1 as const, backgroundColor: sys.secondaryBackground }),
+    [sys.secondaryBackground]
+  );
+
+  const styles = useMemo(
+    () =>
+      StyleSheet.create({
+        container: {
+          flex: 1,
+          backgroundColor: sys.secondaryBackground,
+        },
+        topBar: {
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          paddingHorizontal: spacing[4],
+          paddingTop: spacing[2],
+        },
+        topBarRight: {
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: spacing[2],
+        },
+        largeMonthTitle: {
+          ...typography.largeTitle,
+          color: sys.label,
+          paddingHorizontal: spacing[4],
+          paddingTop: spacing[2],
+          paddingBottom: spacing[3],
+        },
+        largeTitleContainer: {
+          height: 56,
+          justifyContent: 'flex-end',
+        },
+        monthTimeline: {
+          paddingBottom: 96,
+        },
+        monthSection: {
+          paddingHorizontal: spacing[4],
+        },
+        monthSectionTitle: {
+          ...typography.title1,
+          color: sys.label,
+          marginBottom: spacing[2],
+        },
+        calendarCard: {
+          backgroundColor: sys.secondaryBackground,
+          borderRadius: 18,
+          borderWidth: StyleSheet.hairlineWidth,
+          borderColor: sys.separator,
+        },
+        modalContainer: {
+          flex: 1,
+          backgroundColor: sys.background,
+        },
+        modalHeader: {
+          flexDirection: 'row',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          paddingHorizontal: spacing[4],
+          paddingVertical: spacing[4],
+          borderBottomWidth: StyleSheet.hairlineWidth,
+          borderBottomColor: sys.separator,
+          backgroundColor: sys.secondaryBackground,
+        },
+        pressedOpacity: { opacity: 0.7 },
+        modalCancel: {
+          ...typography.body,
+          color: sys.secondaryLabel,
+        },
+        modalTitle: {
+          ...typography.headline,
+          color: sys.label,
+        },
+        modalSave: {
+          ...typography.body,
+          color: sys.blue,
+          fontWeight: '600',
+        },
+        modalContent: {
+          padding: spacing[4],
+        },
+      }),
+    [sys]
+  );
+
   const renderMonthItem = useCallback(
     ({ item }: { item: MonthItem }) => {
       const monthEntries = entriesByMonthKey[item.key] ?? EMPTY_MONTH_ENTRIES;
       const selectedForThisMonth = selectedDate.startsWith(item.key) ? selectedDate : undefined;
       return (
-        <View style={styles.monthSection}>
-          <Text style={styles.monthSectionTitle} allowFontScaling>
-            {MONTHS[item.m]} {item.y}
+        <View
+          style={[styles.monthSection, { paddingBottom: monthPad.monthSectionBottom }]}
+          accessibilityRole="none"
+        >
+          <Text
+            style={styles.monthSectionTitle}
+            allowFontScaling
+            maxFontSizeMultiplier={calLimits.monthSectionTitle}
+            accessibilityLabel={`${MONTHS[item.m]} ${item.y}`}
+          >
+            {MONTHS[item.m]}
           </Text>
           <View
             style={[
               styles.calendarCard,
-              monthCardMatchesScreenBackground ? styles.calendarCardMatchScreen : null,
+              { padding: monthPad.monthCardPadding },
             ]}
+            onLayout={onCalendarCardInnerLayout}
           >
-            <WeekdayRow variant="full" />
+            <WeekdayRow variant="full" fullGridLayout={fullGridMetrics} />
             <MonthGrid
               year={item.y}
               monthIndex0={item.m}
@@ -590,8 +724,11 @@ export default function CalendarScreen() {
               todayKey={todayKey}
               selectedDate={selectedForThisMonth}
               onPressDate={handlePressDate}
-              reduceMotion={reduceMotion}
+              reduceMotion={rm}
               onHapticSelect={handleHapticSelect}
+              fullGridLayout={fullGridMetrics}
+              moodGradeColorStyle={moodGradeColorStyle}
+              isDark={isDark}
             />
           </View>
         </View>
@@ -599,14 +736,40 @@ export default function CalendarScreen() {
     },
     [
       calendarMoodStyle,
+      calLimits.monthSectionTitle,
       entriesByMonthKey,
       handleHapticSelect,
       handlePressDate,
-      monthCardMatchesScreenBackground,
-      reduceMotion,
+      isDark,
+      monthPad.monthCardPadding,
+      monthPad.monthSectionBottom,
+      moodGradeColorStyle,
+      rm,
       selectedDate,
+      fullGridMetrics,
+      onCalendarCardInnerLayout,
+      styles,
       todayKey,
     ]
+  );
+
+  /**
+   * FlashList/virtualized lists do not automatically rerender cells when only external state
+   * (selection, today, entries) changes — recycled rows can show stale rings. extraData forces updates.
+   */
+  const monthListExtraData = useMemo(
+    () => ({
+      selectedDate,
+      todayKey,
+      calendarMoodStyle,
+      entriesByMonthKey,
+      fullGridLayout: fullGridMetrics,
+      entriesRevision: entriesRevisionRef.current,
+      calendarListEpoch,
+      moodGradeColorStyle,
+      isDark,
+    }),
+    [selectedDate, todayKey, calendarMoodStyle, entriesByMonthKey, fullGridMetrics, calendarListEpoch, moodGradeColorStyle, isDark]
   );
 
   return (
@@ -616,9 +779,9 @@ export default function CalendarScreen() {
         <CapsuleButton
           kind="back"
           iconName="chevron-back"
-          iconColor={colors.system.blue}
+          iconColor={sys.blue}
           label={String(visibleMonth.y)}
-          labelColor={colors.system.blue}
+          labelColor={sys.blue}
           onPress={() => navigation.navigate('CalendarView', { year: visibleMonth.y })}
           accessibilityLabel="Back to year view"
         />
@@ -627,7 +790,7 @@ export default function CalendarScreen() {
           <CapsuleButton
             kind="icon"
             iconName="settings-outline"
-            iconColor={colors.system.label}
+            iconColor={sys.label}
             onPress={() => navigation.navigate('Settings')}
             accessibilityLabel="Settings"
           />
@@ -637,7 +800,11 @@ export default function CalendarScreen() {
       {/* Large month title container (fixed height; prevents layout jump) */}
       <View style={styles.largeTitleContainer}>
         <Animated.View style={largeTitleStyle}>
-          <Text style={styles.largeMonthTitle} allowFontScaling>
+          <Text
+            style={styles.largeMonthTitle}
+            allowFontScaling
+            maxFontSizeMultiplier={calLimits.monthSectionTitle}
+          >
             {MONTHS[visibleMonth.m]}
           </Text>
         </Animated.View>
@@ -649,6 +816,7 @@ export default function CalendarScreen() {
           // Key remount keeps initialScrollIndex deterministic when we reset the anchor (Today).
           key={timelineKey}
           ref={monthListRef}
+          style={monthListSurfaceStyle}
           data={monthsData}
           keyExtractor={keyExtractor}
           // FlashList v2 note: `estimatedItemSize` is deprecated/removed.
@@ -676,12 +844,14 @@ export default function CalendarScreen() {
           viewabilityConfig={viewabilityConfig}
           onViewableItemsChanged={onViewableItemsChanged as any}
           renderItem={renderMonthItem as any}
+          extraData={monthListExtraData}
         />
       </PerfProfiler>
 
       {/* Quick edit modal (tap a day or +) */}
       <Modal visible={isEditOpen} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setIsEditOpen(false)}>
-        <SafeAreaView style={styles.modalContainer} edges={['top']}>
+        <SafeAreaView style={styles.modalContainer} edges={['top', 'bottom']}>
+          <SheetGrabber />
           <View style={styles.modalHeader}>
             <Touchable
               onPress={() => setIsEditOpen(false)}
@@ -692,7 +862,9 @@ export default function CalendarScreen() {
             >
               <Text style={styles.modalCancel}>Cancel</Text>
             </Touchable>
-            <Text style={styles.modalTitle}>{selectedDate}</Text>
+            <Text style={styles.modalTitle} allowFontScaling numberOfLines={1}>
+              {formatDateForDisplay(selectedDate)}
+            </Text>
             <Touchable
               onPress={async () => {
                 const saveStartMs = perfProbe.enabled ? perfProbe.nowMs() : 0;
@@ -714,13 +886,13 @@ export default function CalendarScreen() {
                     entriesRevisionRef.current += 1;
                     return { ...prev, [mk]: { ...monthMap, [selectedDate]: next } };
                   });
-                  if (!reduceMotion) haptics.success();
+                  if (!rm) haptics.success();
                   isMountedRef.current && setIsEditOpen(false);
                   if (perfProbe.enabled) {
                     perfProbe.measureSince('calendar.modalSave.success', saveStartMs, { phase: 'warm', source: 'ui' });
                   }
                 } catch {
-                  if (!reduceMotion) haptics.error();
+                  if (!rm) haptics.error();
                   logger.warn('calendar.save.failed', { dateKey: selectedDate });
                   Alert.alert('Error', 'Failed to save. Please try again.');
                   if (perfProbe.enabled) {
@@ -743,19 +915,13 @@ export default function CalendarScreen() {
           </View>
 
           <View style={styles.modalContent}>
-            <Text style={styles.modalSectionLabel}>Mood</Text>
-            <MoodPicker selectedMood={editMood} onSelect={setEditMood} compact />
-
-            <Text style={[styles.modalSectionLabel, { marginTop: spacing[6] }]}>Note</Text>
-            <TextInput
-              ref={noteInputRef}
-              style={styles.modalNoteInput}
-              placeholder="Add a short note…"
-              placeholderTextColor={colors.system.tertiaryLabel}
-              value={editNote}
-              onChangeText={setEditNote}
-              maxLength={200}
-              multiline
+            <MoodEntryFields
+              selectedMood={editMood}
+              onSelectMood={setEditMood}
+              note={editNote}
+              onChangeNote={setEditNote}
+              moodPickerCompact
+              noteInputRef={noteInputRef}
             />
           </View>
         </SafeAreaView>
@@ -763,107 +929,3 @@ export default function CalendarScreen() {
     </SafeAreaView>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.system.background,
-  },
-  topBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing[4],
-    paddingTop: spacing[2],
-  },
-  topBarRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing[2],
-  },
-  largeMonthTitle: {
-    ...typography.largeTitle,
-    color: colors.system.label,
-    paddingHorizontal: spacing[4],
-    paddingTop: spacing[2],
-    paddingBottom: spacing[3],
-  },
-  largeTitleContainer: {
-    height: 56, // fixed height prevents layout jump while collapsing
-    justifyContent: 'flex-end',
-  },
-  monthTimeline: {
-    paddingBottom: 96, // space for floating nav
-  },
-  monthSection: {
-    paddingHorizontal: spacing[4],
-    paddingBottom: spacing[8], // more air between months (closer to iOS)
-  },
-  monthSectionTitle: {
-    ...typography.headline,
-    color: colors.system.label,
-    fontWeight: '800',
-    marginBottom: spacing[3],
-    letterSpacing: -0.2,
-  },
-  calendarCard: {
-    backgroundColor: colors.system.secondaryBackground,
-    borderRadius: 18,
-    padding: spacing[4],
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.system.separator,
-  },
-  calendarCardMatchScreen: {
-    backgroundColor: colors.system.background,
-  },
-
-  // Modal
-  modalContainer: {
-    flex: 1,
-    backgroundColor: colors.system.background,
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: spacing[4],
-    paddingVertical: spacing[4],
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.system.separator,
-    backgroundColor: colors.system.secondaryBackground,
-  },
-  pressedOpacity: { opacity: 0.7 },
-  modalCancel: {
-    ...typography.body,
-    color: colors.system.secondaryLabel,
-  },
-  modalTitle: {
-    ...typography.headline,
-    color: colors.system.label,
-  },
-  modalSave: {
-    ...typography.body,
-    color: colors.system.blue,
-    fontWeight: '600',
-  },
-  modalContent: {
-    padding: spacing[4],
-  },
-  modalSectionLabel: {
-    ...typography.footnote,
-    color: colors.system.secondaryLabel,
-    textTransform: 'uppercase',
-    marginBottom: spacing[2],
-  },
-  modalNoteInput: {
-    ...typography.body,
-    color: colors.system.label,
-    backgroundColor: colors.system.secondaryBackground,
-    borderRadius: borderRadius.lg,
-    padding: spacing[4],
-    minHeight: 120,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.system.separator,
-    textAlignVertical: 'top',
-  },
-});

@@ -6,13 +6,17 @@
 import React, { useMemo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { MoodGrade } from '../../types';
+import type { MoodGradeColorStyle } from '../../types/settings.types';
 import { getMoodConfig } from '../../utils';
-import { colors, spacing, borderRadius } from '../../theme';
+import { spacing, borderRadius, useAppTheme } from '../../theme';
+import { MoodGradeSurface } from './MoodGradeSurface';
 
 interface MoodBadgeProps {
   grade: MoodGrade;
   showLabel?: boolean;
   size?: 'sm' | 'md' | 'lg';
+  moodGradeColorStyle: MoodGradeColorStyle;
+  isDark: boolean;
 }
 
 const SIZES = {
@@ -21,74 +25,71 @@ const SIZES = {
   lg: { badge: 56, font: 20, labelFont: 14 },
 };
 
-/**
- * Presentational component used in hot lists (e.g., Journal).
- * Memoized to reduce rerenders when parent lists update.
- */
 export const MoodBadge = React.memo(function MoodBadge({
   grade,
   showLabel = false,
   size = 'md',
+  moodGradeColorStyle,
+  isDark,
 }: MoodBadgeProps) {
+  const { semantic } = useAppTheme();
   const config = getMoodConfig(grade);
   const sizeConfig = SIZES[size];
 
-  const badgeStyle = useMemo(
+  const styles = useMemo(
+    () =>
+      StyleSheet.create({
+        container: {
+          alignItems: 'center',
+        },
+        badge: {
+          borderRadius: borderRadius.md,
+          alignItems: 'center',
+          justifyContent: 'center',
+        },
+        grade: {
+          color: semantic.text.inverse,
+          fontWeight: '700',
+        },
+        label: {
+          color: semantic.text.secondary,
+          marginTop: spacing[1],
+        },
+      }),
+    [semantic.text.inverse, semantic.text.secondary]
+  );
+
+  const badgeBox = useMemo(
     () => ({
       width: sizeConfig.badge,
       height: sizeConfig.badge,
-      backgroundColor: config.color,
     }),
-    [config.color, sizeConfig.badge]
+    [sizeConfig.badge]
   );
 
-  const gradeTextStyle = useMemo(
-    () => ({ fontSize: sizeConfig.font }),
-    [sizeConfig.font]
-  );
+  const gradeTextStyle = useMemo(() => ({ fontSize: sizeConfig.font }), [sizeConfig.font]);
 
-  const labelTextStyle = useMemo(
-    () => ({ fontSize: sizeConfig.labelFont }),
-    [sizeConfig.labelFont]
-  );
+  const labelTextStyle = useMemo(() => ({ fontSize: sizeConfig.labelFont }), [sizeConfig.labelFont]);
 
   return (
     <View style={styles.container}>
-      <View
-        style={[
-          styles.badge,
-          badgeStyle,
-        ]}
+      <MoodGradeSurface
+        grade={grade}
+        moodGradeColorStyle={moodGradeColorStyle}
+        isDark={isDark}
+        variant="opaque"
+        style={[styles.badge, badgeBox]}
       >
-        <Text style={[styles.grade, gradeTextStyle]} allowFontScaling>
+        <Text style={[styles.grade, gradeTextStyle]} allowFontScaling maxFontSizeMultiplier={1.28}>
           {grade}
         </Text>
-      </View>
-      
-      {showLabel && (
-        <Text style={[styles.label, labelTextStyle]} allowFontScaling>
+      </MoodGradeSurface>
+
+      {showLabel ? (
+        <Text style={[styles.label, labelTextStyle]} allowFontScaling maxFontSizeMultiplier={1.34}>
           {config.label}
         </Text>
-      )}
+      ) : null}
     </View>
   );
-});
-
-const styles = StyleSheet.create({
-  container: {
-    alignItems: 'center',
-  },
-  badge: {
-    borderRadius: borderRadius.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  grade: {
-    color: colors.semantic.text.inverse,
-    fontWeight: '700',
-  },
-  label: {
-    color: colors.semantic.text.secondary,
-    marginTop: spacing[1],
-  },
 });

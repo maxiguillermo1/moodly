@@ -31,9 +31,9 @@ export function Touchable(props: Props): React.ReactElement {
 
   const springConfig = useMemo(
     () => ({
-      damping: 18,
-      stiffness: 260,
-      mass: 0.9,
+      damping: 19,
+      stiffness: 245,
+      mass: 0.88,
     }),
     []
   );

@@ -46,6 +46,25 @@ interface MoodEntry {
 - `note` is treated as **sensitive** data; do not log it
 - `createdAt <= updatedAt`
 
+### `AppSettings`
+
+```ts
+type CalendarMoodStyle = 'dot' | 'fill'
+type AppearancePreference = 'system' | 'light' | 'dark'
+type MoodGradeColorStyle = 'solid' | 'gradient'
+
+interface AppSettings {
+  appearance: AppearancePreference
+  calendarMoodStyle: CalendarMoodStyle
+  moodGradeColorStyle: MoodGradeColorStyle
+}
+```
+
+- **`appearance`**: drives **`AppThemeProvider`** resolution with the OS scheme when `system`.
+- **`calendarMoodStyle`**: full-color day fill vs dot under the day number in **`MonthGrid`**.
+- **`moodGradeColorStyle`**: **`solid`** uses **`mood`** only; **`gradient`** uses **`mood`**, **`moodGradientMid`**, and **`moodBloomAccent`** (**`#FFB7E5`** at 100%) per grade on a **135°** (`TL→BR`) `LinearGradient` — see `moodGradeBloom.ts` (meaning/order of grades unchanged).
+- Source of truth types: `src/types/settings.types.ts`.
+
 ## Validated vs raw vs derived layers
 
 - **Raw persisted**: untrusted JSON from AsyncStorage.

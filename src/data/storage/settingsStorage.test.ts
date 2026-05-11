@@ -16,9 +16,16 @@ describe('settingsStorage corrupt JSON handling', () => {
     await AsyncStorage.setItem(SETTINGS_KEY, '{not json');
     const res = await getSettings();
     expect(res.calendarMoodStyle).toBe('dot');
-    expect(res.monthCardMatchesScreenBackground).toBe(false);
+    expect(res.appearance).toBe('system');
+    expect(res.moodGradeColorStyle).toBe('solid');
     const after = await AsyncStorage.getItem(SETTINGS_KEY);
-    expect(after).toBe(JSON.stringify({ calendarMoodStyle: 'dot', monthCardMatchesScreenBackground: false }));
+    expect(after).toBe(
+      JSON.stringify({
+        appearance: 'system',
+        calendarMoodStyle: 'dot',
+        moodGradeColorStyle: 'solid',
+      })
+    );
   });
 });
 

@@ -5,6 +5,7 @@ Import logging from `src/security` (not `console.*`).
 Never log user-entered text (notes/entries/settings blobs).
 
 See:
+
 - Logging contract: `docs/logger.md`
 - Security checklist: `SECURITY_CHECKLIST.md`
-
+- Design system / safe areas: `docs/DESIGN_SYSTEM.md`

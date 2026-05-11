@@ -3,11 +3,120 @@
  * @module components/ui/GroupedList
  */
 
-import React, { ReactNode } from 'react';
+import React, { ReactNode, useMemo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { colors, spacing, borderRadius, typography } from '../../theme';
+import { spacing, borderRadius, typography, useAppTheme } from '../../theme';
 import { Touchable } from '../../ui/Touchable';
+
+const SYMBOL_WELL_SIZE = 29;
+const SYMBOL_WELL_RADIUS = 7;
+const SYMBOL_ICON_SIZE = 18;
+
+type IoniconName = React.ComponentProps<typeof Ionicons>['name'];
+
+export type GroupedRowSymbol = {
+  name: IoniconName;
+  wellColor: string;
+  iconColor?: string;
+};
+
+function useGroupedStyles() {
+  const { system: s } = useAppTheme();
+  return useMemo(
+    () =>
+      StyleSheet.create({
+        section: {
+          marginBottom: spacing[6],
+        },
+        sectionHeader: {
+          ...typography.footnote,
+          fontWeight: '600',
+          color: s.secondaryLabel,
+          textTransform: 'uppercase',
+          letterSpacing: 0.6,
+          paddingHorizontal: spacing[4],
+          paddingBottom: spacing[2],
+        },
+        sectionContent: {
+          backgroundColor: s.secondaryBackground,
+          borderRadius: borderRadius.lg,
+          marginHorizontal: spacing[4],
+          overflow: 'hidden',
+          borderWidth: StyleSheet.hairlineWidth,
+          borderColor: s.separator,
+        },
+        sectionFooter: {
+          ...typography.footnote,
+          color: s.secondaryLabel,
+          paddingHorizontal: spacing[4],
+          paddingTop: spacing[2],
+          lineHeight: 18,
+        },
+        symbolWell: {
+          width: SYMBOL_WELL_SIZE,
+          height: SYMBOL_WELL_SIZE,
+          borderRadius: SYMBOL_WELL_RADIUS,
+          alignItems: 'center',
+          justifyContent: 'center',
+          marginRight: spacing[3],
+        },
+        row: {
+          flexDirection: 'row',
+          alignItems: 'center',
+          paddingVertical: spacing[3],
+          paddingHorizontal: spacing[4],
+          backgroundColor: s.secondaryBackground,
+          minHeight: 44,
+        },
+        rowPressed: {
+          backgroundColor: s.fill,
+        },
+        rowFirst: {
+          borderTopLeftRadius: borderRadius.lg,
+          borderTopRightRadius: borderRadius.lg,
+        },
+        rowLast: {
+          borderBottomLeftRadius: borderRadius.lg,
+          borderBottomRightRadius: borderRadius.lg,
+        },
+        separator: {
+          position: 'absolute',
+          right: 0,
+          bottom: 0,
+          height: StyleSheet.hairlineWidth,
+          backgroundColor: s.separator,
+        },
+        rowIcon: {
+          fontSize: 22,
+          marginRight: spacing[3],
+        },
+        rowLabel: {
+          ...typography.body,
+          color: s.label,
+          flex: 1,
+        },
+        rowLabelDestructive: {
+          color: s.red,
+        },
+        rowRight: {
+          flexDirection: 'row',
+          alignItems: 'center',
+          flexShrink: 0,
+        },
+        rowValue: {
+          ...typography.body,
+          color: s.secondaryLabel,
+          marginRight: spacing[2],
+          fontVariant: ['tabular-nums'],
+        },
+        chevronIcon: {
+          marginRight: -1,
+        },
+      }),
+    [s]
+  );
+}
 
 interface GroupedSectionProps {
   header?: string;
@@ -16,16 +125,17 @@ interface GroupedSectionProps {
 }
 
 export function GroupedSection({ header, footer, children }: GroupedSectionProps) {
+  const styles = useGroupedStyles();
   return (
-    <View style={styles.section}>
+    <View style={styles.section} accessibilityRole="none">
       {header && (
-        <Text style={styles.sectionHeader} allowFontScaling>
+        <Text style={styles.sectionHeader} allowFontScaling maxFontSizeMultiplier={1.3}>
           {header}
         </Text>
       )}
       <View style={styles.sectionContent}>{children}</View>
       {footer && (
-        <Text style={styles.sectionFooter} allowFontScaling>
+        <Text style={styles.sectionFooter} allowFontScaling maxFontSizeMultiplier={1.35}>
           {footer}
         </Text>
       )}
@@ -37,6 +147,7 @@ interface GroupedRowProps {
   label: string;
   value?: string;
   icon?: string;
+  symbol?: GroupedRowSymbol;
   onPress?: () => void;
   showChevron?: boolean;
   isFirst?: boolean;
@@ -49,6 +160,7 @@ export function GroupedRow({
   label,
   value,
   icon,
+  symbol,
   onPress,
   showChevron = true,
   isFirst = false,
@@ -56,20 +168,39 @@ export function GroupedRow({
   destructive = false,
   right,
 }: GroupedRowProps) {
-  // Match iOS Settings: separators are inset so they align with label text.
-  // Emoji icons are used here; treat them as a fixed “slot” to keep rhythm consistent.
-  const separatorInsetLeft = spacing[4] + (icon ? 22 + spacing[3] : 0);
+  const styles = useGroupedStyles();
+  const { system } = useAppTheme();
+  const hasSymbol = !!symbol;
+  const hasEmoji = !!icon && !hasSymbol;
+
+  const separatorInsetLeft =
+    spacing[4] +
+    (hasSymbol ? SYMBOL_WELL_SIZE + spacing[3] : hasEmoji ? 22 + spacing[3] : 0);
+
+  const leading = hasSymbol ? (
+    <View
+      style={[
+        styles.symbolWell,
+        {
+          backgroundColor: symbol!.wellColor,
+        },
+      ]}
+    >
+      <Ionicons name={symbol!.name} size={SYMBOL_ICON_SIZE} color={symbol!.iconColor ?? '#FFFFFF'} />
+    </View>
+  ) : hasEmoji ? (
+    <Text style={styles.rowIcon} allowFontScaling={false}>
+      {icon}
+    </Text>
+  ) : null;
 
   const content = (
     <View style={[styles.row, isFirst && styles.rowFirst, isLast && styles.rowLast]}>
-      {icon && (
-        <Text style={styles.rowIcon} allowFontScaling={false}>
-          {icon}
-        </Text>
-      )}
+      {leading}
       <Text
         style={[styles.rowLabel, destructive && styles.rowLabelDestructive]}
         allowFontScaling
+        maxFontSizeMultiplier={1.34}
         numberOfLines={1}
       >
         {label}
@@ -78,15 +209,20 @@ export function GroupedRow({
         {right ?? (
           <>
             {value ? (
-              <Text style={styles.rowValue} allowFontScaling numberOfLines={1}>
+              <Text
+                style={styles.rowValue}
+                allowFontScaling
+                numberOfLines={1}
+                maxFontSizeMultiplier={1.35}
+              >
                 {value}
               </Text>
             ) : null}
             {onPress && showChevron ? (
               <Ionicons
                 name="chevron-forward"
-                size={16}
-                color={colors.system.tertiaryLabel}
+                size={14}
+                color={system.tertiaryLabel}
                 style={styles.chevronIcon}
               />
             ) : null}
@@ -94,12 +230,8 @@ export function GroupedRow({
         )}
       </View>
 
-      {/* Inset separator (iOS grouped list style) */}
       {!isLast ? (
-        <View
-          pointerEvents="none"
-          style={[styles.separator, { left: separatorInsetLeft }]}
-        />
+        <View pointerEvents="none" style={[styles.separator, { left: separatorInsetLeft }]} />
       ) : null}
     </View>
   );
@@ -118,82 +250,3 @@ export function GroupedRow({
 
   return content;
 }
-
-const styles = StyleSheet.create({
-  section: {
-    marginBottom: spacing[6],
-  },
-  sectionHeader: {
-    ...typography.footnote,
-    color: colors.system.secondaryLabel,
-    textTransform: 'uppercase',
-    paddingHorizontal: spacing[4],
-    paddingBottom: spacing[2],
-  },
-  sectionContent: {
-    backgroundColor: colors.system.secondaryBackground,
-    borderRadius: borderRadius.lg,
-    marginHorizontal: spacing[4],
-    overflow: 'hidden',
-    // Subtle iOS grouped card stroke.
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.system.separator,
-  },
-  sectionFooter: {
-    ...typography.footnote,
-    color: colors.system.secondaryLabel,
-    paddingHorizontal: spacing[4],
-    paddingTop: spacing[2],
-  },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: spacing[3],
-    paddingHorizontal: spacing[4],
-    backgroundColor: colors.system.secondaryBackground,
-    minHeight: 44,
-  },
-  rowPressed: {
-    // iOS row highlight (subtle).
-    backgroundColor: colors.system.fill,
-  },
-  rowFirst: {
-    borderTopLeftRadius: borderRadius.lg,
-    borderTopRightRadius: borderRadius.lg,
-  },
-  rowLast: {
-    borderBottomLeftRadius: borderRadius.lg,
-    borderBottomRightRadius: borderRadius.lg,
-  },
-  separator: {
-    position: 'absolute',
-    right: 0,
-    bottom: 0,
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: colors.system.separator,
-  },
-  rowIcon: {
-    fontSize: 22,
-    marginRight: spacing[3],
-  },
-  rowLabel: {
-    ...typography.body,
-    color: colors.system.label,
-    flex: 1,
-  },
-  rowLabelDestructive: {
-    color: colors.system.red,
-  },
-  rowRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  rowValue: {
-    ...typography.body,
-    color: colors.system.secondaryLabel,
-    marginRight: spacing[2],
-  },
-  chevronIcon: {
-    marginRight: -2, // optical alignment like iOS
-  },
-});

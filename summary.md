@@ -1,6 +1,7 @@
 # Moodly – Engineering Summary Log
 
 ## Changelog Index
+- [2026-05-10 — Documentation synchronization + implementation alignment](#2026-05-10)
 - [2026-02-03 — Version 0.5 — Core Foundation](#2026-02-03)
 - [2026-02-04 — Version 0.5 — Logging & Observability (Privacy‑Safe, Structured)](#2026-02-04)
 - [2026-02-11 — Version 0.6 — Internal Hardening (No UI changes)](#2026-02-11)
@@ -592,4 +593,68 @@ v0.6 adds a reliability layer that makes storage writes **deterministic and race
 - ✅ No app code/UX changes from this docs pass
 - ✅ Docs now match the implemented architecture + invariants
 
+---
+
+<a id="2026-05-10"></a>
+## 2026-05-10
+
+### Documentation synchronization + implementation alignment (2026-05-10)
+
+#### Why we did it (plain terms)
+
+- Align **all onboarding and reference docs** with the **current** codebase: navigation (**floating tab bar + Settings modal**), **`AppThemeProvider`** appearance modes, **`FlashList`** on Journal + themed list surfaces, and the **reserved-but-empty** `domain`/`logic`/`insights` ESLint buckets vs actual code in **`src/utils`** / **`src/lib`**.
+- Give future contributors a **single documentation index** (README) into design system, components, testing, performance, and structure.
+
+#### Documentation changes (high signal)
+
+- **README.md**: documentation table, stack versions, routing summary, state model pointers, changelog pointer to **`summary.md`**.
+- **`ARCHITECTURE.md`**: expanded links to **`docs/DESIGN_SYSTEM.md`**, **`docs/COMPONENTS.md`**, **`docs/TESTING.md`**, **`docs/PERFORMANCE.md`**, **`docs/PROJECT_STRUCTURE.md`**.
+- **`docs/architecture.md`**: **state management** subsection; **`fullGridLayout`** + **Journal list** hot-path notes; **`Reference docs`** table; clarified pure-layer wording vs ESLint placeholders.
+- **New**: `docs/DESIGN_SYSTEM.md`, `docs/COMPONENTS.md`, `docs/TESTING.md`, `docs/PROJECT_STRUCTURE.md`, `docs/PERFORMANCE.md` (index + Journal **`freezeOnBlur`** / recycler background notes).
+- **`ENGINEERING_HANDOFF.md`**: navigation, theme, Journal **FlashList** / tab freeze caveat.
+- **`docs/PERF_LIBRARIES.md`, `docs/perf-calendar.md`**: FlashList baseline + **`freezeOnBlur`** nuance + list **`style`** backgrounds.
+- **`docs/APP_STORE_READINESS.md`, `docs/CHANGE_CHECKLIST.md`**, **`docs/DECISIONS.md`** (appearance decision **#12**; good-vs-bad extensions fixed), **`src/screens/README.md`, `src/storage/README.md`, `src/security/README.md`**.
+
+#### Implementation truth captured (verification)
+
+| Topic | Verified source |
+|--------|----------------|
+| Appearance modes | `src/types/settings.types.ts`, `AppThemeContext`, `SettingsScreen` |
+| `userInterfaceStyle: automatic` in **app.json** vs in-app Appearance lock | `app.json`, `docs/DECISIONS.md` §12, `docs/DESIGN_SYSTEM.md` |
+| Journal **`JOURNAL_LIST_IMPL`** FlashList default | `src/screens/JournalScreen.tsx` |
+| Journal **`freezeOnBlur: false`** | `src/navigation/RootNavigator.tsx` |
+| ESLint **`domain`/`insights`** patterns | `eslint.config.cjs` (directories may be absent) |
+
+#### Quick validation checklist (docs-only pass)
+
+- [ ] From a clean checkout: **`npm install`**, **`npm run start`** (per README).
+- [ ] **`npm run lint`**, **`npx tsc --noEmit`**, **`npm test`** succeed.
+- [ ] README “Documentation index” links open without stale paths.
+
+#### Follow-ups (tooling + native chrome)
+
+- **`eslint.config.cjs`**: **`no-restricted-imports`** UI messages now consistently direct engineers to **`src/storage`** (not `src/data`); domain AsyncStorage hint aligned; **`src/lib`** hint references **`utils`** + facades instead of non-existent **`domain`** in typical paths.
+- **`app.json`**: **`userInterfaceStyle`** set from **`light`** → **`automatic`** so Expo/native surfaces can track system appearance while **`AppThemeProvider`** still resolves locked Light/Dark in-app.
+- **Theme-aware splash**: **`expo-splash-screen`** plugin + **`splash` / `ios.splash` / `android.splash`** **`dark`** backgrounds (`#F2F2F7` light, `#000000` dark); placeholder **`assets/images/splash-icon.png`** (replace with branded art); **`android.adaptiveIcon.backgroundColor`** → `#F2F2F7`.
+
+---
+
+### Mood grade color style Solid ↔ Gradient (settings + blooms)
+
+#### Summary
+
+- **Settings → Appearance**: second segmented control **Solid | Gradient**, persisted as **`AppSettings.moodGradeColorStyle`** (`settingsStorage`; default **`solid`**). **`AppThemeProvider`** exposes **`moodGradeColorStyle`** + **`setMoodGradeColorStyle`** for instant UI reaction.
+- **Rendering**: **`moodGradeBloom.ts`** implements the design **135°** stops: **`mood` → `moodGradientMid` → `moodBloomAccent` (#FFB7E5)** at **0 / 0.7 / 1** (**TL→BR**). **`MoodGradeSurface`**, calendar **`MonthGrid`**, **`MoodPicker`**, **`MoodBadge`**, **`Badge`**, **`JournalScreen`**, **`CalendarView`** stay wired through **`extraData`** / props. **Solid** avoids gradient cost as the default fallback.
+
+#### Touch list
+
+| File / area | Notes |
+|-------------|-------|
+| `src/types/settings.types.ts`, `settingsStorage*` | Persisted **moodGradeColorStyle** validation + corrupt handling |
+| `src/theme/AppThemeContext.tsx`, `moodGradeBloom.ts`, `MoodGradeSurface.tsx` | Gradient math + reusable surface primitive |
+| `src/theme/colors.ts` | **`mood`**, **`moodGradientMid`**, **`moodBloomAccent`**, **`moodBackground`** (Bloom spec) |
+| `monthModel.ts`, `MonthGrid.tsx` | **`moodGradeByDay`** + gradient dots/fills |
+| `CalendarScreen.tsx`, `CalendarView.tsx`, `JournalScreen.tsx` | Props + **`extraData`** wiring where lists recycle rows |
+| `SettingsScreen.tsx` | Second LiquidGlass segment row under Appearance |
+| `src/data/DATA_CONTRACT.md`, **`docs/DESIGN_SYSTEM.md`**, **`README.md`**, **`docs/CHANGELOG.md`** | Contract + design + product notes |
 

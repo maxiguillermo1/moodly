@@ -17,7 +17,10 @@
 - [ ] No new network calls without explicit privacy/security review.
 - [ ] Dependencies reviewed: pinned versions, changelog reviewed, `npm audit` checked.
 
-## Perf checklist (required if you touched Calendar/Journal)
+## Documentation (if user-visible copy, settings, or architecture changed)
+
+- [ ] `README.md` and/or **docs/** entries match this PR (see README “Documentation index”).
+- [ ] `summary.md` changelog entry appended when the change is milestone-sized (optional for tiny fixes).
 
 - [ ] Calendar: year swipe, month open, month scroll, day tap/save still feels smooth
 - [ ] Dev-only: captured `perf.report` before/after (or explain why not)

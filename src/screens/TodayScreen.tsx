@@ -3,11 +3,10 @@
  * @module screens/TodayScreen
  */
 
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
   View,
   Text,
-  TextInput,
   StyleSheet,
   Alert,
   ScrollView,
@@ -17,15 +16,73 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { useMoodEntry } from '../hooks';
-import { ScreenHeader, MoodPicker } from '../components';
+import { ScreenHeader, MoodEntryFields } from '../components';
 import { getToday, formatDateForDisplay } from '../utils';
-import { colors, spacing, borderRadius, typography } from '../theme';
+import { spacing, borderRadius, typography, useAppTheme } from '../theme';
 import { usePerfScreen } from '../perf';
 import { Touchable } from '../ui/Touchable';
 import { haptics } from '../system/haptics';
 
 export default function TodayScreen() {
   usePerfScreen('Today');
+  const { system: s } = useAppTheme();
+  const styles = useMemo(
+    () =>
+      StyleSheet.create({
+        container: {
+          flex: 1,
+          backgroundColor: s.background,
+        },
+        flex: {
+          flex: 1,
+        },
+        scrollContent: {
+          paddingBottom: 120,
+        },
+        sheet: {
+          marginHorizontal: spacing[3],
+          backgroundColor: s.secondaryBackground,
+          borderRadius: borderRadius.xl,
+          borderWidth: StyleSheet.hairlineWidth,
+          borderColor: s.separator,
+          overflow: 'hidden',
+        },
+        sheetHeader: {
+          flexDirection: 'row',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          paddingHorizontal: spacing[4],
+          paddingVertical: spacing[4],
+          borderBottomWidth: StyleSheet.hairlineWidth,
+          borderBottomColor: s.separator,
+          backgroundColor: s.secondaryBackground,
+        },
+        sheetTitle: {
+          ...typography.headline,
+          color: s.label,
+        },
+        sheetSave: {
+          ...typography.body,
+          color: s.blue,
+          fontWeight: '600',
+        },
+        sheetSaveDisabled: {
+          color: s.tertiaryLabel,
+        },
+        pressedOpacity: { opacity: 0.7 },
+        sheetContent: {
+          padding: spacing[4],
+          backgroundColor: s.background,
+        },
+        saveMessage: {
+          ...typography.subhead,
+          color: s.green,
+          textAlign: 'center',
+          marginTop: spacing[4],
+        },
+      }),
+    [s]
+  );
 
   const today = getToday();
   const [saveMessage, setSaveMessage] = useState('');
@@ -60,7 +117,7 @@ export default function TodayScreen() {
 
   const handleSave = async () => {
     if (!mood) {
-      Alert.alert('Select a mood', 'Please pick how your day was before saving.');
+      Alert.alert('Pick a mood', 'Choose a mood before saving.');
       return;
     }
     await save();
@@ -75,14 +132,16 @@ export default function TodayScreen() {
         <ScrollView
           contentContainerStyle={styles.scrollContent}
           keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="interactive"
           showsVerticalScrollIndicator={false}
         >
           <ScreenHeader title="Today" />
 
-          {/* Journal-style edit sheet UI */}
           <View style={styles.sheet}>
             <View style={styles.sheetHeader}>
-              <Text style={styles.sheetTitle}>{formatDateForDisplay(today)}</Text>
+              <Text style={styles.sheetTitle} maxFontSizeMultiplier={1.32}>
+                {formatDateForDisplay(today)}
+              </Text>
               <Touchable
                 onPress={handleSave}
                 disabled={!mood || isSaving}
@@ -91,29 +150,27 @@ export default function TodayScreen() {
                 hitSlop={{ top: 10, left: 10, right: 10, bottom: 10 }}
                 style={({ pressed }) => [pressed ? styles.pressedOpacity : null]}
               >
-                <Text style={[styles.sheetSave, (!mood || isSaving) && styles.sheetSaveDisabled]}>
+                <Text style={[styles.sheetSave, (!mood || isSaving) && styles.sheetSaveDisabled]} maxFontSizeMultiplier={1.3}>
                   {isSaving ? 'Saving…' : 'Save'}
                 </Text>
               </Touchable>
             </View>
 
             <View style={styles.sheetContent}>
-              <MoodPicker selectedMood={mood} onSelect={setMood} />
-
-              <View style={styles.noteSection}>
-                <Text style={styles.noteLabel}>NOTE</Text>
-                <TextInput
-                  style={styles.noteInput}
-                  placeholder="What made today special?"
-                  placeholderTextColor={colors.system.tertiaryLabel}
-                  value={note}
-                  onChangeText={setNote}
-                  maxLength={200}
-                  multiline
-                />
-              </View>
-
-              {saveMessage ? <Text style={styles.saveMessage}>{saveMessage}</Text> : null}
+              <MoodEntryFields
+                selectedMood={mood}
+                onSelectMood={setMood}
+                note={note}
+                onChangeNote={setNote}
+                moodPickerCompact
+                footer={
+                  saveMessage ? (
+                    <Text style={styles.saveMessage} maxFontSizeMultiplier={1.3}>
+                      {saveMessage}
+                    </Text>
+                  ) : null
+                }
+              />
             </View>
           </View>
         </ScrollView>
@@ -121,79 +178,3 @@ export default function TodayScreen() {
     </SafeAreaView>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.system.background,
-  },
-  flex: {
-    flex: 1,
-  },
-  scrollContent: {
-    paddingBottom: 120, // Space for floating nav
-  },
-
-  // Journal-style sheet container
-  sheet: {
-    marginHorizontal: spacing[4],
-    backgroundColor: colors.system.secondaryBackground,
-    borderRadius: borderRadius.xl,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.system.separator,
-    overflow: 'hidden',
-  },
-  sheetHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: spacing[4],
-    paddingVertical: spacing[4],
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.system.separator,
-    backgroundColor: colors.system.secondaryBackground,
-  },
-  sheetTitle: {
-    ...typography.headline,
-    color: colors.system.label,
-  },
-  sheetSave: {
-    ...typography.body,
-    color: colors.system.blue,
-    fontWeight: '600',
-  },
-  sheetSaveDisabled: {
-    color: colors.system.secondaryLabel,
-  },
-  pressedOpacity: { opacity: 0.7 },
-  sheetContent: {
-    padding: spacing[4],
-  },
-
-  noteSection: {
-    marginTop: spacing[6],
-  },
-  noteLabel: {
-    ...typography.footnote,
-    color: colors.system.secondaryLabel,
-    textTransform: 'uppercase',
-    marginBottom: spacing[2],
-  },
-  noteInput: {
-    ...typography.body,
-    color: colors.system.label,
-    backgroundColor: colors.system.background,
-    borderRadius: borderRadius.lg,
-    padding: spacing[4],
-    minHeight: 110,
-    textAlignVertical: 'top',
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.system.separator,
-  },
-  saveMessage: {
-    ...typography.subhead,
-    color: colors.system.green,
-    textAlign: 'center',
-    marginTop: spacing[4],
-  },
-});

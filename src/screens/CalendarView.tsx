@@ -4,17 +4,17 @@
  */
 
 import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
-import { View, Text, StyleSheet, FlatList, useWindowDimensions, InteractionManager } from 'react-native';
+import { View, Text, StyleSheet, FlatList, InteractionManager } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 
-import { MoodEntry } from '../types';
+import { MoodEntry, MoodGradeColorStyle } from '../types';
 import { MonthGrid, ScreenHeader, WeekdayRow } from '../components';
 import { getAllEntriesWithMonthIndex, getSettings } from '../storage';
 import { perfProbe } from '../perf';
 import { logger } from '../security';
 import { PerfProfiler, usePerfScreen } from '../perf';
-import { colors, spacing, typography } from '../theme';
+import { spacing, typography, useAppTheme, getCalendarTextLimits } from '../theme';
 import { useTodayKey } from '../hooks/useTodayKey';
 import { createFrameCoalescer, type FrameCoalescer } from '../utils';
 import { Touchable } from '../ui/Touchable';
@@ -26,6 +26,21 @@ const MONTH_2 = ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11
 type CalendarMoodStyle = 'dot' | 'fill';
 
 const EMPTY_MONTH_ENTRIES: Record<string, MoodEntry> = Object.freeze({});
+
+const layoutStyles = StyleSheet.create({
+  gridWrapper: {
+    flex: 1,
+    justifyContent: 'center',
+  },
+  grid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+  },
+  miniMonth: {
+    backgroundColor: 'transparent',
+    marginBottom: spacing[3],
+  },
+});
 
 // -----------------------------------------------------------------------------
 // Hidden decisions / tuning constants (keep stable unless intentionally revisiting UX/perf tradeoffs)
@@ -45,6 +60,8 @@ type MiniMonthCardProps = {
   entriesRevision: number;
   calendarMoodStyle: CalendarMoodStyle;
   todayKey: string;
+  moodGradeColorStyle: MoodGradeColorStyle;
+  isDark: boolean;
   cardWidthStyle: { width: number };
   marginStyle: { marginRight: number };
   onOpenMonth: (y: number, mIdx: number) => void;
@@ -57,20 +74,38 @@ const MiniMonthCard = React.memo(function MiniMonthCard({
   entriesRevision,
   calendarMoodStyle,
   todayKey,
+  moodGradeColorStyle,
+  isDark,
   cardWidthStyle,
   marginStyle,
   onOpenMonth,
 }: MiniMonthCardProps) {
+  const { system, fontScale, windowWidth } = useAppTheme();
+  const limits = useMemo(
+    () => getCalendarTextLimits(fontScale, windowWidth),
+    [fontScale, windowWidth]
+  );
+  const titleStyle = useMemo(
+    () => ({
+      ...typography.caption2,
+      color: system.secondaryLabel,
+      fontWeight: '700' as const,
+      marginBottom: 2,
+    }),
+    [system.secondaryLabel]
+  );
   const handlePress = useCallback(() => onOpenMonth(y, mIdx), [mIdx, onOpenMonth, y]);
   return (
     <Touchable
       key={`${y}-${mIdx}`}
-      style={[styles.miniMonth, cardWidthStyle, marginStyle]}
+      style={[layoutStyles.miniMonth, cardWidthStyle, marginStyle]}
       onPress={handlePress}
       accessibilityRole="button"
       accessibilityLabel={`Open ${MONTHS[mIdx]} ${y}`}
     >
-      <Text style={styles.miniMonthTitle}>{MONTHS[mIdx]}</Text>
+      <Text style={titleStyle} allowFontScaling maxFontSizeMultiplier={limits.miniMonthTitle}>
+        {MONTHS[mIdx]}
+      </Text>
       <WeekdayRow variant="mini" />
       <MonthGrid
         year={y}
@@ -80,6 +115,8 @@ const MiniMonthCard = React.memo(function MiniMonthCard({
         entriesRevision={entriesRevision}
         calendarMoodStyle={calendarMoodStyle}
         todayKey={todayKey}
+        moodGradeColorStyle={moodGradeColorStyle}
+        isDark={isDark}
       />
     </Touchable>
   );
@@ -98,6 +135,8 @@ type YearPageProps = {
   entriesRevision: number;
   calendarMoodStyle: CalendarMoodStyle;
   todayKey: string;
+  moodGradeColorStyle: MoodGradeColorStyle;
+  isDark: boolean;
   onOpenMonth: (y: number, mIdx: number) => void;
 };
 
@@ -114,12 +153,14 @@ const YearPage = React.memo(function YearPage({
   entriesRevision,
   calendarMoodStyle,
   todayKey,
+  moodGradeColorStyle,
+  isDark,
   onOpenMonth,
 }: YearPageProps) {
   return (
     <View style={yearPageStyle}>
-      <View style={[styles.gridWrapper, gridWrapperPadStyle]}>
-        <View style={[styles.grid, gridHorizontalPadStyle]}>
+      <View style={[layoutStyles.gridWrapper, gridWrapperPadStyle]}>
+        <View style={[layoutStyles.grid, gridHorizontalPadStyle]}>
           {monthIndices.map((mIdx) => {
             const mk = `${y}-${MONTH_2[mIdx]}`;
             const monthEntries = entriesByMonthKey[mk] ?? EMPTY_MONTH_ENTRIES;
@@ -133,6 +174,8 @@ const YearPage = React.memo(function YearPage({
                 entriesRevision={entriesRevision}
                 calendarMoodStyle={calendarMoodStyle}
                 todayKey={todayKey}
+                moodGradeColorStyle={moodGradeColorStyle}
+                isDark={isDark}
                 cardWidthStyle={miniMonthWidthStyle}
                 marginStyle={isEndOfRow ? miniMonthMarginZeroStyle : miniMonthMarginRightStyle}
                 onOpenMonth={onOpenMonth}
@@ -148,7 +191,7 @@ const YearPage = React.memo(function YearPage({
 export default function CalendarView() {
   usePerfScreen('CalendarView', { listIds: ['list.calendarYearPager'] });
 
-  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+  const { windowWidth, windowHeight, system: sys, moodGradeColorStyle, isDark } = useAppTheme();
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
@@ -408,6 +451,8 @@ export default function CalendarView() {
           entriesRevision={entriesRevisionRef.current}
           calendarMoodStyle={calendarMoodStyle}
           todayKey={todayKey}
+          moodGradeColorStyle={moodGradeColorStyle}
+          isDark={isDark}
           onOpenMonth={openMonth}
         />
       );
@@ -417,7 +462,9 @@ export default function CalendarView() {
       entriesByMonthKey,
       gridHorizontalPadStyle,
       gridWrapperPadStyle,
+      isDark,
       monthIndices,
+      moodGradeColorStyle,
       openMonth,
       todayKey,
       yearPageStyle,
@@ -427,13 +474,18 @@ export default function CalendarView() {
     ]
   );
 
+  const yearPagerExtraData = useMemo(() => ({ moodGradeColorStyle, isDark }), [isDark, moodGradeColorStyle]);
+
+  const screenStyle = useMemo(() => ({ flex: 1, backgroundColor: sys.background }), [sys.background]);
+
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <SafeAreaView style={screenStyle} edges={['top']}>
       <ScreenHeader title={String(yearBase)} showSettings onPressSettings={openSettings} />
 
       <PerfProfiler id="list.calendarYearPager">
         <FlatList
           ref={yearPagerRef}
+          style={screenStyle}
           data={years}
           keyExtractor={keyExtractor}
           horizontal
@@ -455,34 +507,10 @@ export default function CalendarView() {
           onMomentumScrollBegin={onMomentumScrollBegin}
           onMomentumScrollEnd={onMomentumScrollEnd}
           renderItem={renderYearPage}
+          extraData={yearPagerExtraData}
         />
       </PerfProfiler>
     </SafeAreaView>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.system.background,
-  },
-  gridWrapper: {
-    flex: 1,
-    justifyContent: 'center',
-  },
-  grid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-  },
-  miniMonth: {
-    backgroundColor: 'transparent',
-    marginBottom: spacing[3],
-  },
-  miniMonthTitle: {
-    ...typography.caption2,
-    color: colors.system.secondaryLabel,
-    fontWeight: '700',
-    marginBottom: 2,
-  },
-});
 

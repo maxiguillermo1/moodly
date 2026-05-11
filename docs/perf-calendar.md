@@ -138,6 +138,14 @@ Rules:
 - **Avoid month-key helpers in tight loops**: precompute `YYYY-MM` keys cheaply.
 - **No `{}` fallbacks per mini month**: use a shared frozen empty map.
 
+### List surface colors (recycler views)
+
+**FlashList** / **AnimatedFlashList** default surfaces can briefly appear **white** if no explicit background is set — painful in dark mode and during first paint.
+
+- **`CalendarScreen`**: `AnimatedFlashList` uses a **`style`** aligned with `system.secondaryBackground` (same family as the screen container).
+- **`JournalScreen`**: FlashList **and** FlatList fallback receive **`flex: 1`** plus **`system.background`**.
+- **`CalendarView`**: horizontal year **`FlatList`** uses the memoized **`screenStyle`** (`flex: 1` + `system.background`).
+
 ### Rollback notes
 All calendar perf changes are intended to be small and reversible. Prefer removing one optimization at a time and re-checking `perf.report` rather than rewriting large chunks.
 

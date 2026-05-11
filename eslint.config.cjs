@@ -61,19 +61,19 @@ module.exports = [
             {
               name: '@react-native-async-storage/async-storage',
               message:
-                'Do not import AsyncStorage in UI code. Use the `src/data/*` layer (e.g. `import { getEntry } from ../data`).',
+                'Do not import AsyncStorage in UI code (screens/components/hooks). Import persistence APIs from the `src/storage` façade (e.g. `import { getEntry } from "../storage"`).',
             },
           ],
           patterns: [
             {
               group: ['**/data/storage/**', '**/lib/storage/**'],
               message:
-                'Do not import deep storage modules from UI code. Import via the `src/data` public surface instead.',
+                'Do not import `src/data/storage/*` or other deep storage internals from UI. Import from `src/storage` only.',
             },
             {
               group: ['../lib/**', '../../lib/**', '../../../lib/**', '@/lib/**', '**/src/lib/**'],
               message:
-                'UI code must not import from `lib/*` directly. Import pure helpers from `domain`/`utils` and runtime services from `security`/`storage` facades.',
+                'UI code must not import from `src/lib/*` directly. Import pure helpers from `utils` (and `types`) and runtime services from `security` / `storage` facades.',
             },
             {
               group: ['../data/**', '../../data/**', '../../../data/**', '@/data/**', '**/src/data/**'],
@@ -107,7 +107,8 @@ module.exports = [
             },
             {
               name: '@react-native-async-storage/async-storage',
-              message: 'Domain must not import AsyncStorage. Use `src/data/*` for persistence.',
+              message:
+                'Domain must not import AsyncStorage. Persist only in `src/data/storage`; screens use the `src/storage` façade.',
             },
           ],
           patterns: [

@@ -33,6 +33,8 @@ export type MonthRenderModel = {
   monthKey: string; // YYYY-MM
   isoByDay: string[]; // index 1..31 used; 0 unused
   moodColorByDay: Array<string | null>; // 1..31
+  /** Enables gradient blooms without deriving grade from RGB strings */
+  moodGradeByDay: Array<MoodGrade | null>; // 1..31
   hasNoteByDay: boolean[]; // 1..31
   weekdayByDay: number[]; // 1..31 (0..6)
   // `pressByDay` is optional (mini grids do not handle presses).
@@ -74,6 +76,9 @@ function hasNonWhitespace(note: string | undefined | null): boolean {
 
 // Shared immutable arrays for empty months (safe: MonthGrid treats these as read-only).
 const ALL_NULL_32: ReadonlyArray<string | null> = Object.freeze(new Array(32).fill(null));
+const ALL_MOODGRADE_NULL_32: ReadonlyArray<MoodGrade | null> = Object.freeze(
+  Array.from({ length: 32 }, (): MoodGrade | null => null)
+);
 const ALL_FALSE_32: ReadonlyArray<boolean> = Object.freeze(new Array(32).fill(false));
 const ALL_ZERO_32: ReadonlyArray<number> = Object.freeze(new Array(32).fill(0));
 
@@ -251,6 +256,7 @@ export function getMonthRenderModel(opts: {
 
   // Derive per-day values once per month render.
   const moodColorByDay: Array<string | null> = hasAnyEntry ? new Array<string | null>(32) : (ALL_NULL_32 as any);
+  const moodGradeByDay: Array<MoodGrade | null> = hasAnyEntry ? new Array<MoodGrade | null>(32) : (ALL_MOODGRADE_NULL_32 as any);
   const hasNoteByDay: boolean[] = hasAnyEntry ? new Array<boolean>(32) : (ALL_FALSE_32 as any);
   // `weekdayByDay` is only needed for VoiceOver labels on *pressable* days.
   // CalendarView mini grids do not create day press handlers, so avoid 31 Date allocations per mini month.
@@ -258,11 +264,13 @@ export function getMonthRenderModel(opts: {
   if (onPressDate) weekdayByDay[0] = 0;
   if (hasAnyEntry) {
     moodColorByDay[0] = null;
+    moodGradeByDay[0] = null;
     hasNoteByDay[0] = false;
     for (let d = 1; d <= 31; d++) {
       const e = monthEntries[isoByDay[d]!] as MoodEntry | undefined;
       const mood = (e?.mood ?? null) as MoodGrade | null;
       moodColorByDay[d] = mood ? getMoodColor(mood) : null;
+      moodGradeByDay[d] = mood;
       hasNoteByDay[d] = e ? hasNonWhitespace(e.note) : false;
       if (onPressDate) weekdayByDay[d] = new Date(year, monthIndex0, d).getDay();
     }
@@ -279,6 +287,7 @@ export function getMonthRenderModel(opts: {
     monthKey: mk,
     isoByDay,
     moodColorByDay,
+    moodGradeByDay,
     hasNoteByDay,
     weekdayByDay,
     pressByDay,

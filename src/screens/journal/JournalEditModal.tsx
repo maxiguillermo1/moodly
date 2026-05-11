@@ -1,24 +1,15 @@
 /**
  * Journal edit modal UI (pageSheet).
- *
- * Responsibility:
- * - Render the edit UI for a single `MoodEntry` (mood picker + note field).
- * - Emit user intent via callbacks (cancel/save, set mood/note).
- *
- * Must NOT:
- * - Read/write storage
- * - Compute aggregates
- * - Perform navigation
  */
 
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import { View, Text, StyleSheet, Modal, TextInput } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import type { MoodEntry, MoodGrade } from '../../types';
-import { MoodPicker } from '../../components';
+import { MoodEntryFields, SheetGrabber } from '../../components';
 import { formatDateForDisplay } from '../../utils';
-import { colors, spacing, borderRadius, typography } from '../../theme';
+import { spacing, typography, useAppTheme } from '../../theme';
 import { Touchable } from '../../ui/Touchable';
 import { haptics } from '../../system/haptics';
 
@@ -32,8 +23,47 @@ export function JournalEditModal(props: {
   onSave: () => void;
 }): React.ReactElement {
   const { editingEntry, editMood, editNote, setEditMood, setEditNote, onCancel, onSave } = props;
+  const { system: s } = useAppTheme();
   const prevVisibleRef = useRef(false);
   const noteInputRef = useRef<TextInput | null>(null);
+
+  const styles = useMemo(
+    () =>
+      StyleSheet.create({
+        modalContainer: {
+          flex: 1,
+          backgroundColor: s.background,
+        },
+        modalHeader: {
+          flexDirection: 'row',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          paddingHorizontal: spacing[4],
+          paddingVertical: spacing[4],
+          borderBottomWidth: StyleSheet.hairlineWidth,
+          borderBottomColor: s.separator,
+          backgroundColor: s.secondaryBackground,
+        },
+        modalCancel: {
+          ...typography.body,
+          color: s.secondaryLabel,
+        },
+        modalTitle: {
+          ...typography.headline,
+          color: s.label,
+        },
+        modalSave: {
+          ...typography.body,
+          color: s.blue,
+          fontWeight: '600',
+        },
+        modalContent: {
+          padding: spacing[4],
+        },
+        pressedOpacity: { opacity: 0.7 },
+      }),
+    [s]
+  );
 
   useEffect(() => {
     const visible = editingEntry !== null;
@@ -58,7 +88,8 @@ export function JournalEditModal(props: {
       presentationStyle="pageSheet"
       onRequestClose={onCancel}
     >
-      <SafeAreaView style={styles.modalContainer} edges={['top']}>
+      <SafeAreaView style={styles.modalContainer} edges={['top', 'bottom']}>
+        <SheetGrabber />
         <View style={styles.modalHeader}>
           <Touchable
             onPress={onCancel}
@@ -67,11 +98,11 @@ export function JournalEditModal(props: {
             hitSlop={{ top: 10, left: 10, right: 10, bottom: 10 }}
             style={({ pressed }) => (pressed ? styles.pressedOpacity : undefined)}
           >
-            <Text style={styles.modalCancel} allowFontScaling>
+            <Text style={styles.modalCancel} allowFontScaling maxFontSizeMultiplier={1.3}>
               Cancel
             </Text>
           </Touchable>
-          <Text style={styles.modalTitle} allowFontScaling>
+          <Text style={styles.modalTitle} allowFontScaling numberOfLines={1} maxFontSizeMultiplier={1.3}>
             {editingEntry ? formatDateForDisplay(editingEntry.date) : ''}
           </Text>
           <Touchable
@@ -81,85 +112,23 @@ export function JournalEditModal(props: {
             hitSlop={{ top: 10, left: 10, right: 10, bottom: 10 }}
             style={({ pressed }) => (pressed ? styles.pressedOpacity : undefined)}
           >
-            <Text style={styles.modalSave} allowFontScaling>
+            <Text style={styles.modalSave} allowFontScaling maxFontSizeMultiplier={1.3}>
               Save
             </Text>
           </Touchable>
         </View>
 
         <View style={styles.modalContent}>
-          <MoodPicker selectedMood={editMood} onSelect={setEditMood} />
-
-          <View style={styles.modalNoteSection}>
-            <Text style={styles.modalNoteLabel} allowFontScaling>
-              NOTE
-            </Text>
-            <TextInput
-              ref={noteInputRef}
-              style={styles.modalNoteInput}
-              placeholder="What made this day special?"
-              placeholderTextColor={colors.system.tertiaryLabel}
-              value={editNote}
-              onChangeText={setEditNote}
-              maxLength={200}
-              multiline
-            />
-          </View>
+          <MoodEntryFields
+            selectedMood={editMood}
+            onSelectMood={setEditMood}
+            note={editNote}
+            onChangeNote={setEditNote}
+            moodPickerCompact
+            noteInputRef={noteInputRef}
+          />
         </View>
       </SafeAreaView>
     </Modal>
   );
 }
-
-const styles = StyleSheet.create({
-  modalContainer: {
-    flex: 1,
-    backgroundColor: colors.system.background,
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: spacing[4],
-    paddingVertical: spacing[4],
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.system.separator,
-    backgroundColor: colors.system.secondaryBackground,
-  },
-  modalCancel: {
-    ...typography.body,
-    color: colors.system.secondaryLabel,
-  },
-  modalTitle: {
-    ...typography.headline,
-    color: colors.system.label,
-  },
-  modalSave: {
-    ...typography.body,
-    color: colors.system.blue,
-    fontWeight: '600',
-  },
-  modalContent: {
-    padding: spacing[4],
-  },
-  pressedOpacity: { opacity: 0.7 },
-  modalNoteSection: {
-    marginTop: spacing[6],
-  },
-  modalNoteLabel: {
-    ...typography.footnote,
-    color: colors.system.secondaryLabel,
-    textTransform: 'uppercase',
-    marginBottom: spacing[2],
-  },
-  modalNoteInput: {
-    ...typography.body,
-    color: colors.system.label,
-    backgroundColor: colors.system.secondaryBackground,
-    borderRadius: borderRadius.lg,
-    padding: spacing[4],
-    minHeight: 100,
-    textAlignVertical: 'top',
-  },
-});
-

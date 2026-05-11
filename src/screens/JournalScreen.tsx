@@ -14,7 +14,7 @@ import {
 import { FlashList } from '@shopify/flash-list';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
-import { MoodEntry, MoodGrade } from '../types';
+import { MoodEntry, MoodGrade, MoodGradeColorStyle } from '../types';
 import { ScreenHeader, MoodBadge } from '../components';
 import {
   getEntriesSortedDesc,
@@ -24,7 +24,7 @@ import {
 import { getRelativeDayLabel, formatDateForDisplay } from '../utils';
 import { logger } from '../security';
 import { PerfProfiler, usePerfScreen } from '../perf';
-import { colors, spacing, borderRadius, typography } from '../theme';
+import { useAppTheme, spacing, borderRadius, typography } from '../theme';
 import { JournalEditModal } from './journal/JournalEditModal';
 import { Touchable } from '../ui/Touchable';
 import { interactionQueue } from '../system/interactionQueue';
@@ -33,17 +33,88 @@ import { haptics } from '../system/haptics';
 /**
  * PERF experiment toggle (small + reversible).
  *
- * Baseline-first rule:
- * - Keep this as `'flatlist'` to collect baseline numbers.
- * - Switch to `'flashlist'` to collect post-change numbers.
+ * Default: `'flashlist'` for smoother scrolling and lower memory on long timelines.
  *
  * Rollback:
- * - Set back to `'flatlist'` (no other code changes needed).
+ * - Set to `'flatlist'` if you need to compare baselines or hit a FlashList edge case.
  */
-const JOURNAL_LIST_IMPL: 'flatlist' | 'flashlist' = 'flatlist';
+const JOURNAL_LIST_IMPL: 'flatlist' | 'flashlist' = 'flashlist';
 
 export default function JournalScreen() {
   usePerfScreen('Journal', { listIds: ['list.journal'] });
+  const appTheme = useAppTheme();
+  const s = appTheme.system;
+  const windowHeight = appTheme.windowHeight;
+  const moodGradeColorStyle = appTheme.moodGradeColorStyle;
+  const isDark = appTheme.isDark;
+
+  const styles = useMemo(
+    () =>
+      StyleSheet.create({
+        container: {
+          flex: 1,
+          backgroundColor: s.background,
+        },
+        listContent: {
+          paddingHorizontal: spacing[4],
+          paddingBottom: 120,
+        },
+        emptyContainer: {
+          flexGrow: 1,
+          justifyContent: 'center',
+        },
+        row: {
+          flexDirection: 'row',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          backgroundColor: s.secondaryBackground,
+          borderRadius: borderRadius.lg,
+          paddingVertical: spacing[3],
+          paddingHorizontal: spacing[4],
+          marginTop: spacing[2],
+          borderWidth: StyleSheet.hairlineWidth,
+          borderColor: s.separator,
+        },
+        rowLeft: {
+          flex: 1,
+          marginRight: spacing[3],
+        },
+        rowTitle: {
+          ...typography.headline,
+          color: s.label,
+        },
+        rowSubtitle: {
+          ...typography.footnote,
+          color: s.secondaryLabel,
+          marginTop: 2,
+        },
+        emptyState: {
+          alignItems: 'center',
+          paddingHorizontal: spacing[10],
+        },
+        emptyIcon: {
+          fontSize: 64,
+          marginBottom: spacing[4],
+        },
+        emptyTitle: {
+          ...typography.title2,
+          color: s.label,
+          marginBottom: spacing[2],
+          textAlign: 'center',
+        },
+        emptySubtitle: {
+          ...typography.body,
+          color: s.secondaryLabel,
+          textAlign: 'center',
+        },
+      }),
+    [s]
+  );
+
+  const listSurfaceStyle = useMemo(
+    () => ({ flex: 1 as const, backgroundColor: s.background }),
+    [s.background]
+  );
 
   const [entries, setEntries] = useState<MoodEntry[]>([]);
   const [editingEntry, setEditingEntry] = useState<MoodEntry | null>(null);
@@ -131,12 +202,14 @@ export default function JournalScreen() {
   const keyExtractor = useCallback((item: MoodEntry) => item.date, []);
 
   const JournalRow = useMemo(() => {
-    return React.memo(function Row(props: {
+    function Row(props: {
       entry: MoodEntry;
       onTap: (e: MoodEntry) => void;
       onLongPress: (e: MoodEntry) => void;
+      moodGradeColorStyle: MoodGradeColorStyle;
+      isDark: boolean;
     }) {
-      const { entry, onTap, onLongPress } = props;
+      const { entry, onTap, onLongPress, moodGradeColorStyle: moodStyle, isDark: moodIsDark } = props;
       const handlePress = useCallback(() => onTap(entry), [entry, onTap]);
       const handleLong = useCallback(() => onLongPress(entry), [entry, onLongPress]);
       return (
@@ -148,43 +221,50 @@ export default function JournalScreen() {
           accessibilityLabel={`${getRelativeDayLabel(entry.date)} entry`}
         >
           <View style={styles.rowLeft}>
-            <Text style={styles.rowTitle} allowFontScaling>
+            <Text style={styles.rowTitle} allowFontScaling maxFontSizeMultiplier={1.3}>
               {getRelativeDayLabel(entry.date)}
             </Text>
-            <Text style={styles.rowSubtitle} allowFontScaling numberOfLines={1}>
+            <Text style={styles.rowSubtitle} allowFontScaling numberOfLines={1} maxFontSizeMultiplier={1.34}>
               {entry.note || 'No note'}
             </Text>
           </View>
 
-          <MoodBadge grade={entry.mood} size="sm" />
+          <MoodBadge grade={entry.mood} size="sm" moodGradeColorStyle={moodStyle} isDark={moodIsDark} />
         </Touchable>
       );
-    });
-  }, []);
+    }
+    return Row;
+  }, [styles]);
 
   const renderEntry = useCallback(
     ({ item }: { item: MoodEntry }) => {
-      return <JournalRow entry={item} onTap={handleTapEntry} onLongPress={handleLongPressEntry} />;
+      return <JournalRow entry={item} moodGradeColorStyle={moodGradeColorStyle} isDark={isDark} onTap={handleTapEntry} onLongPress={handleLongPressEntry} />;
     },
-    [JournalRow, handleLongPressEntry, handleTapEntry]
+    [JournalRow, handleLongPressEntry, handleTapEntry, isDark, moodGradeColorStyle]
   );
 
   const renderEmptyState = useCallback(() => {
     return (
-      <View style={styles.emptyState}>
-        <Text style={styles.emptyIcon}>📔</Text>
-        <Text style={styles.emptyTitle}>Your Journal is Empty</Text>
-        <Text style={styles.emptySubtitle}>
-          Start tracking your mood on the Today tab to see your entries here
-        </Text>
+      <View style={[styles.emptyContainer, { minHeight: Math.round(Math.min(windowHeight * 0.5, 480)) }]}>
+        <View style={styles.emptyState}>
+          <Text style={styles.emptyIcon}>📔</Text>
+          <Text style={styles.emptyTitle} allowFontScaling maxFontSizeMultiplier={1.28}>
+            Your Journal is Empty
+          </Text>
+          <Text style={styles.emptySubtitle} allowFontScaling maxFontSizeMultiplier={1.35}>
+            Start tracking your mood on the Today tab to see your entries here
+          </Text>
+        </View>
       </View>
     );
-  }, []);
+  }, [styles.emptyContainer, styles.emptyState, styles.emptyIcon, styles.emptyTitle, styles.emptySubtitle, windowHeight]);
 
   const listContentStyle = useMemo(
-    () => [styles.listContent, entries.length === 0 && styles.emptyContainer],
-    [entries.length]
+    () => [styles.listContent, { flexGrow: 1 }],
+    [styles.listContent]
   );
+
+  const journalListExtraData = useMemo(() => ({ moodGradeColorStyle, isDark }), [isDark, moodGradeColorStyle]);
 
   const onScrollBeginDrag = useCallback(() => {
     interactionQueue.setUserScrolling(true);
@@ -223,7 +303,9 @@ export default function JournalScreen() {
             keyExtractor={keyExtractor}
             renderItem={renderEntry}
             ListEmptyComponent={renderEmptyState}
+            style={listSurfaceStyle}
             contentContainerStyle={listContentStyle as any}
+            drawDistance={500}
             showsVerticalScrollIndicator={false}
             removeClippedSubviews
             onScrollBeginDrag={onScrollBeginDrag}
@@ -231,6 +313,7 @@ export default function JournalScreen() {
             onMomentumScrollBegin={onMomentumScrollBegin}
             onMomentumScrollEnd={onMomentumScrollEnd}
             keyboardShouldPersistTaps="handled"
+            extraData={journalListExtraData}
           />
         ) : (
           <FlatList
@@ -238,6 +321,7 @@ export default function JournalScreen() {
             keyExtractor={keyExtractor}
             renderItem={renderEntry}
             ListEmptyComponent={renderEmptyState}
+            style={listSurfaceStyle}
             contentContainerStyle={listContentStyle as any}
             showsVerticalScrollIndicator={false}
             removeClippedSubviews
@@ -250,6 +334,7 @@ export default function JournalScreen() {
             onMomentumScrollBegin={onMomentumScrollBegin}
             onMomentumScrollEnd={onMomentumScrollEnd}
             keyboardShouldPersistTaps="handled"
+            extraData={journalListExtraData}
           />
         )}
       </PerfProfiler>
@@ -266,63 +351,3 @@ export default function JournalScreen() {
     </SafeAreaView>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.system.background,
-  },
-  listContent: {
-    paddingHorizontal: spacing[4],
-    paddingBottom: 120,
-  },
-  emptyContainer: {
-    flex: 1,
-    justifyContent: 'center',
-  },
-  row: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: colors.system.secondaryBackground,
-    borderRadius: borderRadius.lg,
-    paddingVertical: spacing[3],
-    paddingHorizontal: spacing[4],
-    marginTop: spacing[2],
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.system.separator,
-  },
-  rowLeft: {
-    flex: 1,
-    marginRight: spacing[3],
-  },
-  rowTitle: {
-    ...typography.headline,
-    color: colors.system.label,
-  },
-  rowSubtitle: {
-    ...typography.footnote,
-    color: colors.system.secondaryLabel,
-    marginTop: 2,
-  },
-  // Empty state
-  emptyState: {
-    alignItems: 'center',
-    paddingHorizontal: spacing[10],
-  },
-  emptyIcon: {
-    fontSize: 64,
-    marginBottom: spacing[4],
-  },
-  emptyTitle: {
-    ...typography.title2,
-    color: colors.system.label,
-    marginBottom: spacing[2],
-    textAlign: 'center',
-  },
-  emptySubtitle: {
-    ...typography.body,
-    color: colors.system.secondaryLabel,
-    textAlign: 'center',
-  },
-});

@@ -33,8 +33,12 @@ Moodly is a local‑first journaling app. User notes can be sensitive. This chec
   - avoid heavy/opaque packages
   - prefer Expo Go compatible libs
   - review changelog/risk for any new dependency
+  - run `npm audit` before release; **residual findings** in Expo’s toolchain may require upstream upgrades (avoid `npm audit fix --force` without a full QA pass)
 
-## How we enforce (where to verify)
+### Moodly V2 release hygiene (2026)
+
+- **`npm audit fix`** (non–breaking) was applied during the V2 pass; some **moderate/low** advisories may remain tied to **Expo SDK / Metro / jest-expo** until those packages publish patched trees.
+- **Version surfaces**: `app.json` → `expo.version`, `package.json` → `version`, and `APP_RELEASE_VERSION` in `src/constants/app.ts` should match before tagging a build.
 
 - **ESLint guardrails**: `eslint.config.cjs`
   - bans AsyncStorage in UI code

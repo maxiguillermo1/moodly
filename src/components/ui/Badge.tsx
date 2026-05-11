@@ -4,10 +4,10 @@
  */
 
 import React, { useMemo } from 'react';
-import { View, Text, StyleSheet, ViewStyle } from 'react-native';
+import { Text, StyleSheet, ViewStyle } from 'react-native';
 import { MoodGrade } from '../../types';
-import { getMoodColor } from '../../utils';
-import { colors, borderRadius, typography } from '../../theme';
+import { borderRadius, typography, useAppTheme } from '../../theme';
+import { MoodGradeSurface } from '../mood/MoodGradeSurface';
 
 type BadgeSize = 'sm' | 'md' | 'lg';
 
@@ -23,39 +23,41 @@ const SIZE_CONFIG = {
   lg: { width: 56, height: 44, fontSize: 18 },
 };
 
-/**
- * Small presentational component used in hot UI paths.
- * Memoized to reduce rerenders when parent lists update.
- */
-export const Badge = React.memo(function Badge({ grade, size = 'md', style }: BadgeProps) {
+export function Badge({ grade, size = 'md', style }: BadgeProps): React.ReactElement {
+  const { semantic, moodGradeColorStyle, isDark } = useAppTheme();
   const config = SIZE_CONFIG[size];
-  const backgroundColor = getMoodColor(grade);
 
-  const badgeStyle = useMemo(
+  const sizing = useMemo(
     () => ({
       width: config.width,
       height: config.height,
-      backgroundColor,
     }),
-    [backgroundColor, config.height, config.width]
+    [config.height, config.width]
   );
 
-  const textStyle = useMemo(() => ({ fontSize: config.fontSize }), [config.fontSize]);
+  const textStyle = useMemo(
+    () => ({
+      fontSize: config.fontSize,
+      color: semantic.text.inverse,
+      fontWeight: typography.headingSm.fontWeight,
+    }),
+    [config.fontSize, semantic.text.inverse]
+  );
 
   return (
-    <View
-      style={[
-        styles.badge,
-        badgeStyle,
-        style,
-      ]}
+    <MoodGradeSurface
+      grade={grade}
+      moodGradeColorStyle={moodGradeColorStyle}
+      isDark={isDark}
+      variant="opaque"
+      style={[styles.badge, sizing, style]}
     >
-      <Text style={[styles.text, textStyle]} allowFontScaling>
+      <Text style={[styles.textBase, textStyle]} allowFontScaling maxFontSizeMultiplier={1.3}>
         {grade}
       </Text>
-    </View>
+    </MoodGradeSurface>
   );
-});
+}
 
 const styles = StyleSheet.create({
   badge: {
@@ -63,8 +65,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  text: {
-    color: colors.semantic.text.inverse,
-    fontWeight: typography.headingSm.fontWeight,
+  textBase: {
+    textAlign: 'center',
   },
 });

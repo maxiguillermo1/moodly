@@ -2,23 +2,21 @@
  * @fileoverview Month grid (shared between CalendarScreen + CalendarView)
  * Hot path: minimize allocations and rerenders for smooth scrolling.
  * @module components/calendar/MonthGrid
- *
- * Hidden decisions (intentional):
- * - Date keys are local `YYYY-MM-DD` strings (see `src/lib/utils/date.ts` and `src/data/model/entry.ts`).
- * - `monthIndex0` is 0-based (0..11) to match JS Date.
- * - `todayKey` is supplied by screens (updates across midnight via a single day-boundary timer).
  */
 
 import React, { useEffect, useMemo } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
-import { MoodEntry } from '../../types';
+import { View, Text, StyleSheet, Platform } from 'react-native';
+import { MoodEntry, type MoodGrade } from '../../types';
+import type { MoodGradeColorStyle } from '../../types/settings.types';
+import { MoodGradeSurface } from '../mood/MoodGradeSurface';
 import { getMonthMatrix } from '../../utils';
-import { colors } from '../../theme';
+import { useAppTheme, getCalendarTextLimits } from '../../theme';
 import { getMonthRenderModel } from './monthModel';
 import type { CalendarMoodStyle as CalendarMoodStyle2 } from './monthModel';
 import { perfProbe } from '../../perf';
 import { Touchable } from '../../ui/Touchable';
 import { formatDayCellA11yLabel } from '../../system/accessibility';
+import type { FullGridMetrics } from './fullGridLayout';
 
 export type CalendarMoodStyle = CalendarMoodStyle2;
 
@@ -26,22 +24,18 @@ interface MonthGridProps {
   year: number;
   monthIndex0: number;
   variant: 'mini' | 'full';
-  entries: Record<string, MoodEntry>; // Ideally pre-filtered to the month for perf (CalendarScreen does this)
+  entries: Record<string, MoodEntry>;
   calendarMoodStyle: CalendarMoodStyle;
-  /**
-   * Performance-only: bump this number whenever the backing entries for this month change.
-   * This allows MonthModel caches to invalidate without hashing or scanning.
-   */
   entriesRevision?: number;
-  /**
-   * Optional: supply today's key once per screen mount to avoid per-MonthGrid Date work.
-   * Must be local-day `YYYY-MM-DD` key.
-   */
   todayKey?: string;
   selectedDate?: string;
   onPressDate?: (isoDate: string) => void;
   reduceMotion?: boolean;
   onHapticSelect?: () => void;
+  /** Uniform gaps + scaled cells for the full month view (matches measured card width). */
+  fullGridLayout?: FullGridMetrics | null;
+  moodGradeColorStyle: MoodGradeColorStyle;
+  isDark: boolean;
 }
 
 type SizeKey = 'full' | 'mini-dot' | 'mini-fill';
@@ -54,24 +48,25 @@ type SharedCellStyles = {
   dotBaseStyle: { width: number; height: number; borderRadius: number; marginTop: number };
 };
 
-const sharedStylesCache = new Map<SizeKey, SharedCellStyles>();
-function getSharedStyles(sizeKey: SizeKey): SharedCellStyles {
-  const cached = sharedStylesCache.get(sizeKey);
+const sharedStylesCache = new Map<string, SharedCellStyles>();
+
+function getSharedStyles(sizeKey: SizeKey, accentBlue: string): SharedCellStyles {
+  const cacheKey = `6|${sizeKey}|${accentBlue}`;
+  const cached = sharedStylesCache.get(cacheKey);
   if (cached) return cached;
 
-  // These numbers match the previous Phase 1 implementation exactly.
   const sizes =
     sizeKey === 'full'
       ? {
           cellH: 44,
           cellW: 44,
-          vMargin: 2,
+          vMargin: 4,
           dayFontSize: 17,
           dayLineHeight: 22,
-          dotSize: 6,
-          dotMarginTop: 4,
-          textTopNudge: 2,
-          todayRingW: 3,
+          dotSize: 2,
+          dotMarginTop: 1,
+          textTopNudge: 0,
+          todayRingW: 2,
         }
       : sizeKey === 'mini-fill'
         ? {
@@ -110,7 +105,7 @@ function getSharedStyles(sizeKey: SizeKey): SharedCellStyles {
     }),
     todayRingStyle: Object.freeze({
       borderWidth: sizes.todayRingW,
-      borderColor: colors.system.blue,
+      borderColor: accentBlue,
     }),
     dayTextSizeStyle: Object.freeze({
       fontSize: sizes.dayFontSize,
@@ -124,11 +119,10 @@ function getSharedStyles(sizeKey: SizeKey): SharedCellStyles {
       marginTop: sizes.dotMarginTop,
     }),
   });
-  sharedStylesCache.set(sizeKey, next);
+  sharedStylesCache.set(cacheKey, next);
   return next;
 }
 
-// Cache background color styles so DayCell never allocates `{ backgroundColor }` objects.
 const bgColorStyleCache = new Map<string, { backgroundColor: string }>();
 function bgStyle(color: string): { backgroundColor: string } {
   const cached = bgColorStyleCache.get(color);
@@ -142,6 +136,9 @@ const DayCell = React.memo(
   function DayCell(props: {
     day: number;
     moodColor: string | null;
+    moodGrade: MoodGrade | null;
+    moodGradeColorStyle: MoodGradeColorStyle;
+    isDark: boolean;
     isFill: boolean;
     isSelected: boolean;
     isToday: boolean;
@@ -151,10 +148,17 @@ const DayCell = React.memo(
     reduceMotion: boolean;
     onPress?: () => void;
     a11yLabel: string;
+    accentBlue: string;
+    onBgLabelColor: string;
+    fullGridLayout?: FullGridMetrics | null;
+    dayMaxFontMult: number;
   }) {
     const {
       day,
       moodColor,
+      moodGrade,
+      moodGradeColorStyle,
+      isDark,
       isFill,
       isSelected,
       isToday,
@@ -164,43 +168,156 @@ const DayCell = React.memo(
       reduceMotion,
       onPress,
       a11yLabel,
-    } =
-      props;
+      accentBlue,
+      onBgLabelColor,
+      dayMaxFontMult,
+      fullGridLayout,
+    } = props;
     const isBold = isFill || forceBold;
-    const shared = getSharedStyles(sizeKey);
+    const shared = getSharedStyles(sizeKey, accentBlue);
+    const fg = variant === 'full' && fullGridLayout ? fullGridLayout : null;
+
+    const cellSizeStyle = fg
+      ? { width: fg.cell, height: fg.cell, marginVertical: 0 }
+      : shared.cellSizeStyle;
+    const pillBaseStyle = fg
+      ? { width: fg.cell, height: fg.cell, borderRadius: fg.cell / 2 }
+      : shared.pillBaseStyle;
+    const dayTextSizeStyle = fg
+      ? { fontSize: fg.fontSize, lineHeight: fg.lineHeight, marginTop: 0 }
+      : shared.dayTextSizeStyle;
+    const dotBaseStyle = fg
+      ? {
+          width: fg.dotSize,
+          height: fg.dotSize,
+          borderRadius: fg.dotSize / 2,
+          marginTop: fg.dotMarginTop,
+        }
+      : shared.dotBaseStyle;
+    const todayRingStyle = fg
+      ? { borderWidth: fg.todayRingW, borderColor: accentBlue }
+      : shared.todayRingStyle;
 
     if (perfProbe.enabled) {
-      // Sampled breadcrumb (avoid per-cell spam): 1st day gives one signal per month.
       if (day === 1) perfProbe.breadcrumb(variant === 'mini' ? 'DayCell.render.mini' : 'DayCell.render.full');
     }
+
+    const selectionRing = isSelected ? { borderWidth: 2, borderColor: accentBlue } : null;
+
+    /** Fill theme: “today” ring on the whole mood disk. Dot theme: ring only on the mood dot (see below). */
+    const todayRingOnOuterPill = isToday && !isSelected && isFill;
+    const showTodayDotRing = isToday && !isSelected && !isFill;
+    const ringW = todayRingStyle.borderWidth;
+    const todayDotInset = Math.max(1, Math.round(ringW * 0.65));
+
+    const dotBoxStyle = {
+      width: dotBaseStyle.width,
+      height: dotBaseStyle.height,
+      borderRadius: dotBaseStyle.borderRadius,
+    };
+    const dotRowMarginTop = typeof dotBaseStyle.marginTop === 'number' ? dotBaseStyle.marginTop : 0;
+
+    const showGradientFill = isFill && moodGradeColorStyle === 'gradient' && !!moodGrade;
+    const showSolidFill = isFill && moodGradeColorStyle === 'solid' && !!moodColor;
+    const pillRadius = pillBaseStyle.borderRadius;
+
+    const moodDot =
+      moodGrade ? (
+        <MoodGradeSurface
+          grade={moodGrade}
+          moodGradeColorStyle={moodGradeColorStyle}
+          isDark={isDark}
+          variant="opaque"
+          style={dotBoxStyle}
+        />
+      ) : null;
+
+    /** Full month + dot theme: stack number + mood dot. Fill theme (model): full pill + centered number only. */
+    const pillFullGridDotLayout =
+      variant === 'full' && !isFill
+        ? fg
+          ? {
+              justifyContent: 'flex-start' as const,
+              paddingTop: fg.dotPadTop,
+              paddingBottom: fg.dotPadBottom,
+            }
+          : styles.pillFullDotMode
+        : null;
 
     const content = (
       <View
         style={[
           styles.pill,
-          shared.pillBaseStyle,
-          isFill && moodColor ? bgStyle(moodColor) : null,
-          isSelected ? styles.selectedRing : isToday ? shared.todayRingStyle : null,
+          pillFullGridDotLayout,
+          pillBaseStyle,
+          showSolidFill && moodColor ? bgStyle(moodColor) : null,
+          showGradientFill ? { backgroundColor: 'transparent' } : null,
+          selectionRing,
+          todayRingOnOuterPill ? todayRingStyle : null,
         ]}
       >
+        {showGradientFill && moodGrade ? (
+          <MoodGradeSurface
+            grade={moodGrade}
+            moodGradeColorStyle={moodGradeColorStyle}
+            isDark={isDark}
+            variant="opaque"
+            style={[StyleSheet.absoluteFillObject, { borderRadius: pillRadius }]}
+          />
+        ) : null}
         <Text
           style={[
             styles.dayText,
-            shared.dayTextSizeStyle,
-            isFill ? styles.dayTextOnFill : styles.dayTextOnBg,
+            dayTextSizeStyle,
+            isFill ? styles.dayTextOnFill : { color: onBgLabelColor },
             isBold ? styles.dayTextBold : styles.dayTextRegular,
+            variant === 'full' && Platform.OS === 'android' ? styles.dayTextAndroidAlign : null,
+            showGradientFill || showSolidFill ? styles.dayTextOverFill : null,
           ]}
           allowFontScaling={variant === 'full'}
+          maxFontSizeMultiplier={variant === 'full' ? dayMaxFontMult : 1}
+          numberOfLines={variant === 'full' ? 1 : undefined}
         >
           {day}
         </Text>
-        {!isFill && moodColor ? <View style={[shared.dotBaseStyle, bgStyle(moodColor)]} /> : null}
+        {!isFill ? (
+          moodColor && moodGrade ? (
+            showTodayDotRing ? (
+              <View
+                style={[
+                  styles.todayMoodDotRing,
+                  {
+                    marginTop: dotRowMarginTop,
+                    borderWidth: ringW,
+                    borderColor: accentBlue,
+                    padding: todayDotInset,
+                  },
+                ]}
+              >
+                {moodDot}
+              </View>
+            ) : (
+              <View style={[dotBaseStyle, { backgroundColor: 'transparent' }]}>{moodDot}</View>
+            )
+          ) : showTodayDotRing ? (
+            <View
+              style={[
+                dotBoxStyle,
+                {
+                  marginTop: dotRowMarginTop,
+                  borderWidth: ringW,
+                  borderColor: accentBlue,
+                  backgroundColor: 'transparent',
+                },
+              ]}
+            />
+          ) : null
+        ) : null}
       </View>
     );
 
-    // Perf: if there's no handler, avoid mounting a Pressable (especially in CalendarView mini grids).
     if (!onPress) {
-      return <View style={[styles.cell, shared.cellSizeStyle]}>{content}</View>;
+      return <View style={[styles.cell, cellSizeStyle]}>{content}</View>;
     }
 
     return (
@@ -210,9 +327,10 @@ const DayCell = React.memo(
         accessibilityLabel={a11yLabel}
         accessibilityState={isSelected ? { selected: true } : undefined}
         scaleTo={reduceMotion ? 1 : 0.99}
+        hitSlop={variant === 'full' ? { top: 2, bottom: 2, left: 2, right: 2 } : undefined}
         style={({ pressed }) => [
           styles.cell,
-          shared.cellSizeStyle,
+          cellSizeStyle,
           pressed ? styles.pressedOpacity : null,
         ]}
       >
@@ -220,22 +338,26 @@ const DayCell = React.memo(
       </Touchable>
     );
   },
-  (prev, next) => {
-    // Custom comparator: DayCell rerenders only when something it *renders* changes.
-    return (
-      prev.day === next.day &&
-      prev.moodColor === next.moodColor &&
-      prev.isFill === next.isFill &&
-      prev.isSelected === next.isSelected &&
-      prev.isToday === next.isToday &&
-      prev.forceBold === next.forceBold &&
-      prev.sizeKey === next.sizeKey &&
-      prev.variant === next.variant &&
-      prev.reduceMotion === next.reduceMotion &&
-      prev.onPress === next.onPress &&
-      prev.a11yLabel === next.a11yLabel
-    );
-  }
+  (prev, next) =>
+    prev.day === next.day &&
+    prev.moodColor === next.moodColor &&
+    prev.moodGrade === next.moodGrade &&
+    prev.moodGradeColorStyle === next.moodGradeColorStyle &&
+    prev.isDark === next.isDark &&
+    prev.isFill === next.isFill &&
+    prev.isSelected === next.isSelected &&
+    prev.isToday === next.isToday &&
+    prev.forceBold === next.forceBold &&
+    prev.sizeKey === next.sizeKey &&
+    prev.variant === next.variant &&
+    prev.reduceMotion === next.reduceMotion &&
+    prev.onPress === next.onPress &&
+    prev.a11yLabel === next.a11yLabel &&
+    prev.accentBlue === next.accentBlue &&
+    prev.onBgLabelColor === next.onBgLabelColor &&
+    prev.dayMaxFontMult === next.dayMaxFontMult &&
+    prev.fullGridLayout?.cell === next.fullGridLayout?.cell &&
+    prev.fullGridLayout?.gap === next.fullGridLayout?.gap
 );
 
 export const MonthGrid = React.memo(function MonthGrid({
@@ -250,7 +372,16 @@ export const MonthGrid = React.memo(function MonthGrid({
   onPressDate,
   reduceMotion = false,
   onHapticSelect,
+  fullGridLayout,
+  moodGradeColorStyle,
+  isDark,
 }: MonthGridProps) {
+  const { system, fontScale, windowWidth } = useAppTheme();
+  const textLimits = useMemo(
+    () => getCalendarTextLimits(fontScale, windowWidth),
+    [fontScale, windowWidth]
+  );
+
   if (perfProbe.enabled) {
     perfProbe.breadcrumb(variant === 'mini' ? 'MonthGrid.render.mini' : 'MonthGrid.render.full');
   }
@@ -265,7 +396,6 @@ export const MonthGrid = React.memo(function MonthGrid({
 
   useEffect(() => {
     if (!perfProbe.enabled) return;
-    // Keep breadcrumbs useful: mini grids mount 12× per year page; sample to avoid drowning the ring buffer.
     if (variant === 'mini' && monthIndex0 !== 0) return;
     perfProbe.breadcrumb(variant === 'mini' ? 'MonthGrid.commit.mini' : 'MonthGrid.commit.full');
   }, [monthIndex0, variant]);
@@ -296,22 +426,29 @@ export const MonthGrid = React.memo(function MonthGrid({
     onHapticSelect,
   ]);
 
-  // Only affects CalendarView's mini grid when "Full color days" is enabled.
   const forceBoldMiniWhenFillTheme = variant === 'mini' && calendarMoodStyle === 'fill';
 
-  const shared = getSharedStyles(model.sizeKey);
+  const shared = getSharedStyles(model.sizeKey, system.blue);
   const emptyCellStyle = shared.cellSizeStyle;
+  const dayMult = variant === 'full' ? textLimits.monthGridDayFull : 1;
+
+  const useUniformFull = variant === 'full' && fullGridLayout != null;
+  const gridCombined = useUniformFull ? [styles.grid, { rowGap: fullGridLayout!.gap }] : styles.grid;
+  const rowCombined = useUniformFull ? [styles.rowUniform, { columnGap: fullGridLayout!.gap }] : styles.row;
+  const emptyCellActual = useUniformFull
+    ? { width: fullGridLayout!.cell, height: fullGridLayout!.cell }
+    : emptyCellStyle;
 
   return (
-    <View style={styles.grid}>
+    <View style={gridCombined} accessibilityRole={variant === 'full' ? 'none' : undefined}>
       {weeks.map((week, wIdx) => (
-        <View key={`w-${year}-${monthIndex0}-${wIdx}`} style={styles.row}>
+        <View key={`w-${year}-${monthIndex0}-${wIdx}`} style={rowCombined}>
           {week.map((day, dIdx) => {
             if (!day) {
               return (
                 <View
                   key={`e-${year}-${monthIndex0}-${wIdx}-${dIdx}`}
-                  style={emptyCellStyle}
+                  style={emptyCellActual}
                 />
               );
             }
@@ -319,12 +456,11 @@ export const MonthGrid = React.memo(function MonthGrid({
             const dateStr = model.isoByDay[day]!;
             const entry = entries[dateStr];
             const moodColor = model.moodColorByDay[day] ?? null;
+            const moodGrade = model.moodGradeByDay[day] ?? null;
             const isFill = model.isFillTheme && !!moodColor;
             const isSelected = model.selectedDay === day;
             const isToday = model.todayDay === day;
 
-            // Only compute VoiceOver labels when the day is actually pressable.
-            // Mini grids do not mount Pressables, so this avoids wasted work during year paging.
             const a11yLabel = model.pressByDay
               ? formatDayCellA11yLabel({
                   weekdayIndex0: model.weekdayByDay[day] ?? 0,
@@ -341,6 +477,9 @@ export const MonthGrid = React.memo(function MonthGrid({
                 key={`c-${year}-${monthIndex0}-${wIdx}-${dIdx}`}
                 day={day}
                 moodColor={moodColor}
+                moodGrade={moodGrade}
+                moodGradeColorStyle={moodGradeColorStyle}
+                isDark={isDark}
                 isFill={isFill}
                 isSelected={isSelected}
                 isToday={isToday}
@@ -350,6 +489,10 @@ export const MonthGrid = React.memo(function MonthGrid({
                 reduceMotion={reduceMotion}
                 onPress={model.pressByDay ? model.pressByDay[day] : undefined}
                 a11yLabel={a11yLabel}
+                accentBlue={system.blue}
+                onBgLabelColor={system.label}
+                dayMaxFontMult={dayMult}
+                fullGridLayout={variant === 'full' ? fullGridLayout : null}
               />
             );
           })}
@@ -362,14 +505,37 @@ export const MonthGrid = React.memo(function MonthGrid({
 const styles = StyleSheet.create({
   grid: { width: '100%' },
   row: { flexDirection: 'row', justifyContent: 'space-between' },
+  rowUniform: { flexDirection: 'row', justifyContent: 'flex-start', width: '100%' },
   cell: { alignItems: 'center', justifyContent: 'center' },
   pressedOpacity: { opacity: 0.85 },
-  pill: { alignItems: 'center', justifyContent: 'center' },
-  selectedRing: { borderWidth: 2, borderColor: colors.system.blue },
+  pill: {
+    position: 'relative',
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  /** Keeps day numerals above bloom fill layers (gradient mode). */
+  dayTextOverFill: { zIndex: 1 },
+  /** Dot theme on full grid only — model uses fill theme for full pills (centered label). */
+  pillFullDotMode: {
+    justifyContent: 'flex-start',
+    paddingTop: 8,
+    paddingBottom: 9,
+  },
   dayText: { textAlign: 'center' },
-  dayTextOnBg: { color: colors.system.label },
+  /** Android: extra font padding skews “today” rings vs the glyph. */
+  dayTextAndroidAlign: {
+    includeFontPadding: false,
+    textAlignVertical: 'center',
+  },
+  /** Blue ring sits on the mood dot only (dot theme “today”). */
+  todayMoodDotRing: {
+    alignSelf: 'center',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 999,
+  },
   dayTextOnFill: { color: '#fff' },
   dayTextBold: { fontWeight: '700' },
   dayTextRegular: { fontWeight: '400' },
 });
-

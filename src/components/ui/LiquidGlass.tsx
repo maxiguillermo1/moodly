@@ -2,18 +2,13 @@
  * @fileoverview iOS "Liquid Glass" material wrapper (Expo Go safe)
  * @module components/ui/LiquidGlass
  *
- * Notes:
- * - Uses expo-blur if installed (via conditional require). If not installed,
- *   it falls back to a translucent fill so builds don't break.
- * - Designed for capsule controls (pills, floating nav) without changing layout.
+ * Respects Reduce Transparency (via AppTheme) and active light/dark interface style.
  */
 
 import React, { useMemo } from 'react';
-import { View, StyleSheet, useColorScheme, ViewStyle, StyleProp } from 'react-native';
-import { colors, sizing } from '../../theme';
+import { View, StyleSheet, ViewStyle, StyleProp } from 'react-native';
+import { useAppTheme, sizing } from '../../theme';
 
-// Conditional import so the app still typechecks/runs even if expo-blur is not installed.
-// If the user installs expo-blur, BlurView will be used automatically.
 let BlurViewAny: any = null;
 try {
   BlurViewAny = require('expo-blur')?.BlurView ?? null;
@@ -24,11 +19,11 @@ try {
 export type LiquidGlassProps = {
   children: React.ReactNode;
   style?: StyleProp<ViewStyle>;
-  intensity?: number; // blur intensity default
+  intensity?: number;
   tint?: 'light' | 'dark' | 'default';
   border?: boolean;
   shadow?: boolean;
-  radius?: number; // defaults to sizing.capsuleRadius
+  radius?: number;
 };
 
 export const LiquidGlass = React.memo(function LiquidGlass({
@@ -40,22 +35,32 @@ export const LiquidGlass = React.memo(function LiquidGlass({
   shadow = true,
   radius = sizing.capsuleRadius,
 }: LiquidGlassProps) {
-  const scheme = useColorScheme();
-  const resolvedTint: 'light' | 'dark' | 'default' =
-    tint === 'default' ? (scheme === 'dark' ? 'dark' : 'light') : tint;
+  const { isDark, glass, a11y } = useAppTheme();
 
-  const tokens = resolvedTint === 'dark' ? colors.glass.dark : colors.glass.light;
+  const resolvedTint: 'light' | 'dark' =
+    tint === 'default' ? (isDark ? 'dark' : 'light') : tint;
+
+  const tokens = glass;
+
+  const blurIntensity = useMemo(() => {
+    if (a11y.reduceTransparency) return 0;
+    const base = intensity;
+    return isDark ? Math.round(base * 0.92) : base;
+  }, [a11y.reduceTransparency, intensity, isDark]);
+
+  const fillOpacityBoost = a11y.reduceTransparency ? 0.14 : 0;
 
   const shadowStyle = useMemo<ViewStyle>(() => {
     if (!shadow) return {};
+    const elevated = isDark && !a11y.reduceTransparency;
     return {
       shadowColor: tokens.shadow,
-      shadowOffset: { width: 0, height: 6 },
-      shadowOpacity: resolvedTint === 'dark' ? 0.35 : 0.18,
-      shadowRadius: 14,
-      elevation: 10,
+      shadowOffset: { width: 0, height: elevated ? 10 : 7 },
+      shadowOpacity: elevated ? 0.48 : 0.2,
+      shadowRadius: elevated ? 18 : 15,
+      elevation: elevated ? 14 : 11,
     };
-  }, [shadow, tokens.shadow, resolvedTint]);
+  }, [shadow, tokens.shadow, isDark, a11y.reduceTransparency]);
 
   const containerStyle = useMemo<ViewStyle>(
     () => ({
@@ -66,31 +71,32 @@ export const LiquidGlass = React.memo(function LiquidGlass({
     [radius, shadowStyle]
   );
 
-  const showBlur = !!BlurViewAny;
+  const showBlur = !!BlurViewAny && !a11y.reduceTransparency && blurIntensity > 0;
+
+  const fillBackground = useMemo(() => {
+    const m = tokens.background.match(/rgba?\(([^)]+)\)/);
+    if (!m) return tokens.background;
+    const parts = m[1].split(',').map((s: string) => s.trim());
+    if (parts.length === 4) {
+      const a = Math.min(1, parseFloat(parts[3]) + fillOpacityBoost);
+      return `rgba(${parts[0]}, ${parts[1]}, ${parts[2]}, ${a})`;
+    }
+    return tokens.background;
+  }, [fillOpacityBoost, tokens.background]);
 
   return (
     <View pointerEvents="box-none" style={[containerStyle, style]}>
-      {/* Blur layer (only if expo-blur is installed) */}
       {showBlur ? (
-        <BlurViewAny
-          tint={resolvedTint}
-          intensity={intensity}
-          style={StyleSheet.absoluteFill}
-        />
+        <BlurViewAny tint={resolvedTint} intensity={blurIntensity} style={StyleSheet.absoluteFill} />
       ) : null}
 
-      {/* Translucent fallback fill (also helps even when blur is subtle) */}
-      <View
-        pointerEvents="none"
-        style={[StyleSheet.absoluteFill, { backgroundColor: tokens.background }]}
-      />
+      <View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: fillBackground }]} />
 
-      {/* Remove gradient sheen: keep only a subtle top edge highlight */}
       <View pointerEvents="none" style={StyleSheet.absoluteFill}>
         <View
           style={[
             styles.topEdge,
-            { opacity: resolvedTint === 'dark' ? 0.14 : 0.22 },
+            { opacity: resolvedTint === 'dark' ? 0.12 : 0.22 },
           ]}
         />
         <View
@@ -98,13 +104,12 @@ export const LiquidGlass = React.memo(function LiquidGlass({
             styles.topBand,
             {
               backgroundColor: tokens.highlight,
-              opacity: resolvedTint === 'dark' ? 0.04 : 0.06,
+              opacity: resolvedTint === 'dark' ? 0.035 : 0.065,
             },
           ]}
         />
       </View>
 
-      {/* Hairline border */}
       {border ? (
         <View
           pointerEvents="none"
@@ -119,7 +124,6 @@ export const LiquidGlass = React.memo(function LiquidGlass({
         />
       ) : null}
 
-      {/* Border "glow" (very subtle) */}
       {border ? (
         <View
           pointerEvents="none"
@@ -129,13 +133,12 @@ export const LiquidGlass = React.memo(function LiquidGlass({
               borderRadius: radius,
               borderWidth: 1,
               borderColor: tokens.highlight,
-              opacity: resolvedTint === 'dark' ? 0.06 : 0.10,
+              opacity: resolvedTint === 'dark' ? 0.055 : 0.1,
             },
           ]}
         />
       ) : null}
 
-      {/* Content */}
       {children}
     </View>
   );
@@ -155,7 +158,6 @@ const styles = StyleSheet.create({
     top: 0,
     left: 0,
     right: 0,
-    height: 10,
+    height: 14,
   },
 });
-

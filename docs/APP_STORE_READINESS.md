@@ -101,11 +101,11 @@ This document defines the **minimum bar** for “App Store–ready” quality fo
 
 ## 6) Release sanity checklist (2–5 minutes)
 
-- **Cold start**: open app → no white flash / no layout jumps
+- **Cold start**: open app → no white flash / no layout jumps (**native splash** respects system light/dark in standalone/dev builds; Expo Go launcher is not a reliable splash reference)
 - **Today**: select mood + note + Save → relaunch → persists
 - **Journal**: scroll smooth → edit → Save → persists → long-press delete works
 - **Calendar**: year scroll smooth → open month → tap day → edit/save works
-- **Settings**: stats load, toggles persist
+- **Settings**: stats load; **Appearance** segmented control persists (Auto/Light/Dark); **Theme** toggle (calendar dot vs fill) persists
 - **Accessibility quick pass**:
   - VoiceOver: tabs + icon buttons announce correctly
   - Dynamic Type up: text remains readable (no major clipping)
@@ -122,8 +122,14 @@ npm test
 
 ## References (where the “rules” live)
 
-- Architecture + boundaries: `docs/architecture.md` (enforced by `eslint.config.cjs`)
-- Decisions/invariants: `docs/DECISIONS.md`
-- Logging contract: `docs/logger.md`
-- Security checklist: `SECURITY_CHECKLIST.md`
+| Topic | Doc |
+|--------|-----|
+| Architecture + boundaries | `docs/architecture.md` (with `eslint.config.cjs`) |
+| Design tokens + appearance runtime | `docs/DESIGN_SYSTEM.md` |
+| Reusable UI | `docs/COMPONENTS.md` |
+| Decisions/invariants | `docs/DECISIONS.md` |
+| Logging contract | `docs/logger.md` |
+| Security checklist | `SECURITY_CHECKLIST.md` |
+| Testing | `docs/TESTING.md` |
+| Performance | `docs/PERFORMANCE.md` |
 

@@ -13,7 +13,7 @@ import {
 } from '../screens';
 import { FloatingTabBar } from './FloatingTabBar';
 import { CalendarStack } from './CalendarStack';
-import { colors } from '../theme';
+import { useAppTheme } from '../theme';
 
 // Type definitions
 export type MainTabParamList = {
@@ -37,23 +37,27 @@ function MainTabs() {
       tabBar={(props) => <FloatingTabBar {...props} />}
       screenOptions={{
         headerShown: false,
+        // Inactive tabs skip React reconciliation while off-screen (react-native-screens).
+        freezeOnBlur: true,
       }}
       initialRouteName="Today"
     >
       <Tab.Screen name="Calendar" component={CalendarStack} />
       <Tab.Screen name="Today" component={TodayScreen} />
-      <Tab.Screen name="Journal" component={JournalScreen} />
+      {/* FlashList can hitch when thawing frozen screens; keep Journal live for smoother tab return */}
+      <Tab.Screen name="Journal" component={JournalScreen} options={{ freezeOnBlur: false }} />
     </Tab.Navigator>
   );
 }
 
 /** Root stack with settings modal */
 export default function RootNavigator() {
+  const { system } = useAppTheme();
   return (
     <Stack.Navigator
       screenOptions={{
         headerShown: false,
-        contentStyle: { backgroundColor: colors.system.background },
+        contentStyle: { backgroundColor: system.background },
       }}
     >
       <Stack.Screen name="Main" component={MainTabs} />

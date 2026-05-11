@@ -8,8 +8,8 @@ This file is intentionally strict: **only** libraries with clear benefit, low ri
 - React: **19.1**
 - Navigation: **React Navigation v7**, `native-stack` already in use
 - List perf:
-  - Calendar uses **FlashList** already
-  - Journal defaults to **FlatList**, with an existing reversible `FlashList` toggle in code (`src/screens/JournalScreen.tsx`)
+  - Calendar month timeline uses **FlashList**.
+  - Journal timeline defaults to **`FlashList`** as well (`JOURNAL_LIST_IMPL === 'flashlist'` in `src/screens/JournalScreen.tsx`; set to **`'flatlist'`** locally if you need a regression comparison).
 
 ---
 
@@ -17,7 +17,7 @@ This file is intentionally strict: **only** libraries with clear benefit, low ri
 
 | Library | Moodly-specific problem it solves | Expo Go compatible? | Risk | Bundle/runtime cost | Integration surface | Expected impact | Adopt now? | “No new library” alternative |
 |---|---|---:|---|---|---|---|---:|---|
-| `@shopify/flash-list` | Smooth scrolling + lower memory for **large, unbounded lists** (Journal) | **YES** (Expo docs: [FlashList](https://docs.expo.dev/versions/latest/sdk/flash-list/)) | Low | Low (already in deps) | Small | Med→High (Journal) | **YES** (apply to Journal) | Keep `FlatList`, tune: `getItemLayout` (if possible), `removeClippedSubviews`, batching/window params, memoized rows |
+| `@shopify/flash-list` | Smooth scrolling + lower memory for **large, unbounded lists** (Journal + Calendar month timeline) | **YES** (Expo docs: [FlashList](https://docs.expo.dev/versions/latest/sdk/flash-list/)) | Low | Low (already in deps) | Small | Med→High (long Journal + Calendar timeline) | **YES** (**in production layout**) | Tune `FlatList` (`removeClippedSubviews`, memoized rows); see `JournalScreen` constant for swap |
 | `@react-navigation/native-stack` (already used) | Native transitions + better perf vs JS stack | YES (already running) | Low | None (status quo) | None | Med | **KEEP** | N/A |
 | `react-native-reanimated` (already used) | UI-thread animations, scroll handlers | YES (already running) | Low | None (status quo) | None | Med | **KEEP** | N/A |
 | `react-native-gesture-handler` (already used) | Gesture performance + correctness | YES (already running) | Low | None (status quo) | None | Low→Med | **KEEP** | N/A |
@@ -36,6 +36,5 @@ These are **not** new libraries; they’re config/code-level best practices. We 
 - **`react-native-screens`**: calling `enableScreens()` can improve navigation memory/perf in some setups (docs: [react-native-screens](https://docs.expo.dev/versions/latest/sdk/screens/)).  
   - Risk note: usually safe, but we’ll treat it as an optimization behind baseline proof, because it can subtly change lifecycle/mounting.
 
-- **Avoid “freeze inactive screens”** (`enableFreeze`)  
-  - This can change behavior (background updates stop). **Not allowed** under current constraints.
+- **Avoid blanket “freeze inactive screens” toggles across all tabs**: React Navigation **`freezeOnBlur`** saves work for inactive routes but thawing **`FlashList`** can hitch. Moodly freezes **Calendar** and **Today**, but **`Journal`** opts into **`freezeOnBlur: false`** (`RootNavigator.tsx`) as a pragmatic trade-off.
 

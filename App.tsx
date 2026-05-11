@@ -1,5 +1,5 @@
 /**
- * @fileoverview Moodly - Daily Mood Tracker
+ * @fileoverview Moodly V2 — Daily Mood Tracker
  * iOS-inspired design with floating navigation
  */
 

@@ -22,8 +22,6 @@ interface UseMoodEntryReturn {
   note: string;
   /** Whether an existing entry was loaded */
   isExisting: boolean;
-  /** Loading state */
-  isLoading: boolean;
   /** Saving state */
   isSaving: boolean;
   /** Set the mood grade */
@@ -47,28 +45,22 @@ export function useMoodEntry(options: UseMoodEntryOptions = {}): UseMoodEntryRet
   const [mood, setMood] = useState<MoodGrade | null>(null);
   const [note, setNote] = useState('');
   const [isExisting, setIsExisting] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
   const load = useCallback(async () => {
-    setIsLoading(true);
     try {
       const entry = await getEntry(date);
-      if (entry) {
-        setMood(entry.mood);
-        setNote(entry.note);
-        setIsExisting(true);
-      } else {
-        setMood(null);
-        setNote('');
-        setIsExisting(false);
-      }
+      const nextMood = entry?.mood ?? null;
+      const nextNote = entry?.note ?? '';
+      const nextExisting = !!entry;
+      // Avoid focus/refetch churn when values are unchanged (Today tab stays mounted under tabs).
+      setMood((prev) => (prev === nextMood ? prev : nextMood));
+      setNote((prev) => (prev === nextNote ? prev : nextNote));
+      setIsExisting((prev) => (prev === nextExisting ? prev : nextExisting));
     } catch {
       // Defensive: storage issues should never crash the UI.
       // Keep prior state if possible; otherwise reset to safe defaults.
       logger.warn('today.loadEntry.failed', { dateKey: date });
-    } finally {
-      setIsLoading(false);
     }
   }, [date]);
 
@@ -100,7 +92,6 @@ export function useMoodEntry(options: UseMoodEntryOptions = {}): UseMoodEntryRet
     mood,
     note,
     isExisting,
-    isLoading,
     isSaving,
     setMood,
     setNote,

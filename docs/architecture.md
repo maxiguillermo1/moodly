@@ -7,17 +7,27 @@ This is the **canonical** architecture doc. The root `ARCHITECTURE.md` file is j
 - **Screens (`src/screens/`)**: user intent + orchestration (“what happens when the user taps?”)
 - **Components (`src/components/`)**: reusable UI (“how it looks / renders”)
 - **Hooks (`src/hooks/`)**: reusable UI wiring (React‑only helpers)
-- **Pure rules (`src/utils/`, `src/logic/`, `src/insights/`)**: deterministic helpers/selectors (no React, no storage)
+- **Pure rules** (`src/utils/` and shared **`src/lib/**`** helpers): deterministic utilities (no React, no navigation, no persistence imports). Optional empty **`src/domain/`**, **`src/logic/`**, **`src/insights/`** directories are wired in ESLint for future extraction; today most pure helpers ship under **`src/utils`** / **`src/lib`**.
 - **Storage facade (`src/storage/`)**: the **only** persistence API UI should import
 - **Storage implementation (`src/data/storage/`)**: AsyncStorage + caching + validation + quarantine + write locks
 - **Security (`src/security/`)**: privacy‑safe logger + redaction + console patch
 - **Perf probes (`src/perf/`)**: dev‑only observability (hitch detector, `perf.report`, list profiler summaries)
-- **Theme/types (`src/theme/`, `src/types/`)**: design tokens + shared types
+- **Theme/runtime appearance (`src/theme/`)**: `AppThemeProvider`, system palettes, tokens, persisted light/dark preference
+- **Types (`src/types/`)**: shared TypeScript shapes (entries, mood grades, settings)
+
+### State management (today)
+
+There is **no global client store** (no Redux Toolkit / Zustand). State is composed of:
+
+- **React component state / refs** per screen for UI and ephemeral flows (modals, scroll, selections).
+- **React Navigation** for route state (tabs + stack modal for Settings).
+- **`AppThemeContext`** for resolved appearance + design tokens (`useAppTheme()`).
+- **Async persistence** via `src/storage`; session RAM caches updated **after** successful writes (`src/data/storage/*`).
 
 ### Repo map (“where do I put this?”)
 
 - **Bootstrap**: `src/app/RootApp.tsx`
-- **Navigation**: `src/navigation/`
+- **Navigation**: `src/navigation/` (`RootNavigator.tsx`, `CalendarStack.tsx`, `FloatingTabBar.tsx`)
 - **Calendar hot paths**:
   - `src/screens/CalendarScreen.tsx` (month timeline)
   - `src/screens/CalendarView.tsx` (year pager)
@@ -35,9 +45,9 @@ These rules exist to prevent accidental performance/privacy regressions:
 - **UI (screens/components/hooks)**:
   - ✅ may import: `components`, `utils`, `theme`, `types`, `security`, `storage`, `perf` (dev‑only)
   - ❌ must not import: AsyncStorage, `src/data/storage/*`, deep `src/data/*`, or deep `src/lib/*`
-- **Pure layers (`utils`/`logic`/`insights`)**:
-  - ✅ may import: `types` (+ other pure helpers)
-  - ❌ must not import: React, React Native, navigation, storage
+- **Pure layers** (`utils` and, if present, `domain`/`logic`/`insights` folders named in ESLint):
+  - ✅ may import: `types` (+ other pure helpers inside `src/utils`/`src/lib` as allowed by rules)
+  - ❌ must not import: React, React Native, navigation, **`storage`** or **AsyncStorage**
 - **Storage implementation (`src/data/`)**:
   - ✅ may import: `security` (logger), pure validation helpers
   - ❌ must not import: screens/components/navigation
@@ -107,11 +117,25 @@ const key = toLocalDayKey(new Date());
 - Avoid per‑cell allocations (no inline objects/arrays/closures in tight loops).
 - Keep props stable (memoized callbacks + stable style objects).
 - Month computations should be cached per month (`monthModel` + `monthMatrix` cache).
+- **`fullGridLayout.ts`**: derives consistent cell/dot metrics for full-width calendar cards — keep in sync when changing sizing.
+
+#### Journal timeline (`JournalScreen`)
+
+- Uses **FlashList** by default (toggle `JOURNAL_LIST_IMPL` vs FlatList rollback).
+- **Tab option**: Journal sets **`freezeOnBlur: false`** to avoid thaw hitches while other tabs may freeze inactive routes.
+- The list uses explicit **surface backgrounds** tuned to **`system.background`** to avoid recycler “white flashes” behind themed chrome.
 
 ### Reference docs
 
-- **Engineering handoff**: `ENGINEERING_HANDOFF.md`
-- **Owner decisions**: `docs/DECISIONS.md`
-- **Logging contract**: `docs/logger.md`
-- **Data contract**: `src/data/DATA_CONTRACT.md`
+| Topic | Doc |
+|--------|-----|
+| New engineer onboarding | `ENGINEERING_HANDOFF.md` |
+| Folder tree | `docs/PROJECT_STRUCTURE.md` |
+| Design tokens + appearance | `docs/DESIGN_SYSTEM.md` |
+| Reusable UI + storage façade | `docs/COMPONENTS.md` |
+| Testing | `docs/TESTING.md` |
+| Performance index | `docs/PERFORMANCE.md` |
+| Owner decisions / invariants | `docs/DECISIONS.md` |
+| Logging + perf probes | `docs/logger.md` |
+| Storage payloads + keys | `src/data/DATA_CONTRACT.md` |
 

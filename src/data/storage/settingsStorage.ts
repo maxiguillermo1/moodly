@@ -3,7 +3,7 @@
  * @module data/storage/settingsStorage
  */
 
-import { AppSettings, CalendarMoodStyle } from '../../types';
+import { AppSettings, CalendarMoodStyle, MoodGradeColorStyle } from '../../types';
 import { logger } from '../../lib/security/logger';
 import { storage } from './asyncStorage';
 
@@ -11,8 +11,9 @@ const SETTINGS_KEY = 'moodly.settings';
 const CORRUPT_PREFIX = `${SETTINGS_KEY}.corrupt.`;
 
 const DEFAULT_SETTINGS: AppSettings = {
+  appearance: 'system',
   calendarMoodStyle: 'dot',
-  monthCardMatchesScreenBackground: false,
+  moodGradeColorStyle: 'solid',
 };
 
 let settingsCache: AppSettings | null = null;
@@ -44,15 +45,19 @@ function safeParseSettings(json: string | null): AppSettings {
   try {
     const raw = JSON.parse(json) as any;
     if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return DEFAULT_SETTINGS;
+    const appearance: AppSettings['appearance'] =
+      raw.appearance === 'light' || raw.appearance === 'dark' || raw.appearance === 'system'
+        ? raw.appearance
+        : DEFAULT_SETTINGS.appearance;
     const calendarMoodStyle =
       raw.calendarMoodStyle === 'dot' || raw.calendarMoodStyle === 'fill'
         ? (raw.calendarMoodStyle as CalendarMoodStyle)
         : DEFAULT_SETTINGS.calendarMoodStyle;
-    const monthCardMatchesScreenBackground =
-      typeof raw.monthCardMatchesScreenBackground === 'boolean'
-        ? raw.monthCardMatchesScreenBackground
-        : DEFAULT_SETTINGS.monthCardMatchesScreenBackground;
-    return { ...DEFAULT_SETTINGS, calendarMoodStyle, monthCardMatchesScreenBackground };
+    const moodGradeColorStyle: MoodGradeColorStyle =
+      raw.moodGradeColorStyle === 'gradient' || raw.moodGradeColorStyle === 'solid'
+        ? raw.moodGradeColorStyle
+        : DEFAULT_SETTINGS.moodGradeColorStyle;
+    return { ...DEFAULT_SETTINGS, appearance, calendarMoodStyle, moodGradeColorStyle };
   } catch {
     return DEFAULT_SETTINGS;
   }
@@ -95,8 +100,18 @@ export async function getSettings(): Promise<AppSettings> {
           const keyCount = isObject ? Object.keys(parsed).length : 0;
           const hasValidStyle =
             isObject && (parsed.calendarMoodStyle === 'dot' || parsed.calendarMoodStyle === 'fill');
+          const moodGradeOk =
+            parsed.moodGradeColorStyle === undefined ||
+            parsed.moodGradeColorStyle === 'solid' ||
+            parsed.moodGradeColorStyle === 'gradient';
           // Treat an empty object `{}` as a benign "defaults" case; don't quarantine to avoid pointless writes.
-          if (keyCount > 0 && !hasValidStyle) {
+          const appearanceOk =
+            isObject &&
+            (parsed.appearance === undefined ||
+              parsed.appearance === 'system' ||
+              parsed.appearance === 'light' ||
+              parsed.appearance === 'dark');
+          if (keyCount > 0 && (!hasValidStyle || !appearanceOk || !moodGradeOk)) {
             logger.warn('storage.settings.corrupt.detected', { key: SETTINGS_KEY, action: 'quarantineAndReset' });
             await quarantineCorruptValue(json);
           }
@@ -125,11 +140,17 @@ export async function setSettings(next: AppSettings): Promise<void> {
       if (style !== 'dot' && style !== 'fill') {
         throw new Error(`[settingsStorage.setSettings] Invalid calendarMoodStyle: ${String(style)}`);
       }
-      const monthBg = (next as any)?.monthCardMatchesScreenBackground;
-      if (typeof monthBg !== 'boolean') {
-        throw new Error(
-          `[settingsStorage.setSettings] Invalid monthCardMatchesScreenBackground: ${String(monthBg)}`
-        );
+      const appearance = (next as any)?.appearance;
+      if (
+        appearance !== 'system' &&
+        appearance !== 'light' &&
+        appearance !== 'dark'
+      ) {
+        throw new Error(`[settingsStorage.setSettings] Invalid appearance: ${String(appearance)}`);
+      }
+      const mg = (next as any)?.moodGradeColorStyle;
+      if (mg !== 'solid' && mg !== 'gradient') {
+        throw new Error(`[settingsStorage.setSettings] Invalid moodGradeColorStyle: ${String(mg)}`);
       }
     }
     try {
@@ -148,7 +169,12 @@ export async function setCalendarMoodStyle(style: CalendarMoodStyle): Promise<vo
   await setSettings({ ...current, calendarMoodStyle: style });
 }
 
-export async function setMonthCardMatchesScreenBackground(enabled: boolean): Promise<void> {
+export async function setAppearancePreference(mode: AppSettings['appearance']): Promise<void> {
   const current = await getSettings();
-  await setSettings({ ...current, monthCardMatchesScreenBackground: enabled });
+  await setSettings({ ...current, appearance: mode });
+}
+
+export async function setMoodGradeColorStyle(style: MoodGradeColorStyle): Promise<void> {
+  const current = await getSettings();
+  await setSettings({ ...current, moodGradeColorStyle: style });
 }

@@ -21,6 +21,15 @@ import { seedDemoEntriesIfEmpty, warmSessionStore, logSessionStoreDiagnostics } 
 import { logger } from '../security';
 import { perfNavigation, perfProbe } from '../perf';
 import { installAccessibilityObservers } from '../system/accessibility';
+import { AppThemeProvider, useAppTheme } from '../theme';
+
+function ThemedStatusBar(): React.ReactElement {
+  const { isDark, a11y } = useAppTheme();
+  if (a11y.invertColors) {
+    return <StatusBar style="light" />;
+  }
+  return <StatusBar style={isDark ? 'light' : 'dark'} />;
+}
 
 export function RootApp() {
   useEffect(() => {
@@ -84,17 +93,19 @@ export function RootApp() {
   }, []);
 
   return (
-    <SafeAreaProvider>
-      <NavigationContainer
-        // Dev-only observers: do NOT mutate nav state; metadata-only perf logs.
-        ref={perfNavigation.ref as any}
-        onReady={perfNavigation.onReady}
-        onStateChange={perfNavigation.onStateChange}
-      >
-        <StatusBar style="dark" />
-        <RootNavigator />
-      </NavigationContainer>
-    </SafeAreaProvider>
+    <AppThemeProvider>
+      <SafeAreaProvider>
+        <NavigationContainer
+          // Dev-only observers: do NOT mutate nav state; metadata-only perf logs.
+          ref={perfNavigation.ref as any}
+          onReady={perfNavigation.onReady}
+          onStateChange={perfNavigation.onStateChange}
+        >
+          <ThemedStatusBar />
+          <RootNavigator />
+        </NavigationContainer>
+      </SafeAreaProvider>
+    </AppThemeProvider>
   );
 }
 

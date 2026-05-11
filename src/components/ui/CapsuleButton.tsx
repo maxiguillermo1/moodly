@@ -18,7 +18,7 @@ import { Pressable, StyleSheet, Text } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 
 import { LiquidGlass } from './LiquidGlass';
-import { colors, sizing, typography } from '../../theme';
+import { sizing, typography, useAppTheme } from '../../theme';
 
 type IconName = React.ComponentProps<typeof Ionicons>['name'];
 
@@ -46,6 +46,7 @@ type CapsuleButtonProps = {
 };
 
 export function CapsuleButton(props: CapsuleButtonProps): React.ReactElement {
+  const { system } = useAppTheme();
   const {
     kind,
     onPress,
@@ -63,8 +64,8 @@ export function CapsuleButton(props: CapsuleButtonProps): React.ReactElement {
   } = props;
 
   const resolvedHitSlop = hitSlop ?? { top: 10, left: 10, right: 10, bottom: 10 };
-  const resolvedIconColor = iconColor ?? colors.system.label;
-  const resolvedLabelColor = labelColor ?? colors.system.blue;
+  const resolvedIconColor = iconColor ?? system.label;
+  const resolvedLabelColor = labelColor ?? system.blue;
 
   const containerStyle = useMemo(() => {
     return [
@@ -82,8 +83,11 @@ export function CapsuleButton(props: CapsuleButtonProps): React.ReactElement {
       disabled={disabled}
       hitSlop={resolvedHitSlop}
       accessibilityRole="button"
+      accessibilityState={disabled ? { disabled: true } : {}}
       accessibilityLabel={accessibilityLabel}
       accessibilityHint={accessibilityHint}
+      android_disableSound
+      android_ripple={undefined}
       style={({ pressed }) => [containerStyle, pressed ? styles.pressedOpacity : null]}
     >
       <LiquidGlass style={StyleSheet.absoluteFill} radius={sizing.capsuleRadius} shadow={false}>

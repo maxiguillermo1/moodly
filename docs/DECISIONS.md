@@ -102,9 +102,16 @@ If you change one of these, update this doc and the relevant module comments.
   - dev runner: `src/dev/debugScenarios.ts` (installed in dev by `src/app/RootApp.tsx`)
 - **Why**: reliability issues must be reproducible, not “it happened once”.
 
+### 12) Runtime appearance follows persisted settings (`system` \| `light` \| `dark`)
+
+- **Decision**: Users can pin **Light**, **Dark**, or follow **System** (`AppearancePreference` → `appearance` field in persisted settings).
+- **Where resolved**: `src/theme/AppThemeContext.tsx` (`useAppTheme()`), UI `SettingsScreen` Appearance segmented capsule (persists via `setAppearancePreference`).
+- **`app.json` note**: Expo `userInterfaceStyle` is **`automatic`** so native chrome follows the OS scheme. **Launch splash**: light `#F2F2F7`, dark `#000000` via **`expo-splash-screen`** (`app.json` + `plugins`). **`AppThemeProvider`** + persisted **`appearance`** still override in-app UI when the user locks Light or Dark (splash vs first React frame can differ briefly).
+- **Failure mode**: reading settings after first paint defaults briefly to **`system`** until AsyncStorage hydrate completes (potential one-frame/theme tick on cold boot if we don’t gate UI — known trade-off).
+
 ### Good vs bad extensions
 
-- **Good**: Add a new derived selector in `src/domain/*` and call it from a screen.
+- **Good**: Add a new pure helper in `src/utils/*` or a narrowly scoped `src/lib/*` helper, then consume it from a screen.
 - **Bad**: Add “quick stats” logic directly in a screen by scanning the entire entries record on every render.
 - **Good**: Add a new storage key in `src/data/storage/*` with validation + quarantine (plus contract update).
 - **Bad**: Read/write raw AsyncStorage in a screen “just this once”.
