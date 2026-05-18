@@ -3,7 +3,7 @@
  * @module hooks/useMoodEntry
  */
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { MoodGrade } from '../types';
 import { getEntry, upsertEntry, createEntry } from '../storage';
 import { getToday } from '../utils';
@@ -41,6 +41,21 @@ interface UseMoodEntryReturn {
  */
 export function useMoodEntry(options: UseMoodEntryOptions = {}): UseMoodEntryReturn {
   const { date = getToday(), onSaveSuccess, onSaveError } = options;
+  /** Keep latest callbacks without changing `save` identity every parent render (Today tab perf). */
+  const onSaveSuccessRef = useRef(onSaveSuccess);
+  const onSaveErrorRef = useRef(onSaveError);
+  onSaveSuccessRef.current = onSaveSuccess;
+  onSaveErrorRef.current = onSaveError;
+  const mountedRef = useRef(true);
+  const loadReqIdRef = useRef(0);
+  const saveReqIdRef = useRef(0);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   const [mood, setMood] = useState<MoodGrade | null>(null);
   const [note, setNote] = useState('');
@@ -48,8 +63,10 @@ export function useMoodEntry(options: UseMoodEntryOptions = {}): UseMoodEntryRet
   const [isSaving, setIsSaving] = useState(false);
 
   const load = useCallback(async () => {
+    const reqId = ++loadReqIdRef.current;
     try {
       const entry = await getEntry(date);
+      if (!mountedRef.current || reqId !== loadReqIdRef.current) return;
       const nextMood = entry?.mood ?? null;
       const nextNote = entry?.note ?? '';
       const nextExisting = !!entry;
@@ -67,20 +84,24 @@ export function useMoodEntry(options: UseMoodEntryOptions = {}): UseMoodEntryRet
   const save = useCallback(async (): Promise<boolean> => {
     if (!mood) return false;
 
+    const reqId = ++saveReqIdRef.current;
     setIsSaving(true);
     try {
       const entry = createEntry(date, mood, note);
       await upsertEntry(entry);
+      if (!mountedRef.current || reqId !== saveReqIdRef.current) return true;
       setIsExisting(true);
-      onSaveSuccess?.();
+      onSaveSuccessRef.current?.();
       return true;
     } catch (error) {
-      onSaveError?.(error as Error);
+      if (mountedRef.current && reqId === saveReqIdRef.current) {
+        onSaveErrorRef.current?.(error as Error);
+      }
       return false;
     } finally {
-      setIsSaving(false);
+      if (mountedRef.current && reqId === saveReqIdRef.current) setIsSaving(false);
     }
-  }, [date, mood, note, onSaveSuccess, onSaveError]);
+  }, [date, mood, note]);
 
   const reset = useCallback(() => {
     setMood(null);

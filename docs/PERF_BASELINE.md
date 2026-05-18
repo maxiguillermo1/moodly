@@ -124,12 +124,18 @@ Paste `perf.listRenderSummary.lists` numbers here.
 
 These are **suspects** to validate with the baseline numbers above.
 
-- **Journal list virtualization + commit cost** (`src/screens/JournalScreen.tsx`)
+- **Journal list virtualization + commit cost** (`src/features/journal/screens/JournalScreen.tsx`)
   - Large, unbounded list; render cost scales with entry count.
 
-- **CalendarScreen month timeline commits** (`src/screens/CalendarScreen.tsx`)
+- **CalendarScreen month timeline commits** (`src/features/calendar/screens/CalendarScreen.tsx`)
   - Heavy month item subtree (MonthGrid); even with bounded months, commit cost can spike.
 
-- **CalendarView year grid pager** (`src/screens/CalendarView.tsx`)
+- **CalendarView year grid pager** (`src/features/calendar/screens/CalendarView.tsx`)
   - Horizontal pager; subtle stutters can come from expensive mini-month rendering.
+
+---
+
+## CI bundle check (not a frame benchmark)
+
+GitHub Actions on **`main`** runs **`npm run export:bundles-check`** (Hermes bytecode / Metro output for **iOS + Android**). It does not measure scroll FPS, but it **does** catch bundler misconfiguration early. See **`docs/TESTING.md`**.
 

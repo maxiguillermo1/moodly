@@ -14,9 +14,11 @@ This document describes Moodly’s calendar hot paths and the “rules of engage
 #### Month timeline (`CalendarScreen`)
 
 - Uses **FlashList** for the month timeline.
+- **Card width measurement** (`onCalendarCardInnerLayout`) is **coalesced** (one `requestAnimationFrame` per frame max), **ignored while the user is actively scrolling** (writes go to a pending ref), and **flushed when the scroll gesture completes** — so recycling rows cannot spam `setMeasuredCalendarInnerW` and rebuild **all** month row heights every frame (a common “scroll freeze” cause).
 - Uses a **large mostly-static month window** (~100 years; `WINDOW_CAP = 1201`, offsets `-600..600`) to avoid periodic “window shift” freezes.
 - Only extends the window near extreme edges; extension/recenter work is deferred via `InteractionManager.runAfterInteractions`.
 - Viewability callbacks avoid React state churn during active scroll (refs only).
+- **Data load**: **`fetchMoodCalendarSnapshot`** on focus pulls **entries-by-month index + settings** in one parallel read (`calendar.loadData` perf event in dev).
 
 #### Year pager (`CalendarView`)
 
@@ -49,8 +51,22 @@ What it contains (metadata-only):
 
 Where it is emitted:
 - Calendar screens flush on focus-exit (blur) (dev-only):
-  - `CalendarScreen.unmount`
-  - `CalendarView.unmount`
+  - `CalendarScreen.unmount` (month timeline tab)
+  - `CalendarView.blur` (year overview stack screen)
+- **Settings** flushes `SettingsScreen.blur`.
+- Journal / Goals / per-day Reminders (`TodoScreen`) also flush once per focus session on blur (same `didFlush` guard pattern as the calendar tab) so you can pair **stress runs** with a clean `perf.report` when leaving the screen.
+
+### Physical QA matrix (pair with `perf.report`)
+
+Run on a **real device** in dev (Metro). After each scenario, **leave the screen** (blur) so `perf.report` emits; compare `phases`, `last`, and `crumbs`.
+
+| Scenario | What to watch |
+|---|---|
+| **Reduce Motion** on (Settings → Accessibility mirrors device) | Month timeline peek-fade path disabled; no new `perf.hitch` clusters vs baseline. |
+| **Reduce Transparency** on | No extra list diffing; same scroll/tap phases. |
+| **Large entry counts** (seed / long history) | `list.journal` / `list.calendarMonthTimeline` profiler summaries; FlashList `extraData` churn. |
+| **Rapid tab / year / month / day** | `CalendarScreen.scroll` vs `CalendarScreen.dayTap` in hitches; day tap should not attribute to scroll. |
+| **Background → foreground** during save | Modal save phase; no stuck `culpritPhase` after resume. |
 
 #### Hitch detector
 Event:
@@ -61,8 +77,9 @@ Fields (metadata-only):
 - `culpritPhase` (a short tag set by screens during key phases)
 
 Typical culprit phases:
-- `CalendarScreen.scroll`
-- `CalendarScreen.dayTap`
+- `CalendarScreen.scroll` (finger / momentum on the month timeline)
+- `CalendarScreen.windowExtend` / `CalendarScreen.recenter` (deferred edge expansion + `scrollToIndex` realignment — still scroll-pipeline work; included in the dev-only `calendar.slowFrame` classifier alongside raw scroll)
+- `CalendarScreen.dayTap` (tap path; should **not** be tagged as scroll — set explicitly in `useCalendarDayPress`)
 - `CalendarScreen.modalSave`
 - `CalendarScreen.buildMonthWindow`
 - `CalendarView.scroll`
@@ -100,6 +117,8 @@ This is emitted after interactions by `usePerfScreen` and summarizes commit dura
    - `perf.listRenderSummary` (max/avg commits)
    - `calendar.dayTapToModalOpen` and `calendar.modalSave.*`
 3) Record a short “before/after” snapshot (same device, same dataset).
+
+Optional **worst-case list** profiling (device, local-only): temporarily widen the anchored month window in `src/lib/calendar/timeline/constants.ts` / `CalendarScreen` initial offsets while keeping `renderMonthItem`, `extraData`, and `setCulpritPhase` tags unchanged; compare `perf.listRenderSummary` and hitch phases, then revert before shipping.
 
 Suggested table to paste into a PR/summary:
 

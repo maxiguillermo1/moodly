@@ -36,6 +36,8 @@ interface MonthGridProps {
   fullGridLayout?: FullGridMetrics | null;
   moodGradeColorStyle: MoodGradeColorStyle;
   isDark: boolean;
+  /** Parent-driven invalidation for virtualized list recycling (today/selection correctness). */
+  recycleGuardEpoch?: number;
 }
 
 type SizeKey = 'full' | 'mini-dot' | 'mini-fill';
@@ -51,7 +53,7 @@ type SharedCellStyles = {
 const sharedStylesCache = new Map<string, SharedCellStyles>();
 
 function getSharedStyles(sizeKey: SizeKey, accentBlue: string): SharedCellStyles {
-  const cacheKey = `6|${sizeKey}|${accentBlue}`;
+  const cacheKey = `7|${sizeKey}|${accentBlue}`;
   const cached = sharedStylesCache.get(cacheKey);
   if (cached) return cached;
 
@@ -61,8 +63,8 @@ function getSharedStyles(sizeKey: SizeKey, accentBlue: string): SharedCellStyles
           cellH: 44,
           cellW: 44,
           vMargin: 4,
-          dayFontSize: 17,
-          dayLineHeight: 22,
+          dayFontSize: 16,
+          dayLineHeight: 21,
           dotSize: 2,
           dotMarginTop: 1,
           textTopNudge: 0,
@@ -73,8 +75,8 @@ function getSharedStyles(sizeKey: SizeKey, accentBlue: string): SharedCellStyles
             cellH: 14,
             cellW: 14,
             vMargin: 1,
-            dayFontSize: 7,
-            dayLineHeight: 9,
+            dayFontSize: 6,
+            dayLineHeight: 8,
             dotSize: 3,
             dotMarginTop: 1,
             textTopNudge: 0,
@@ -84,8 +86,8 @@ function getSharedStyles(sizeKey: SizeKey, accentBlue: string): SharedCellStyles
             cellH: 14,
             cellW: 14,
             vMargin: 1,
-            dayFontSize: 9,
-            dayLineHeight: 10,
+            dayFontSize: 8,
+            dayLineHeight: 9,
             dotSize: 3,
             dotMarginTop: 1,
             textTopNudge: 0,
@@ -325,7 +327,8 @@ const DayCell = React.memo(
         onPress={onPress}
         accessibilityRole="button"
         accessibilityLabel={a11yLabel}
-        accessibilityState={isSelected ? { selected: true } : undefined}
+        accessibilityHint="Opens mood entry editor"
+        accessibilityState={{ selected: isSelected }}
         scaleTo={reduceMotion ? 1 : 0.99}
         hitSlop={variant === 'full' ? { top: 2, bottom: 2, left: 2, right: 2 } : undefined}
         style={({ pressed }) => [
@@ -375,6 +378,7 @@ export const MonthGrid = React.memo(function MonthGrid({
   fullGridLayout,
   moodGradeColorStyle,
   isDark,
+  recycleGuardEpoch = 0,
 }: MonthGridProps) {
   const { system, fontScale, windowWidth } = useAppTheme();
   const textLimits = useMemo(
@@ -401,6 +405,7 @@ export const MonthGrid = React.memo(function MonthGrid({
   }, [monthIndex0, variant]);
 
   const model = useMemo(() => {
+    void recycleGuardEpoch;
     return getMonthRenderModel({
       year,
       monthIndex0,
@@ -424,6 +429,7 @@ export const MonthGrid = React.memo(function MonthGrid({
     todayIso,
     onPressDate,
     onHapticSelect,
+    recycleGuardEpoch,
   ]);
 
   const forceBoldMiniWhenFillTheme = variant === 'mini' && calendarMoodStyle === 'fill';
@@ -453,8 +459,6 @@ export const MonthGrid = React.memo(function MonthGrid({
               );
             }
 
-            const dateStr = model.isoByDay[day]!;
-            const entry = entries[dateStr];
             const moodColor = model.moodColorByDay[day] ?? null;
             const moodGrade = model.moodGradeByDay[day] ?? null;
             const isFill = model.isFillTheme && !!moodColor;
@@ -467,8 +471,10 @@ export const MonthGrid = React.memo(function MonthGrid({
                   monthName: model.monthName,
                   day,
                   year,
-                  mood: entry?.mood ?? null,
+                  mood: moodGrade,
                   hasNote: model.hasNoteByDay[day],
+                  isToday,
+                  isSelected,
                 })
               : '';
 

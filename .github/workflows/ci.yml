@@ -1,4 +1,4 @@
-# Quality gates for Moodly V2 — matches local `npm run lint`, `typecheck`, `test`, plus Expo health.
+# Quality gates for Moodly (v0.5 release train) — matches local `npm run lint`, `typecheck`, `test`, plus Expo health.
 name: CI
 
 on:
@@ -14,7 +14,7 @@ concurrency:
 jobs:
   quality:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     env:
       TZ: America/Los_Angeles
 
@@ -31,14 +31,5 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: ESLint
-        run: npm run lint
-
-      - name: TypeScript
-        run: npm run typecheck
-
-      - name: Unit tests
-        run: npm test
-
-      - name: Expo doctor
-        run: npx expo-doctor
+      - name: Release validation
+        run: npm run validate:release

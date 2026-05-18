@@ -20,6 +20,8 @@ export type MoodEntryFieldsProps = {
   notePlaceholder?: string;
   noteMaxLength?: number;
   noteInputRef?: React.Ref<RNTextInput | null>;
+  /** Rendered after the note field (e.g. Today habit chips). */
+  belowNote?: React.ReactNode;
   footer?: React.ReactNode;
 };
 
@@ -32,6 +34,7 @@ export function MoodEntryFields({
   notePlaceholder = 'Add a short note…',
   noteMaxLength = 200,
   noteInputRef,
+  belowNote,
   footer,
 }: MoodEntryFieldsProps): React.ReactElement {
   const { system: s } = useAppTheme();
@@ -85,12 +88,15 @@ export function MoodEntryFields({
         onChangeText={onChangeNote}
         maxLength={noteMaxLength}
         multiline
+        accessibilityLabel="Note"
+        accessibilityHint={`Optional note, ${noteMaxLength} character limit`}
         autoCapitalize="sentences"
         autoCorrect
         textAlignVertical="top"
         returnKeyType="default"
         maxFontSizeMultiplier={1.35}
       />
+      {belowNote}
       {footer}
     </>
   );

@@ -3,6 +3,7 @@
 Use this checklist after any performance-only change (including library swaps).
 
 ### Functional checks (no behavior regressions)
+
 - **Today**: pick mood + add note + Save → relaunch app → entry persists
 - **Journal**: scroll is smooth → tap entry → edit mood/note → Save → change persists
 - **Journal delete**: long-press entry → Delete → entry removed
@@ -11,6 +12,7 @@ Use this checklist after any performance-only change (including library swaps).
 - **Settings**: stats populate correctly; toggles persist after relaunch
 
 ### Perf probe checks (dev-only, metadata-only)
+
 - Confirm you see PERF events like:
   - `perf.navReady`, `perf.firstInteractionReady`
   - `perf.navRouteChange`, `perf.navToFocus`
@@ -25,7 +27,8 @@ Use this checklist after any performance-only change (including library swaps).
 
 ```bash
 npm run lint
-npx tsc --noEmit
+npm run typecheck
 npm test
 ```
 
+**CI (branch `main`)** also runs **`npm run doctor`** and **`npm run export:bundles-check`** — run those locally when changing Metro, Babel, or app entry wiring. See **`docs/TESTING.md`**.

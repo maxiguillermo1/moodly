@@ -7,7 +7,8 @@ If you change one of these, update this doc and the relevant module comments.
 
 - **Decision**: The canonical day identifier is a local date key string `YYYY-MM-DD`.
 - **Where enforced**:
-  - `src/lib/utils/date.ts` (`toLocalDayKey`, `formatDateToISO`, `parseISODate`)
+  - `src/lib/utils/date.ts` (`toLocalDayKey`, `formatDateToISO`, `parseISODate` — rejects malformed keys and impossible calendar dates)
+  - `src/lib/utils/dateKeys.ts` (strict `YYYY-MM-DD` string helpers for calendar mapping)
   - `src/data/model/entry.ts` (`isValidISODateKey`)
 - **Why**: Product semantics are “how was *my day*”, which is naturally local time.
 - **Failure mode**: using `toISOString().slice(0,10)` (UTC) can shift days near midnight and break streaks/history.
@@ -18,7 +19,7 @@ If you change one of these, update this doc and the relevant module comments.
 - **Decision**: Calendar UI components use `monthIndex0` (`0..11`) because JS `Date` does.
 - **Where**:
   - `src/components/calendar/MonthGrid.tsx`
-  - `src/screens/CalendarView.tsx`, `src/screens/CalendarScreen.tsx`
+  - `src/features/calendar/screens/CalendarView.tsx`, `src/features/calendar/screens/CalendarScreen.tsx`
 - **Failure mode**: off-by-one month bugs when mixing with `YYYY-MM` strings (which are 1-based).
 
 ### 3) “Today” is a **single source of truth** that updates across midnight (no polling)
@@ -26,7 +27,7 @@ If you change one of these, update this doc and the relevant module comments.
 - **Decision**: Calendar screens own `todayKey` via `useTodayKey()` (one timer to next local midnight + AppState “active” resync).
 - **Where**:
   - `src/hooks/useTodayKey.ts`
-  - `src/screens/CalendarScreen.tsx`, `src/screens/CalendarView.tsx` (pass `todayKey` to `MonthGrid`)
+  - `src/features/calendar/screens/CalendarScreen.tsx`, `src/features/calendar/screens/CalendarView.tsx` (pass `todayKey` to `MonthGrid`)
 - **Why**: fixes “app open across midnight” staleness **without polling** and without putting `new Date()` calls in hot loops.
 - **Failure mode**: stale “today” highlight/title until remount if this hook is bypassed.
 - **Enforcement**: keep `todayKey` a primitive string; avoid propagating new objects/arrays that could cause rerenders during scroll.
@@ -74,7 +75,7 @@ If you change one of these, update this doc and the relevant module comments.
 - **Decision**: Calendar grids and year/month lists avoid per-cell/per-item allocations where possible.
 - **Where**:
   - `src/components/calendar/MonthGrid.tsx`
-  - `src/screens/CalendarView.tsx`, `src/screens/CalendarScreen.tsx`
+  - `src/features/calendar/screens/CalendarView.tsx`, `src/features/calendar/screens/CalendarScreen.tsx`
 - **If you change**: re-check scroll smoothness and navigation transitions; prefer memoized callbacks and stable styles.
 
 ### 9) Dev-only fail-fast at module boundaries
@@ -98,7 +99,7 @@ If you change one of these, update this doc and the relevant module comments.
 - **Decision**: Storage has a deterministic chaos injector (seeded) to reproduce AsyncStorage failures/delays.
 - **Where**:
   - injection point: `src/data/storage/asyncStorage.ts`
-  - chaos config: `src/data/storage/chaos.ts`
+  - fault injection config: `src/data/storage/storageFaultInjection.ts`
   - dev runner: `src/dev/debugScenarios.ts` (installed in dev by `src/app/RootApp.tsx`)
 - **Why**: reliability issues must be reproducible, not “it happened once”.
 
@@ -108,6 +109,18 @@ If you change one of these, update this doc and the relevant module comments.
 - **Where resolved**: `src/theme/AppThemeContext.tsx` (`useAppTheme()`), UI `SettingsScreen` Appearance segmented capsule (persists via `setAppearancePreference`).
 - **`app.json` note**: Expo `userInterfaceStyle` is **`automatic`** so native chrome follows the OS scheme. **Launch splash**: light `#F2F2F7`, dark `#000000` via **`expo-splash-screen`** (`app.json` + `plugins`). **`AppThemeProvider`** + persisted **`appearance`** still override in-app UI when the user locks Light or Dark (splash vs first React frame can differ briefly).
 - **Failure mode**: reading settings after first paint defaults briefly to **`system`** until AsyncStorage hydrate completes (potential one-frame/theme tick on cold boot if we don’t gate UI — known trade-off).
+
+### 13) Native-first ship; web is optional
+
+- **Decision**: CI and release discipline target **iOS + Android** bundles first. **Web** is supported via Expo but not the primary product until explicitly invested in (see **`docs/WEB_DEPLOYMENT_CHUNKS.md`**).
+- **Where**: `npm run export:bundles-check` (`expo export -p all`) validates native JS output; **`npm run web`** remains dev/preview.
+
+### 14) Day-scoped **Reminders** (`moodly.dayTodos`) — in-app times, not push by default
+
+- **Decision**: Per local **`YYYY-MM-DD`**, users get a **Reminders** list (user-facing name). Optional **`reminderMinutes`** (`0..1439`, local wall clock) drives **UI** ordering/teasers/overdue styling on **that day** only. **No OS notification** is scheduled unless a future feature adds **`expo-notifications`** (or similar) with explicit permission UX.
+- **Where**: `src/data/storage/dayTodosStorage.ts`, `src/types/todo.types.ts`, `src/lib/todos/reminderTime.ts`, `src/features/reminders/screens/TodoScreen.tsx`, `DayExtensionsHostContext` for modal → stack navigation.
+- **Route naming**: Stack route stays **`Todo`** for stability; UI strings say **Reminders**.
+- **Failure mode**: Marketing or copy that promises alarms without implementing scheduling — keep docs and in-app hints honest.
 
 ### Good vs bad extensions
 

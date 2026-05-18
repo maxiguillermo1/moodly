@@ -4,5 +4,4 @@
  */
 
 export { default as RootNavigator } from './RootNavigator';
-export { FloatingTabBar } from './FloatingTabBar';
-export type { RootStackParamList, MainTabParamList } from './RootNavigator';
+export type { RootStackParamList } from './types';

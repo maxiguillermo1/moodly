@@ -13,7 +13,7 @@ import { Pressable } from 'react-native';
 import Animated, { useSharedValue, useAnimatedStyle, withSpring, withTiming } from 'react-native-reanimated';
 
 import { interactionQueue } from './interactionQueue';
-import { getReduceMotionEnabled } from './accessibility';
+import { DEFAULT_HIT_SLOP, getReduceMotionEnabled } from './accessibility';
 
 type Props = React.ComponentProps<typeof Pressable> & {
   children: React.ReactNode;
@@ -26,14 +26,13 @@ const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 export function Touchable(props: Props): React.ReactElement {
   const { scaleTo = 0.985, onPressIn, onPressOut, pressRetentionOffset, hitSlop, style, ...rest } = props;
 
-  const reduceMotion = getReduceMotionEnabled();
   const scale = useSharedValue(1);
 
   const springConfig = useMemo(
     () => ({
-      damping: 19,
-      stiffness: 245,
-      mass: 0.88,
+      damping: 22,
+      stiffness: 268,
+      mass: 0.82,
     }),
     []
   );
@@ -45,12 +44,13 @@ export function Touchable(props: Props): React.ReactElement {
   }, []);
 
   const cancelPressed = useCallback(() => {
+    const reduceMotion = getReduceMotionEnabled();
     if (reduceMotion) {
       scale.value = 1;
       return;
     }
-    scale.value = withTiming(1, { duration: 90 });
-  }, [reduceMotion, scale]);
+    scale.value = withTiming(1, { duration: 78 });
+  }, [scale]);
 
   useEffect(() => {
     // Cancel pressed feedback when a scroll/momentum interaction begins.
@@ -61,22 +61,24 @@ export function Touchable(props: Props): React.ReactElement {
 
   const handlePressIn = useCallback(
     (e: any) => {
+      const reduceMotion = getReduceMotionEnabled();
       if (!reduceMotion) {
-        scale.value = withTiming(scaleTo, { duration: 45 });
+        scale.value = withTiming(scaleTo, { duration: 40 });
       }
       onPressIn?.(e);
     },
-    [onPressIn, reduceMotion, scale, scaleTo]
+    [onPressIn, scale, scaleTo]
   );
 
   const handlePressOut = useCallback(
     (e: any) => {
+      const reduceMotion = getReduceMotionEnabled();
       if (!reduceMotion) {
         scale.value = withSpring(1, springConfig as any);
       }
       onPressOut?.(e);
     },
-    [onPressOut, reduceMotion, scale, springConfig]
+    [onPressOut, scale, springConfig]
   );
 
   const mergedStyle: any = useMemo(() => {
@@ -96,7 +98,7 @@ export function Touchable(props: Props): React.ReactElement {
       onPressOut={handlePressOut}
       // Tuned to feel iOS-like; does not affect layout.
       pressRetentionOffset={pressRetentionOffset ?? { top: 20, left: 20, right: 20, bottom: 20 }}
-      hitSlop={hitSlop}
+      hitSlop={hitSlop ?? DEFAULT_HIT_SLOP}
       style={mergedStyle}
     />
   );

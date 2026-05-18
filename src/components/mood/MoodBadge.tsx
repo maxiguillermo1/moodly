@@ -20,9 +20,9 @@ interface MoodBadgeProps {
 }
 
 const SIZES = {
-  sm: { badge: 32, font: 12, labelFont: 10 },
-  md: { badge: 44, font: 16, labelFont: 12 },
-  lg: { badge: 56, font: 20, labelFont: 14 },
+  sm: { badge: 32, font: 11, labelFont: 9 },
+  md: { badge: 44, font: 15, labelFont: 11 },
+  lg: { badge: 56, font: 19, labelFont: 13 },
 };
 
 export const MoodBadge = React.memo(function MoodBadge({

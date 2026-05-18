@@ -2,6 +2,9 @@
 .expo/
 dist/
 web-build/
+.tmp-expo-export/
+.tmp-expo-export-all/
+.tmp-metro-alias-check/
 
 # Node
 node_modules/

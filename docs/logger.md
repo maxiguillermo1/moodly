@@ -29,7 +29,8 @@ This is not debugging spam. If a log does not help future maintainers understand
 2) Do the action (scroll months, swipe years, tap a day).
 3) **Leave the screen** (blur) to flush the session summary:
    - `CalendarScreen` flushes `perf.report` on blur as `reason: "CalendarScreen.unmount"`
-   - `CalendarView` flushes `perf.report` on blur as `reason: "CalendarView.unmount"`
+   - `CalendarView` flushes `perf.report` on blur as `reason: "CalendarView.blur"`
+   - `SettingsScreen` flushes on blur as `reason: "SettingsScreen.blur"`
 4) Find the `perf.report` line in logs and read `phases[]` (counts + p95/max).
 
 ### Dev-only debug harness (no UI changes)
@@ -53,6 +54,8 @@ globalThis.MoodlyDebug.setChaos({ enabled: true, seed: 1, failNext: { getItem: 1
 - **Production builds** (`__DEV__ = false`):
   - PERF/CACHE/BOOT/DATA/DEV logs are disabled by design.
   - WARN/ERROR remain allowed (metadata-only), WARN is rate-limited.
+  - Error metadata is reduced to coarse error class/name; stack and message are dev-only.
+  - Date keys, storage keys, and local record ids are redacted because mood/journal timing is sensitive.
   - Console is patched via `installSafeConsole` to redact/suppress non-logger noise.
 
 If you need to reduce dev noise further:
@@ -96,7 +99,7 @@ Levels are *semantic*, not “verbosity”.
 - **DATA**: storage lifecycle summaries (dev‑only)
 - **WARN**: recoverable problems (allowed in prod; metadata‑only; rate‑limited)
 - **DEV**: diagnostics (dev‑only; subject to budget)
-- **ERROR**: unexpected failures (allowed in prod; metadata‑only)
+- **ERROR**: unexpected failures (allowed in prod; metadata‑only); examples include **`app.boundary.render`** when **`AppErrorBoundary`** catches a render failure (**error `name` only**).
 
 ---
 ## Log channels (ownership boundaries)
@@ -118,7 +121,7 @@ If you add a new surface area, add a new channel intentionally (and document it)
 
 Every PERF log must include:
 - **phase**: `'cold' | 'warm' | 'revalidate'`
-- **source**: `'storage' | 'sessionCache'`
+- **source**: one of the documented runtime sources (`'storage'`, `'sessionCache'`, `'ui'`, `'nav'`, `'app'`)
 - **durationMs**: number
 
 Definitions:
@@ -173,6 +176,7 @@ This makes “`unknown` hitches” effectively impossible in `perf.report`.
 To keep logs actionable:
 - `perf.report` is always emitted (dev-only, metadata-only).
 - Per-hitch `perf.hitch` logs are rate-limited and only emitted for large hitches or repeated `DEV_METRO_OR_GC` stalls.
+- **`perf.longTask`** (when the JS runtime exposes `PerformanceObserver` + `longtask`): best-effort **main-thread long task** signal — **metadata-only** (`durationMs`, short `name`), **rate-limited** (~2.5s between emits), **dev-only**. Often **unsupported in React Native / Hermes**; absence is normal.
 
 ---
 ## Aggregation rules (avoid noise)
@@ -206,6 +210,7 @@ Never log:
 - user notes or any user‑entered text
 - full `entries` or `settings` objects
 - raw AsyncStorage JSON blobs
+- production date keys, storage keys, local record ids, error messages, or stacks
 - anything that looks like a payload dump
 
 If you need to debug sensitive content, use local debugging tools (breakpoints, dev menu) — not logs.
@@ -288,8 +293,8 @@ These are **representative shapes** (exact metadata keys vary by callsite):
 [PERF][calendar] calendar.dayTapToModalOpen { durationMs, ... }
 [PERF][calendar] calendar.modalSave.success { durationMs, ... }
 
-// Dev-only chaos injection (rate-limited)
-[WARN][storage] storage.chaos.injectedFailure { op, key, mode }
+// Dev-only AsyncStorage fault injection (rate-limited)
+[WARN][storage] storage.faultInjection.failure { op, key, mode }
 ```
 
 ---
@@ -308,13 +313,13 @@ These are **representative shapes** (exact metadata keys vary by callsite):
 5) **Re-run the same gesture** and compare `p95Ms/maxMs` for the relevant phase.
 
 ---
-## Dev/test: deterministic AsyncStorage chaos injection
+## Dev/test: deterministic AsyncStorage fault injection
 
 The storage layer supports an opt-in, deterministic fault injector used for edge case hardening.
 
 ### Enable (Metro console)
 
-Set `globalThis.__MOODLY_CHAOS__`:
+Set `globalThis.__MOODLY_STORAGE_FAULTS__` (preferred) or legacy `globalThis.__MOODLY_CHAOS__`:
 
 - **enabled**: boolean (required)
 - **seed**: number (recommended) deterministic RNG seed
@@ -328,7 +333,7 @@ Supported ops: `getItem`, `setItem`, `removeItem`, `multiGet`, `multiSet`, `mult
 
 ### Logging behavior
 
-- Failures log `storage.chaos.injectedFailure` (WARN) with metadata only: `{ op, key, mode }`
+- Failures log `storage.faultInjection.failure` (WARN) with metadata only: `{ op, key, mode }`
 - Chaos failure logs are rate-limited to avoid spam under high failure configs.
 
 

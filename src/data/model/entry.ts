@@ -9,6 +9,7 @@
  */
 
 import type { MoodEntry, MoodEntriesRecord, MoodGrade } from '../../types';
+import { isValidLocalCalendarDayKey } from '../../lib/utils/date';
 
 export const VALID_MOOD_GRADES: ReadonlyArray<MoodGrade> = ['A+', 'A', 'B', 'C', 'D', 'F'];
 export const VALID_MOOD_SET: ReadonlySet<MoodGrade> = new Set(VALID_MOOD_GRADES);
@@ -20,15 +21,7 @@ export const MAX_NOTE_LEN = 200; // must stay aligned with UI maxLength (does no
  * This is the canonical date validator for storage + analytics.
  */
 export function isValidISODateKey(date: string): boolean {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return false;
-  const y = Number(date.slice(0, 4));
-  const m = Number(date.slice(5, 7));
-  const d = Number(date.slice(8, 10));
-  if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) return false;
-  if (m < 1 || m > 12) return false;
-  if (d < 1 || d > 31) return false;
-  const dt = new Date(y, m - 1, d);
-  return dt.getFullYear() === y && dt.getMonth() === m - 1 && dt.getDate() === d;
+  return isValidLocalCalendarDayKey(date);
 }
 
 export function normalizeNote(note: unknown): string {

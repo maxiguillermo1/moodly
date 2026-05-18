@@ -23,6 +23,8 @@ const SENSITIVE_KEYS = new Set([
   'value',
 ]);
 
+const IS_DEV = typeof __DEV__ !== 'undefined' && __DEV__;
+
 type RedactOptions = {
   maxDepth?: number;
   maxStringLength?: number;
@@ -44,16 +46,24 @@ function clampString(s: string, maxLen: number) {
   if (s.includes('"note"') || s.includes('"entries"') || s.includes('"mood"')) {
     return `[REDACTED_STRING len=${s.length}]`;
   }
+  if (!IS_DEV && (s.startsWith('moodly.') || /^\d{4}-\d{2}-\d{2}$/.test(s))) {
+    return '[REDACTED]';
+  }
   return s;
 }
 
 function redactKey(k: string) {
   const key = k.toLowerCase();
-  return SENSITIVE_KEYS.has(key) || key.includes('note') || key.includes('entry');
+  if (SENSITIVE_KEYS.has(key) || key.includes('note') || key.includes('entry')) return true;
+  if (!IS_DEV && (key === 'key' || key === 'id' || key === 'date' || key === 'datekey' || key === 'daykey')) return true;
+  return false;
 }
 
 function safeErrorShape(e: Error) {
   // Never attach arbitrary properties; keep it minimal.
+  if (!IS_DEV) {
+    return { name: e.name };
+  }
   return {
     name: e.name,
     message: e.message,

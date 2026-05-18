@@ -39,6 +39,10 @@ module.exports = [
       '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
       // Strong signal for perf + correctness; can be disabled locally with intent.
       'react-hooks/exhaustive-deps': 'warn',
+      // Baseline correctness (common to strict TS/RN codebases).
+      eqeqeq: ['error', 'always', { null: 'ignore' }],
+      'no-var': 'error',
+      'prefer-const': ['error', { destructuring: 'all' }],
     },
   },
   // ---------------------------------------------------------------------------
@@ -48,8 +52,13 @@ module.exports = [
     // UI layer must never touch persistence directly.
     files: [
       'src/screens/**/*.{ts,tsx,js,jsx}',
+      'src/features/**/*.{ts,tsx,js,jsx}',
       'src/components/**/*.{ts,tsx,js,jsx}',
       'src/hooks/**/*.{ts,tsx,js,jsx}',
+      'src/theme/**/*.{ts,tsx,js,jsx}',
+      'src/app/**/*.{ts,tsx,js,jsx}',
+      'src/navigation/**/*.{ts,tsx,js,jsx}',
+      'src/extensions/**/*.{ts,tsx,js,jsx}',
     ],
     rules: {
       // UI should never log directly; use security logger (redacted + prod-safe).
@@ -115,6 +124,7 @@ module.exports = [
             {
               group: [
                 '**/screens/**',
+                '**/features/**',
                 '**/components/**',
                 '**/navigation/**',
                 '**/data/storage/**',
@@ -155,7 +165,15 @@ module.exports = [
           ],
           patterns: [
             {
-              group: ['**/screens/**', '**/components/**', '**/navigation/**', '**/data/storage/**', '**/lib/storage/**', '**/storage/**'],
+              group: [
+                '**/screens/**',
+                '**/features/**',
+                '**/components/**',
+                '**/navigation/**',
+                '**/data/storage/**',
+                '**/lib/storage/**',
+                '**/storage/**',
+              ],
               message: 'Pure layers must not import UI/navigation/storage layers.',
             },
           ],
@@ -172,8 +190,8 @@ module.exports = [
         {
           patterns: [
             {
-              group: ['**/screens/**', '**/components/**', '**/navigation/**'],
-              message: 'Data layer must not import UI/navigation. Keep persistence isolated and reusable.',
+              group: ['**/screens/**', '**/features/**', '**/components/**', '**/navigation/**', '**/theme/**', '**/ui/**', '**/perf'],
+              message: 'Data layer must not import UI/navigation/theme/perf barrels. Keep persistence isolated and reusable.',
             },
           ],
         },
@@ -189,7 +207,7 @@ module.exports = [
         {
           patterns: [
             {
-              group: ['**/screens/**', '**/components/**', '**/navigation/**'],
+              group: ['**/screens/**', '**/features/**', '**/components/**', '**/navigation/**'],
               message: 'Storage layer must not import UI/navigation. Keep persistence isolated and reusable.',
             },
           ],
@@ -211,6 +229,14 @@ module.exports = [
             'Do not derive date keys using `toISOString().slice(...)` (UTC). Use local date helpers (`formatDateToISO`, `getToday`) and validate with `isValidISODateKey`.',
         },
       ],
+    },
+  },
+  {
+    // Hook unit tests may import AsyncStorage + storage test helpers (not product hooks).
+    files: ['src/hooks/**/*.test.{ts,tsx,js,jsx}'],
+    rules: {
+      'no-restricted-imports': 'off',
+      'no-console': 'off',
     },
   },
 ];

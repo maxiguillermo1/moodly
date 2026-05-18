@@ -45,12 +45,45 @@ export function msUntilNextLocalMidnight(now: Date): number {
   return Number.isFinite(ms) && ms > 0 ? ms : 1;
 }
 
+const LOCAL_DAY_KEY = /^\d{4}-\d{2}-\d{2}$/;
+
+function isFiniteLocalCalendarDate(y: number, m0: number, d: number): boolean {
+  const dt = new Date(y, m0, d);
+  return dt.getFullYear() === y && dt.getMonth() === m0 && dt.getDate() === d;
+}
+
 /**
- * Parse YYYY-MM-DD string to Date object
+ * Parse YYYY-MM-DD (local calendar day) to a Date at local midnight.
+ * Malformed keys or impossible calendar dates yield an invalid Date — callers
+ * should use `isNaN(d.getTime())` or the safe formatters below.
  */
 export function parseISODate(dateStr: string): Date {
+  if (!LOCAL_DAY_KEY.test(dateStr)) {
+    return new Date(NaN);
+  }
   const [year, month, day] = dateStr.split('-').map(Number);
+  if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) {
+    return new Date(NaN);
+  }
+  if (!isFiniteLocalCalendarDate(year, month - 1, day)) {
+    return new Date(NaN);
+  }
   return new Date(year, month - 1, day);
+}
+
+/**
+ * True if `dateStr` is a real local calendar day in `YYYY-MM-DD` form (leap years, month lengths).
+ * Prefer this over regex-only checks for navigation params and calendar taps.
+ */
+export function isValidLocalCalendarDayKey(dateStr: string): boolean {
+  return Number.isFinite(parseISODate(dateStr).getTime());
+}
+
+/**
+ * Normalize route/deep-link day params: invalid or non-string values fall back to today (local).
+ */
+export function coerceLocalDayKeyOrToday(value: unknown): string {
+  return typeof value === 'string' && isValidLocalCalendarDayKey(value) ? value : getToday();
 }
 
 /**
@@ -58,30 +91,15 @@ export function parseISODate(dateStr: string): Date {
  */
 export function formatDateForDisplay(dateStr: string): string {
   const date = parseISODate(dateStr);
+  if (Number.isNaN(date.getTime())) {
+    return dateStr.trim() || '—';
+  }
   return date.toLocaleDateString('en-US', {
     weekday: 'short',
     month: 'short',
     day: 'numeric',
     year: 'numeric',
   });
-}
-
-/**
- * Format date string for compact display (e.g., "Jan 15")
- */
-export function formatDateCompact(dateStr: string): string {
-  const date = parseISODate(dateStr);
-  return date.toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-  });
-}
-
-/**
- * Check if a date string is today
- */
-export function isToday(dateStr: string): boolean {
-  return dateStr === getToday();
 }
 
 /**

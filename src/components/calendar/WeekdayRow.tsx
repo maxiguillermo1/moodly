@@ -98,8 +98,8 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
   miniText: {
-    fontSize: 9,
-    lineHeight: 10,
+    fontSize: 8,
+    lineHeight: 9,
     width: 14,
     textAlign: 'center',
     fontWeight: '600',
@@ -115,8 +115,8 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   fullText: {
-    fontSize: 12,
-    lineHeight: 13,
+    fontSize: 11,
+    lineHeight: 12,
     width: 44,
     textAlign: 'center',
     fontWeight: '600',

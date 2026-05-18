@@ -16,6 +16,7 @@
 import { MoodEntry, MoodEntriesRecord, MoodGrade } from '../../types';
 import { logger } from '../../lib/security/logger';
 import { isValidISODateKey, normalizeNote, validateEntriesRecord, VALID_MOOD_SET, MAX_NOTE_LEN } from '../model/entry';
+import { assertLocalPersistenceWritable, ensureLocalPersistenceReady } from '../persistence/bootstrap';
 import { storage } from './asyncStorage';
 
 const STORAGE_KEY = 'moodly.entries';
@@ -81,6 +82,30 @@ export function getLastAllEntriesSource(): import('../../lib/security/logger').P
 function monthKeyFromIso(isoDate: string) {
   // isoDate is YYYY-MM-DD
   return isoDate.slice(0, 7);
+}
+
+function cloneEntry(entry: MoodEntry): MoodEntry {
+  return { ...entry };
+}
+
+function cloneEntriesRecord(entries: MoodEntriesRecord): MoodEntriesRecord {
+  const out: MoodEntriesRecord = {};
+  for (const [key, entry] of Object.entries(entries)) {
+    if (entry) out[key] = cloneEntry(entry);
+  }
+  return out;
+}
+
+function cloneEntriesByMonth(map: EntriesByMonthKey): EntriesByMonthKey {
+  const out: EntriesByMonthKey = {};
+  for (const [monthKey, entries] of Object.entries(map)) {
+    out[monthKey] = cloneEntriesRecord(entries);
+  }
+  return out;
+}
+
+function cloneMoodCounts(counts: MoodCounts): MoodCounts {
+  return { ...counts };
 }
 
 type ParseResult<T> = { ok: true; value: T } | { ok: false; value: T };
@@ -348,6 +373,8 @@ function onDeleteUpdateDerivedCaches(prev: MoodEntry, date: string) {
  * Used by demo seeding and (optionally) dev tooling.
  */
 export async function setAllEntries(next: MoodEntriesRecord): Promise<void> {
+  await ensureLocalPersistenceReady();
+  assertLocalPersistenceWritable();
   await withEntriesWriteLock(async () => {
     // Persist first. Only update RAM caches after the write succeeds.
     // This prevents a failed write from leaving the app in a "looks saved but isn't" state.
@@ -368,8 +395,9 @@ export async function getAllEntries(): Promise<MoodEntriesRecord> {
   try {
     if (entriesCache) {
       lastAllEntriesSource = 'sessionCache';
-      return entriesCache;
+      return cloneEntriesRecord(entriesCache);
     }
+    await ensureLocalPersistenceReady();
     if (entriesLoadPromise) return entriesLoadPromise;
 
     entriesLoadPromise = (async () => {
@@ -388,7 +416,7 @@ export async function getAllEntries(): Promise<MoodEntriesRecord> {
       setEntriesCache(parsed.value);
       invalidateDerivedCaches();
       lastAllEntriesSource = 'storage';
-      return parsed.value;
+      return cloneEntriesRecord(parsed.value);
     })();
 
     try {
@@ -404,15 +432,6 @@ export async function getAllEntries(): Promise<MoodEntriesRecord> {
 }
 
 /**
- * Retrieve entries grouped by month key (YYYY-MM).
- * Performance helper for CalendarScreen; does not change data semantics.
- */
-export async function getEntriesByMonthKey(): Promise<EntriesByMonthKey> {
-  const entries = await getAllEntries();
-  return ensureEntriesByMonthCache(entries);
-}
-
-/**
  * Retrieve both the full entries record and the month-grouped index in one call.
  * Helps screens avoid duplicated work and extra regrouping on focus.
  */
@@ -422,7 +441,20 @@ export async function getAllEntriesWithMonthIndex(): Promise<{
 }> {
   const entries = await getAllEntries();
   const byMonthKey = ensureEntriesByMonthCache(entries);
-  return { entries, byMonthKey };
+  return { entries: cloneEntriesRecord(entries), byMonthKey: cloneEntriesByMonth(byMonthKey) };
+}
+
+/**
+ * Calendar hot path: stable month-map references until entries actually change.
+ *
+ * Keep this scoped to read-only calendar render paths. Public mutation-safe APIs above
+ * return defensive copies; this one preserves identity for render invalidation.
+ */
+export async function getCalendarEntriesByMonthIndexSnapshot(): Promise<EntriesByMonthKey> {
+  if (!entriesCache) {
+    await getAllEntries();
+  }
+  return ensureEntriesByMonthCache(entriesCache ?? {});
 }
 
 /**
@@ -438,9 +470,9 @@ export async function getEntry(date: string): Promise<MoodEntry | null> {
     logger.warn('storage.entries.getEntry.invalidDateKey', { dateKey: date });
     return null;
   }
-  if (entriesCache) return entriesCache[date] ?? null;
+  if (entriesCache) return entriesCache[date] ? cloneEntry(entriesCache[date]!) : null;
   const entries = await getAllEntries();
-  return entries[date] ?? null;
+  return entries[date] ? cloneEntry(entries[date]!) : null;
 }
 
 /**
@@ -450,19 +482,14 @@ export async function getEntry(date: string): Promise<MoodEntry | null> {
 export async function upsertEntry(entry: MoodEntry): Promise<void> {
   return withEntriesWriteLock(async () => {
     try {
+    await ensureLocalPersistenceReady();
     if (!isValidISODateKey(entry.date)) {
-      if (typeof __DEV__ !== 'undefined' && __DEV__) {
-        throw new Error(`[moodStorage.upsertEntry] Invalid ISO date key: ${String(entry.date)}`);
-      }
       logger.warn('storage.entries.upsert.invalidDateKey', { dateKey: entry.date });
-      return;
+      throw new Error(`[moodStorage.upsertEntry] Invalid ISO date key: ${String(entry.date)}`);
     }
     if (!VALID_MOOD_SET.has(entry.mood as MoodGrade)) {
-      if (typeof __DEV__ !== 'undefined' && __DEV__) {
-        throw new Error(`[moodStorage.upsertEntry] Invalid mood grade: ${String(entry.mood)}`);
-      }
       logger.warn('storage.entries.upsert.invalidMood', { mood: entry.mood });
-      return;
+      throw new Error(`[moodStorage.upsertEntry] Invalid mood grade: ${String(entry.mood)}`);
     }
     const now = Date.now();
     const prev = await getAllEntries();
@@ -470,17 +497,18 @@ export async function upsertEntry(entry: MoodEntry): Promise<void> {
 
     const safeNote = normalizeNote(entry.note);
 
+    const createdAt = existing?.createdAt ?? now;
+    // Never allow updatedAt < createdAt (clock skew, imports, or legacy rows); keeps saves working.
+    const updatedAt = Math.max(now, createdAt);
+
     const next: MoodEntry = {
       ...entry,
       note: safeNote,
-      createdAt: existing?.createdAt ?? now,
-      updatedAt: now,
+      createdAt,
+      updatedAt,
     };
     // Dev-only invariant checks to fail fast during development.
     if (typeof __DEV__ !== 'undefined' && __DEV__) {
-      if (next.createdAt > next.updatedAt) {
-        throw new Error('[moodStorage.upsertEntry] Invariant violated: createdAt > updatedAt');
-      }
       if (next.note.length > MAX_NOTE_LEN) {
         throw new Error('[moodStorage.upsertEntry] Invariant violated: note length exceeded MAX_NOTE_LEN');
       }
@@ -488,6 +516,7 @@ export async function upsertEntry(entry: MoodEntry): Promise<void> {
     const entries: MoodEntriesRecord = { ...prev, [entry.date]: next };
 
     // Persist first. Only update RAM caches after the write succeeds.
+    assertLocalPersistenceWritable();
     await storage.setItem(STORAGE_KEY, JSON.stringify(entries));
 
     // Update derived caches (RAM-heavy, CPU-light) *after* persistence commits.
@@ -525,6 +554,7 @@ export async function deleteEntry(date: string): Promise<void> {
     delete entries[date];
 
     // Persist first. Only update RAM caches after the write succeeds.
+    assertLocalPersistenceWritable();
     await storage.setItem(STORAGE_KEY, JSON.stringify(entries));
 
     if (entriesByMonthCache) {
@@ -562,64 +592,17 @@ export async function deleteEntry(date: string): Promise<void> {
  */
 export async function getEntriesSortedDesc(): Promise<MoodEntry[]> {
   const entries = await getAllEntries();
-  return ensureEntriesSortedDescCache(entries);
+  return ensureEntriesSortedDescCache(entries).map(cloneEntry);
 }
 
 /**
- * Get entries within a date range (inclusive)
- */
-export async function getEntriesInRange(
-  startDate: string,
-  endDate: string
-): Promise<MoodEntry[]> {
-  if (typeof __DEV__ !== 'undefined' && __DEV__) {
-    if (!isValidISODateKey(startDate) || !isValidISODateKey(endDate) || startDate > endDate) {
-      throw new Error(
-        `[moodStorage.getEntriesInRange] Invalid range: start=${String(startDate)} end=${String(endDate)}`
-      );
-    }
-  }
-  const entries = await getAllEntries();
-  return Object.values(entries)
-    .filter((e) => e.date >= startDate && e.date <= endDate)
-    .sort((a, b) => b.date.localeCompare(a.date));
-}
-
-/**
- * Get count of entries per mood grade
- */
-export async function getMoodCounts(): Promise<Record<MoodGrade, number>> {
-  const entries = await getAllEntries();
-  return ensureMoodCountsCache(entries);
-}
-
-/**
- * RAM-heavy stats helper for Settings (and future internal use).
- * Avoids repeated `Object.keys/values` scans on focus.
+ * Get mood distribution + totals for Settings (and internal cache warming).
  */
 export async function getMoodStats(): Promise<{ totalEntries: number; moodCounts: MoodCounts }> {
   const entries = await getAllEntries();
   const moodCounts = ensureMoodCountsCache(entries);
   const totalEntries = entriesCountCache ?? Object.keys(entries).length;
-  return { totalEntries, moodCounts };
-}
-
-/**
- * RAM-heavy index: monthKey -> sorted date keys.
- * Useful for calendar-related lookups without scanning the full store.
- */
-export async function getMonthDateKeysIndex(): Promise<MonthDateKeysIndex> {
-  const entries = await getAllEntries();
-  return ensureMonthDateKeysIndexCache(entries);
-}
-
-/**
- * RAM-heavy index: year -> monthIndex0 -> distribution.
- * Built once per session (or updated incrementally on writes if already built).
- */
-export async function getYearIndex(): Promise<YearIndex> {
-  const entries = await getAllEntries();
-  return ensureYearIndexCache(entries);
+  return { totalEntries, moodCounts: cloneMoodCounts(moodCounts) };
 }
 
 /**
@@ -704,10 +687,31 @@ export function createEntry(
 export async function clearAllEntries(): Promise<void> {
   await withEntriesWriteLock(async () => {
     // Persist first. Only update RAM caches after the write succeeds.
+    await ensureLocalPersistenceReady();
+    assertLocalPersistenceWritable();
     await storage.removeItem(STORAGE_KEY);
     setEntriesCache({});
     entriesLoadPromise = null;
     invalidateDerivedCaches();
   });
+}
+
+/**
+ * @internal Jest-only: simulate a cold read path without `jest.resetModules()`.
+ *
+ * Remounting modules clears the in-memory AsyncStorage mock and drops persisted fixtures;
+ * use this helper when tests need “session lost, disk intact” semantics.
+ */
+export function resetEntriesStorageSessionStateForTests(): void {
+  if (typeof process === 'undefined' || process.env.NODE_ENV !== 'test') return;
+  entriesCache = null;
+  entriesLoadPromise = null;
+  entriesWriteTail = Promise.resolve();
+  entriesByMonthCache = null;
+  entriesSortedDescCache = null;
+  moodCountsCache = null;
+  monthDateKeysIndexCache = null;
+  yearIndexCache = null;
+  entriesCountCache = null;
 }
 

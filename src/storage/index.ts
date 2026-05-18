@@ -2,10 +2,12 @@
  * @fileoverview Storage layer public surface (local persistence).
  * @module storage
  *
- * Beginner rule:
- * - AsyncStorage access lives behind this layer.
- * - Screens/components should import storage APIs from here (or `src/data` legacy surface).
+ * All exports resolve through **`src/data/repositories`** so call sites stay stable while
+ * implementations remain swappable (AsyncStorage today → SQLite/remote later).
+ *
+ * - AsyncStorage is only touched inside `src/data/storage/asyncStorage.ts` and migrations’ {@link KeyValueStore}.
+ * - Prefer named functions (`getAllEntries`, …) or repository objects (`entriesRepository`, …) from this module.
  */
 
-export * from '../data/storage';
+export * from '../data/repositories';
 

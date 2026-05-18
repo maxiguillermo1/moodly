@@ -6,6 +6,7 @@ Never log user-entered text (notes/entries/settings blobs).
 
 See:
 
-- Logging contract: `docs/logger.md`
-- Security checklist: `SECURITY_CHECKLIST.md`
-- Design system / safe areas: `docs/DESIGN_SYSTEM.md`
+- Logging contract: [`docs/logger.md`](../../docs/logger.md)
+- Security checklist: [`docs/SECURITY_CHECKLIST.md`](../../docs/SECURITY_CHECKLIST.md)
+- Design system / safe areas: [`docs/DESIGN_SYSTEM.md`](../../docs/DESIGN_SYSTEM.md)
+- **Render crash containment**: `AppErrorBoundary` logs **`app.boundary.render`** (error **name** only; never notes or payloads).

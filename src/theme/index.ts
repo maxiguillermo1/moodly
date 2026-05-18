@@ -1,23 +1,12 @@
 /**
- * @fileoverview Unified iOS theme exports
+ * @fileoverview Theme surface consumed by screens, navigation, and components.
+ * Low-level palettes and helpers live in submodules (e.g. `theme/systemPalettes.ts`).
  * @module theme
  */
 
-export {
-  colors,
-  system,
-  brand,
-  semantic,
-  mood,
-  moodGradientMid,
-  moodBloomAccent,
-  moodBackground,
-  glass,
-} from './colors';
-export { systemLight, systemDark, glassLight, glassDark, type SystemPalette, type GlassPalette } from './systemPalettes';
-export { createSemantic, type SemanticPalette } from './createSemantic';
-export { AppThemeProvider, useAppTheme, type AppTheme, type AppA11y } from './AppThemeContext';
-export { getCalendarTextLimits, getMonthTimelineSpacing, type CalendarTextLimits } from './calendarDensity';
+export { colors, mood } from './colors';
+export { AppThemeProvider, useAppTheme } from './AppThemeContext';
+export { ExtensionsPolicyProvider, useExtensionsPolicy, type ExtensionsPolicy } from './ExtensionsPolicyContext';
+export { getCalendarTextLimits, getMonthTimelineSpacing } from './calendarDensity';
 export { spacing, borderRadius, sizing } from './spacing';
-export { typography, fontWeight } from './typography';
-export { shadows } from './shadows';
+export { typography } from './typography';

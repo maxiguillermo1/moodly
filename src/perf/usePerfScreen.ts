@@ -14,6 +14,14 @@ import { useFocusEffect, useNavigation } from '@react-navigation/native';
 
 import { perfProbe } from './probe';
 
+/** Maps `usePerfScreen(name)` to bottom tab route name for tap → focus timing. */
+const PERF_SCREEN_TO_MAIN_TAB: Record<string, string> = {
+  Today: 'Today',
+  Journal: 'Journal',
+  CalendarScreen: 'Calendar',
+  CalendarView: 'Calendar',
+};
+
 export function usePerfScreen(
   screenName: string,
   opts?: {
@@ -68,6 +76,8 @@ export function usePerfScreen(
 
       // Approximate "nav-to-focus" (route change observed at container -> focused screen).
       perfProbe.onScreenFocus(screenName);
+      const mainTab = PERF_SCREEN_TO_MAIN_TAB[screenName];
+      if (mainTab) perfProbe.consumeMainTabPressToFocus(mainTab);
 
       // Reset list render stats for this screen so we can report "worst commit" during focus.
       if (listIds.length) perfProbe.resetRenderStats(listIds);

@@ -8,6 +8,19 @@
 
 export * from './moodStorage';
 export * from './settingsStorage';
+export * from './habitSelectionsStorage';
+export * from './habitTrackingStorage';
+export * from './dayTodosStorage';
+export * from './tasksStorage';
+export * from './goalsStorage';
 export * from './demoSeed';
+export * from './fullDemoSeed';
 export * from './sessionStore';
+export * from './calendarSnapshot';
+
+export {
+  ensureLocalPersistenceReady,
+  getPersistenceDiagnostics,
+  resetPersistenceBootstrapForTests,
+} from '../persistence/bootstrap';
 

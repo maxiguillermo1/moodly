@@ -1,0 +1,12 @@
+---
+description: Moodly persistence — tasks day shards, goals, migrations, tests
+globs: src/data/**/*.ts
+alwaysApply: false
+---
+
+# Moodly — data & storage
+
+- **Reminders hot path**: day rows live in **`moodly.tasks.day.<YYYY-MM-DD>`** + **`moodly.tasks.dayIndex`**. **`moodly.tasks`** holds `TasksRecord` (metadata, recurrence, history, migration marker). **`moodly.dayTodos`** is legacy migration input only.
+- **Goals**: **`moodly.goals`** (`GoalsRecord` **v2**); **`history` is source of truth** — `progress.currentValue` is reconciled from history on load/save via `canonicalizeGoalModel`. Same calendar day: **one row** (latest `createdAt` wins on merge; logging **replaces** that day’s value). **`addGoalProgress`** is **no-op** when note+value unchanged (idempotent). Only **`active`** goals accept progress; **`archived`** and **`completed`** reject writes. Use **`getGoalSummaries` / `getTodayGoalSummaries`** for previews — not full `getGoals()` clones.
+- **Writes**: persist-first, serialized per store; validate on load; quarantine corrupt JSON; never log note content.
+- After changes: **`npm run test:storage-stress`** and relevant `*.test.ts` beside the module. See **`src/data/DATA_CONTRACT.md`** and **`docs/DATA_ARCHITECTURE.md`**.

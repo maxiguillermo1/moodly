@@ -9,7 +9,7 @@ This file is intentionally strict: **only** libraries with clear benefit, low ri
 - Navigation: **React Navigation v7**, `native-stack` already in use
 - List perf:
   - Calendar month timeline uses **FlashList**.
-  - Journal timeline defaults to **`FlashList`** as well (`JOURNAL_LIST_IMPL === 'flashlist'` in `src/screens/JournalScreen.tsx`; set to **`'flatlist'`** locally if you need a regression comparison).
+  - Journal timeline defaults to **`FlashList`** as well (`JOURNAL_LIST_IMPL === 'flashlist'` in `src/features/journal/screens/JournalScreen.tsx`; set to **`'flatlist'`** locally if you need a regression comparison).
 
 ---
 

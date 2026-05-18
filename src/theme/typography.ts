@@ -1,6 +1,8 @@
 /**
  * @fileoverview iOS San Francisco-style typography
  * @module theme/typography
+ *
+ * Scale: page titles / title styles −2pt vs prior; body and smaller text −1pt (line heights nudged to match).
  */
 
 import { TextStyle } from 'react-native';
@@ -17,81 +19,81 @@ export const fontWeight = {
 export const typography: Record<string, TextStyle> = {
   // Large Title (Navigation)
   largeTitle: {
-    fontSize: 34,
-    lineHeight: 41,
+    fontSize: 32,
+    lineHeight: 39,
     fontWeight: fontWeight.bold,
     letterSpacing: 0.37,
   },
-  
+
   // Title styles
   title1: {
-    fontSize: 28,
-    lineHeight: 34,
+    fontSize: 26,
+    lineHeight: 32,
     fontWeight: fontWeight.bold,
     letterSpacing: 0.36,
   },
   title2: {
-    fontSize: 22,
-    lineHeight: 28,
+    fontSize: 20,
+    lineHeight: 26,
     fontWeight: fontWeight.bold,
     letterSpacing: 0.35,
   },
   title3: {
-    fontSize: 20,
-    lineHeight: 25,
+    fontSize: 18,
+    lineHeight: 23,
     fontWeight: fontWeight.semibold,
     letterSpacing: 0.38,
   },
-  
+
   // Headline
   headline: {
-    fontSize: 17,
-    lineHeight: 22,
+    fontSize: 16,
+    lineHeight: 21,
     fontWeight: fontWeight.semibold,
     letterSpacing: -0.41,
   },
-  
+
   // Body
   body: {
-    fontSize: 17,
-    lineHeight: 22,
-    fontWeight: fontWeight.regular,
-    letterSpacing: -0.41,
-  },
-  
-  // Callout
-  callout: {
     fontSize: 16,
     lineHeight: 21,
     fontWeight: fontWeight.regular,
-    letterSpacing: -0.32,
+    letterSpacing: -0.41,
   },
-  
-  // Subhead
-  subhead: {
+
+  // Callout
+  callout: {
     fontSize: 15,
     lineHeight: 20,
     fontWeight: fontWeight.regular,
+    letterSpacing: -0.32,
+  },
+
+  // Subhead
+  subhead: {
+    fontSize: 14,
+    lineHeight: 19,
+    fontWeight: fontWeight.regular,
     letterSpacing: -0.24,
   },
-  
+
   // Footnote
   footnote: {
-    fontSize: 13,
-    lineHeight: 18,
+    fontSize: 12,
+    lineHeight: 17,
     fontWeight: fontWeight.regular,
     letterSpacing: -0.08,
   },
-  
+
   // Caption
   caption1: {
-    fontSize: 12,
-    lineHeight: 16,
+    fontSize: 11,
+    lineHeight: 15,
     fontWeight: fontWeight.regular,
   },
   caption2: {
-    fontSize: 11,
-    lineHeight: 13,
+    fontSize: 10,
+    lineHeight: 12,
     fontWeight: fontWeight.regular,
     letterSpacing: 0.07,
   },
@@ -104,58 +106,58 @@ export const typography: Record<string, TextStyle> = {
 
   // Headings
   headingLg: {
-    fontSize: 20,
-    lineHeight: 25,
+    fontSize: 18,
+    lineHeight: 23,
     fontWeight: fontWeight.semibold,
     letterSpacing: 0.38,
   },
   headingMd: {
-    fontSize: 17,
-    lineHeight: 22,
+    fontSize: 15,
+    lineHeight: 20,
     fontWeight: fontWeight.semibold,
     letterSpacing: -0.41,
   },
   headingSm: {
-    fontSize: 15,
-    lineHeight: 20,
+    fontSize: 13,
+    lineHeight: 18,
     fontWeight: fontWeight.semibold,
     letterSpacing: -0.24,
   },
 
   // Body
   bodyLg: {
-    fontSize: 17,
-    lineHeight: 22,
+    fontSize: 16,
+    lineHeight: 21,
     fontWeight: fontWeight.regular,
     letterSpacing: -0.41,
   },
   bodyMd: {
-    fontSize: 16,
-    lineHeight: 21,
+    fontSize: 15,
+    lineHeight: 20,
     fontWeight: fontWeight.regular,
     letterSpacing: -0.32,
   },
   bodySm: {
-    fontSize: 13,
-    lineHeight: 18,
+    fontSize: 12,
+    lineHeight: 17,
     fontWeight: fontWeight.regular,
     letterSpacing: -0.08,
   },
 
   // Labels
   labelLg: {
-    fontSize: 14,
-    lineHeight: 20,
+    fontSize: 13,
+    lineHeight: 19,
     fontWeight: fontWeight.medium,
   },
   labelMd: {
-    fontSize: 12,
-    lineHeight: 16,
+    fontSize: 11,
+    lineHeight: 15,
     fontWeight: fontWeight.medium,
   },
   labelSm: {
-    fontSize: 11,
-    lineHeight: 13,
+    fontSize: 10,
+    lineHeight: 12,
     fontWeight: fontWeight.medium,
     letterSpacing: 0.07,
   },

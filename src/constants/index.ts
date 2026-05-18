@@ -3,4 +3,4 @@
  * @module constants
  */
 
-export { APP_DISPLAY_NAME, APP_RELEASE_CODENAME, APP_RELEASE_VERSION } from './app';
+export { APP_RELEASE_VERSION } from './app';

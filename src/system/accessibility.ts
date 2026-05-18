@@ -6,7 +6,8 @@
  * - Provide fast, deterministic label helpers for calendar day cells.
  */
 
-import { AccessibilityInfo } from 'react-native';
+import { AccessibilityInfo, type Insets } from 'react-native';
+import type { MoodGrade } from '../types';
 
 let reduceMotionEnabled = false;
 let installed = false;
@@ -28,6 +29,36 @@ export function installAccessibilityObservers(): void {
 
 export function getReduceMotionEnabled(): boolean {
   return reduceMotionEnabled;
+}
+
+export const MIN_TOUCH_TARGET = 44;
+export const DEFAULT_HIT_SLOP: Insets = Object.freeze({ top: 10, right: 10, bottom: 10, left: 10 });
+export const SMALL_CONTROL_HIT_SLOP: Insets = Object.freeze({ top: 12, right: 12, bottom: 12, left: 12 });
+
+const MOOD_A11Y_LABELS: Record<MoodGrade, string> = {
+  'A+': 'A plus, Best day',
+  A: 'A, Very good',
+  B: 'B, Good',
+  C: 'C, Neutral',
+  D: 'D, Bad',
+  F: 'F, Very bad',
+};
+
+export function formatMoodA11yLabel(mood: string | null | undefined): string {
+  return mood && mood in MOOD_A11Y_LABELS ? MOOD_A11Y_LABELS[mood as MoodGrade] : String(mood ?? '');
+}
+
+export function announceForAccessibility(message: string): void {
+  if (!message.trim()) return;
+  AccessibilityInfo.announceForAccessibility?.(message);
+}
+
+export async function isScreenReaderEnabled(): Promise<boolean> {
+  try {
+    return !!(await AccessibilityInfo.isScreenReaderEnabled());
+  } catch {
+    return false;
+  }
 }
 
 const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'] as const;
@@ -52,10 +83,14 @@ export function formatDayCellA11yLabel(opts: {
   year: number;
   mood?: string | null;
   hasNote?: boolean;
+  isToday?: boolean;
+  isSelected?: boolean;
 }): string {
   const wd = weekdayName(opts.weekdayIndex0);
   let s = `${wd}, ${opts.monthName} ${ordinal(opts.day)}, ${opts.year}.`;
-  if (opts.mood) s += ` Mood ${opts.mood}.`;
+  if (opts.isToday) s += ' Today.';
+  if (opts.isSelected) s += ' Selected.';
+  if (opts.mood) s += ` Mood ${formatMoodA11yLabel(opts.mood)}.`;
   else s += ' No entry.';
   if (opts.hasNote) s += ' Has note.';
   return s;

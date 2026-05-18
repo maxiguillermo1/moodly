@@ -2,7 +2,8 @@
   "expo": {
     "name": "Moodly",
     "slug": "moodly",
-    "version": "2.0.0",
+    "version": "0.6.0",
+    "scheme": "moodly",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
     "splash": {
@@ -27,12 +28,21 @@
             "backgroundColor": "#000000",
             "resizeMode": "contain"
           },
-          "imageWidth": 1
+          "imageWidth": 200
         }
       ]
     ],
     "ios": {
+      "bundleIdentifier": "com.moodly.app",
+      "buildNumber": "1",
       "supportsTablet": true,
+      "infoPlist": {
+        "CFBundleDisplayName": "Moodly",
+        "ITSAppUsesNonExemptEncryption": false
+      },
+      "config": {
+        "usesNonExemptEncryption": false
+      },
       "splash": {
         "image": "./assets/images/splash-icon.png",
         "resizeMode": "contain",
@@ -45,6 +55,9 @@
       }
     },
     "android": {
+      "package": "com.moodly.app",
+      "versionCode": 1,
+      "permissions": [],
       "adaptiveIcon": {
         "backgroundColor": "#F2F2F7"
       },

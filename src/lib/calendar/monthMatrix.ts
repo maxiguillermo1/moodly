@@ -3,6 +3,8 @@
  * @module lib/calendar/monthMatrix
  */
 
+import { setWithLruEvict, touchLruMapKey } from '../utils/lruMap';
+
 /**
  * Month matrix shape: 6 rows × 7 columns of day numbers. Empty cells are null.
  * This matches the compact iOS year view style (blank padding, not adjacent-month days).
@@ -10,11 +12,15 @@
 export type MonthMatrix = (number | null)[][];
 
 const cache = new Map<string, MonthMatrix>();
+const MONTH_MATRIX_CACHE_MAX = 768;
 
 export function getMonthMatrix(year: number, monthIndex0: number): MonthMatrix {
   const key = `${year}-${monthIndex0}`;
   const cached = cache.get(key);
-  if (cached) return cached;
+  if (cached) {
+    touchLruMapKey(cache, key);
+    return cached;
+  }
 
   const firstDow = new Date(year, monthIndex0, 1).getDay(); // 0..6 (Sun..Sat)
   const daysInMonth = new Date(year, monthIndex0 + 1, 0).getDate();
@@ -32,7 +38,7 @@ export function getMonthMatrix(year: number, monthIndex0: number): MonthMatrix {
   }
 
   const frozen = Object.freeze(weeks) as any as MonthMatrix;
-  cache.set(key, frozen);
+  setWithLruEvict(cache, key, frozen, MONTH_MATRIX_CACHE_MAX);
   return frozen;
 }
 

@@ -115,10 +115,67 @@ This document defines the **minimum bar** for “App Store–ready” quality fo
 ## Quality gates (must pass)
 
 ```bash
-npm run lint
-npx tsc --noEmit
-npm test
+npm run validate:ios-release
+npm run validate:release
 ```
+
+`validate:ios-release` is the fastest iOS submission gate: TypeScript, ESLint, full Jest,
+focused storage/persistence stress, Expo Doctor, iOS bundle export, and production audit.
+`validate:release` adds Android export coverage.
+
+Production dependency hygiene:
+
+```bash
+npm audit --omit=dev --audit-level=moderate
+```
+
+This must report `0 vulnerabilities` before submission.
+
+Latest iOS gate:
+
+| Gate | Result |
+|---|---|
+| `npm run validate:ios-release` | Passed |
+| Jest | `30` suites, `130` tests passed |
+| Storage stress | `5` suites, `39` tests passed |
+| Expo Doctor | `17/17` checks passed |
+| iOS export | Passed |
+| Production audit | `0 vulnerabilities` |
+
+## Physical-device evidence still required
+
+Automated gates cannot prove frame pacing, haptic feel, keyboard animation, VoiceOver focus order,
+or iOS low-memory/background lifecycle behavior. Before App Store submission, complete the device
+matrix in [`RELEASE_CHECKLIST.md`](./RELEASE_CHECKLIST.md) on at least one older physical iPhone
+and one current physical iPhone using a TestFlight or release-style EAS build.
+
+## Final release blockers (external / account-owned)
+
+- Confirm `com.moodly.app` is owned and reserved in Apple Developer and App Store Connect.
+- Run `eas init` / project linking before relying on EAS submit; do not commit guessed project IDs.
+- Provide final icon/adaptive icon assets and verify App Store asset requirements.
+- Decide whether the current minimal splash asset is acceptable for public launch branding.
+- Complete App Store Connect metadata: screenshots, support URL, privacy nutrition labels, age rating,
+  copyright, review notes, and export compliance.
+
+`app.json` now declares build numbers and `ios.config.usesNonExemptEncryption: false`; increment
+`ios.buildNumber` / `android.versionCode` for every submitted build.
+
+## App Store Connect Answers
+
+Use this as the review packet unless product scope changes:
+
+| App Store field | Moodly answer |
+|---|---|
+| Data collection | The app does not collect data from this app. Mood/journal/goals/reminders stay on-device. |
+| Tracking | No tracking. No ATT prompt. No third-party analytics or advertising SDK. |
+| Account requirement | No account required. |
+| Network/backend | No backend or network dependency for core use. |
+| Encryption/export compliance | Uses only standard platform/transport encryption; `usesNonExemptEncryption` is `false`. |
+| Notifications | No OS notifications are scheduled. Reminders are in-app time cues only. |
+| Location/camera/microphone/photos/contacts | Not used; no permissions requested. |
+| Medical claims | None. Moodly is a journaling/productivity app, not medical advice or diagnosis. |
+| Review notes | “Moodly is a local-first mood journal. No login is required. To test: open Today, select a mood, add a note, save, then use Calendar/Journal/Goals/Reminders/Settings from the tab bar. All sample data is user-created; the app has no backend or tracking.” |
 
 ## References (where the “rules” live)
 
@@ -129,7 +186,8 @@ npm test
 | Reusable UI | `docs/COMPONENTS.md` |
 | Decisions/invariants | `docs/DECISIONS.md` |
 | Logging contract | `docs/logger.md` |
-| Security checklist | `SECURITY_CHECKLIST.md` |
+| Security checklist | [`SECURITY_CHECKLIST.md`](./SECURITY_CHECKLIST.md) |
 | Testing | `docs/TESTING.md` |
+| Web roadmap (chunked) | `docs/WEB_DEPLOYMENT_CHUNKS.md` |
 | Performance | `docs/PERFORMANCE.md` |
 

@@ -1,0 +1,13 @@
+---
+description: Moodly UI — theme, a11y, tab bar, Reminders/Goals surfaces
+globs: src/{screens,features,components,extensions}/**/*.tsx
+alwaysApply: false
+---
+
+# Moodly — UI & screens
+
+- **Theme**: **`useAppTheme()`**, **`spacing`**, **`typography`** from **`src/theme`**. Match existing screen patterns (e.g. **`screenHeaderPrimaryTabPaddingX`** on primary-tab surfaces).
+- **Touch**: shared **`Touchable`** / **`CapsuleButton`**; **`src/system/haptics`** for feedback.
+- **Tab bar**: if a screen hides the tab bar while scrolling, it **must** call **`useShowTabBarOnScreenBlur(showTabBar)`** (see **`docs/AGENTS.md`** § Floating tab bar).
+- **Reminders**: user-facing name **Reminders**; stack route stays **`Todo`**. Time cues are **in-app only** (no OS notifications unless product adds **`expo-notifications`** + permission UX).
+- **Goals**: logging is daily / idempotent; align copy with existing Goals screen patterns.

@@ -32,6 +32,9 @@ function fail(name: DebugScenarioName, error: unknown, meta?: Record<string, unk
   logger.warn('debug.scenario.fail', { name, error, ...(meta ?? {}) });
 }
 
+/** Compile-time exhaustiveness guard for {@link DebugScenarioName} branches. */
+function assertNever(_x: never): void {}
+
 export function listDebugScenarios(): DebugScenarioName[] {
   return ['rapidTapMomentum', 'rapidMonthTaps', 'backgroundDuringSave', 'storageChaosPlan'];
 }
@@ -88,9 +91,7 @@ export async function runDebugScenario(name: DebugScenarioName): Promise<void> {
       return;
     }
 
-    // Exhaustive check
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const _exhaustive: never = name;
+    assertNever(name);
   } catch (e) {
     fail(name, e);
   }

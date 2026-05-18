@@ -36,9 +36,12 @@ export type SystemPalette = {
 };
 
 export const systemLight: SystemPalette = {
-  background: '#F2F2F7',
-  secondaryBackground: '#FFFFFF',
-  tertiaryBackground: '#F2F2F7',
+  /** Primary canvas — pure white (grouped surfaces use {@link secondaryBackground}). */
+  background: '#FFFFFF',
+  /** Grouped lists, cards — Bright Snow. */
+  secondaryBackground: '#F8F9FA',
+  /** Nested / tertiary grouped surfaces — Platinum. */
+  tertiaryBackground: '#E9ECEF',
   fill: 'rgba(120, 120, 128, 0.2)',
   secondaryFill: 'rgba(120, 120, 128, 0.16)',
   tertiaryFill: 'rgba(118, 118, 128, 0.12)',

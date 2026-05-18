@@ -8,10 +8,17 @@
  */
 
 export * from '../lib/utils/date';
+export * from '../lib/utils/dateKeys';
 export * from '../lib/utils/latestOnly';
 export * from '../lib/utils/frameCoalescer';
-export * from '../lib/utils/throttle';
+export * from '../lib/utils/lruMap';
+export * from '../lib/utils/afterNextFrame';
+export * from '../lib/utils/serialAsyncQueue';
 export * from '../lib/constants/moods';
-export * from '../lib/calendar/monthMatrix';
-export * from '../lib/calendar/monthWindow';
+export * from '../lib/constants/habitsCatalog';
+export * from '../lib/habits/visibleOnToday';
+export * from '../lib/calendar';
+export * from '../lib/todos';
+export * from '../lib/goals';
+export { nearestTabFromPillCenter } from '../lib/utils/nearestTabFromPill';
 

@@ -4,7 +4,7 @@
  */
 
 import React, { ReactNode, useMemo } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, type AccessibilityState } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { spacing, borderRadius, typography, useAppTheme } from '../../theme';
 import { Touchable } from '../../ui/Touchable';
@@ -51,7 +51,7 @@ function useGroupedStyles() {
           color: s.secondaryLabel,
           paddingHorizontal: spacing[4],
           paddingTop: spacing[2],
-          lineHeight: 18,
+          lineHeight: 17,
         },
         symbolWell: {
           width: SYMBOL_WELL_SIZE,
@@ -88,7 +88,7 @@ function useGroupedStyles() {
           backgroundColor: s.separator,
         },
         rowIcon: {
-          fontSize: 22,
+          fontSize: 20,
           marginRight: spacing[3],
         },
         rowLabel: {
@@ -154,6 +154,10 @@ interface GroupedRowProps {
   isLast?: boolean;
   destructive?: boolean;
   right?: ReactNode;
+  accessibilityLabel?: string;
+  accessibilityHint?: string;
+  accessibilityState?: AccessibilityState;
+  accessibilityValue?: React.ComponentProps<typeof View>['accessibilityValue'];
 }
 
 export function GroupedRow({
@@ -167,6 +171,10 @@ export function GroupedRow({
   isLast = false,
   destructive = false,
   right,
+  accessibilityLabel,
+  accessibilityHint,
+  accessibilityState,
+  accessibilityValue,
 }: GroupedRowProps) {
   const styles = useGroupedStyles();
   const { system } = useAppTheme();
@@ -179,6 +187,8 @@ export function GroupedRow({
 
   const leading = hasSymbol ? (
     <View
+      accessible={false}
+      importantForAccessibility="no"
       style={[
         styles.symbolWell,
         {
@@ -186,13 +196,27 @@ export function GroupedRow({
         },
       ]}
     >
-      <Ionicons name={symbol!.name} size={SYMBOL_ICON_SIZE} color={symbol!.iconColor ?? '#FFFFFF'} />
+      <Ionicons
+        name={symbol!.name}
+        size={SYMBOL_ICON_SIZE}
+        color={symbol!.iconColor ?? '#FFFFFF'}
+        accessibilityElementsHidden
+        importantForAccessibility="no"
+      />
     </View>
   ) : hasEmoji ? (
-    <Text style={styles.rowIcon} allowFontScaling={false}>
+    <Text
+      style={styles.rowIcon}
+      allowFontScaling={false}
+      accessible={false}
+      accessibilityElementsHidden
+      importantForAccessibility="no"
+    >
       {icon}
     </Text>
   ) : null;
+
+  const defaultA11yLabel = value ? `${label}, ${value}` : label;
 
   const content = (
     <View style={[styles.row, isFirst && styles.rowFirst, isLast && styles.rowLast]}>
@@ -224,6 +248,8 @@ export function GroupedRow({
                 size={14}
                 color={system.tertiaryLabel}
                 style={styles.chevronIcon}
+                accessibilityElementsHidden
+                importantForAccessibility="no"
               />
             ) : null}
           </>
@@ -241,10 +267,28 @@ export function GroupedRow({
       <Touchable
         onPress={onPress}
         accessibilityRole="button"
+        accessibilityLabel={accessibilityLabel ?? defaultA11yLabel}
+        accessibilityHint={accessibilityHint}
+        accessibilityState={accessibilityState}
+        accessibilityValue={accessibilityValue}
         style={({ pressed }) => (pressed ? styles.rowPressed : undefined)}
       >
         {content}
       </Touchable>
+    );
+  }
+
+  if (!right) {
+    return (
+      <View
+        accessible
+        accessibilityLabel={accessibilityLabel ?? defaultA11yLabel}
+        accessibilityHint={accessibilityHint}
+        accessibilityState={accessibilityState}
+        accessibilityValue={accessibilityValue}
+      >
+        {content}
+      </View>
     );
   }
 

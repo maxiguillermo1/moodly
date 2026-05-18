@@ -14,7 +14,14 @@
  */
 
 import type { MoodEntry, MoodGrade } from '../../types';
-import { getMoodColor } from '../../utils';
+import {
+  dayOfMonthInCalendarMonth,
+  getMoodColor,
+  monthNameLongEn,
+  fillLocalWeekdaysForMonthDays1to31,
+  touchLruMapKey,
+  setWithLruEvict,
+} from '../../utils';
 import { logger } from '../../security';
 
 export type CalendarMoodStyle = 'dot' | 'fill';
@@ -52,21 +59,6 @@ export type MonthRenderModel = {
   monthIndex0: number;
 };
 
-const MONTHS_LONG = [
-  'January',
-  'February',
-  'March',
-  'April',
-  'May',
-  'June',
-  'July',
-  'August',
-  'September',
-  'October',
-  'November',
-  'December',
-];
-
 // `trim()` allocates; for "has note" semantics we only need to know
 // whether there is at least one non-whitespace character.
 const HAS_NON_WHITESPACE_RE = /\S/;
@@ -89,17 +81,24 @@ function monthKeyOf(year: number, monthIndex0: number): string {
 
 // Cache ISO keys by monthKey. Safe: purely deterministic and does not depend on user data.
 const isoByMonthKeyCache = new Map<string, string[]>();
+const ISO_BY_MONTH_CACHE_MAX = 640;
+
+// Per-handler press arrays: cap so rapid timeline scrolling cannot grow Maps without bound.
+const PRESS_BY_MONTH_KEY_CAP = 96;
 
 export function getIsoByDay(year: number, monthIndex0: number): string[] {
   const mk = monthKeyOf(year, monthIndex0);
   const cached = isoByMonthKeyCache.get(mk);
-  if (cached) return cached;
+  if (cached) {
+    touchLruMapKey(isoByMonthKeyCache, mk);
+    return cached;
+  }
 
   const prefix = `${mk}-`;
   const out = new Array<string>(32);
   out[0] = '';
   for (let d = 1; d <= 31; d++) out[d] = `${prefix}${DAY_2[d]}`;
-  isoByMonthKeyCache.set(mk, out);
+  setWithLruEvict(isoByMonthKeyCache, mk, out, ISO_BY_MONTH_CACHE_MAX);
   return out;
 }
 
@@ -129,7 +128,10 @@ export function getPressByDay(
 
   if (!onHapticSelect) {
     const cached = entry.noHaptic.get(monthKey);
-    if (cached) return cached;
+    if (cached) {
+      touchLruMapKey(entry.noHaptic, monthKey);
+      return cached;
+    }
     const out = new Array<(() => void) | undefined>(32);
     out[0] = undefined;
     for (let d = 1; d <= 31; d++) {
@@ -138,7 +140,7 @@ export function getPressByDay(
         onPressDate(key);
       };
     }
-    entry.noHaptic.set(monthKey, out);
+    setWithLruEvict(entry.noHaptic, monthKey, out, PRESS_BY_MONTH_KEY_CAP);
     return out;
   }
 
@@ -149,7 +151,10 @@ export function getPressByDay(
   }
 
   const cached = byMonth.get(monthKey);
-  if (cached) return cached;
+  if (cached) {
+    touchLruMapKey(byMonth, monthKey);
+    return cached;
+  }
 
   const out = new Array<(() => void) | undefined>(32);
   out[0] = undefined;
@@ -160,7 +165,7 @@ export function getPressByDay(
       onPressDate(key);
     };
   }
-  byMonth.set(monthKey, out);
+  setWithLruEvict(byMonth, monthKey, out, PRESS_BY_MONTH_KEY_CAP);
   return out;
 }
 
@@ -180,6 +185,8 @@ type MonthModelCacheEntry = {
 };
 
 const monthModelCache = new Map<string, MonthModelCacheEntry>();
+/** Bounds GPU/JS memory for long timeline sessions (selection + style multiply keys per month). */
+const MONTH_RENDER_MODEL_CACHE_MAX = 384;
 
 // -----------------------------------------------------------------------------
 // Dev perf guard (sampled + once) to detect regressions on large datasets.
@@ -196,14 +203,6 @@ function shouldSampleSlowBuild(): boolean {
   if (didLogSlowBuild) return false;
   // Sample ~1/128 calls until we see a slow build, then log once.
   return ((devBuildSample++ & 0x7f) === 0);
-}
-
-function dayFromIsoIfInMonth(monthKey: string, iso: string | undefined): number {
-  if (!iso || iso.length < 10) return 0;
-  if (!iso.startsWith(monthKey)) return 0;
-  // YYYY-MM-DD
-  const d = Number(iso.slice(8, 10));
-  return Number.isFinite(d) && d >= 1 && d <= 31 ? d : 0;
 }
 
 export function getMonthRenderModel(opts: {
@@ -224,8 +223,8 @@ export function getMonthRenderModel(opts: {
   const t0 = shouldSampleSlowBuild() ? nowMs() : 0;
   const mk = monthKeyOf(year, monthIndex0);
   const isFillTheme = calendarMoodStyle === 'fill';
-  const selectedDay = dayFromIsoIfInMonth(mk, selectedDate);
-  const todayDay = dayFromIsoIfInMonth(mk, todayIso);
+  const selectedDay = selectedDate ? dayOfMonthInCalendarMonth(selectedDate, year, monthIndex0) : 0;
+  const todayDay = todayIso ? dayOfMonthInCalendarMonth(todayIso, year, monthIndex0) : 0;
 
   const cacheKey = `${mk}|${variant}|${calendarMoodStyle}`;
   const cached = monthModelCache.get(cacheKey);
@@ -239,6 +238,7 @@ export function getMonthRenderModel(opts: {
     cached.onPressDateRef === onPressDate &&
     cached.onHapticSelectRef === onHapticSelect
   ) {
+    touchLruMapKey(monthModelCache, cacheKey);
     return cached.model;
   }
 
@@ -259,9 +259,12 @@ export function getMonthRenderModel(opts: {
   const moodGradeByDay: Array<MoodGrade | null> = hasAnyEntry ? new Array<MoodGrade | null>(32) : (ALL_MOODGRADE_NULL_32 as any);
   const hasNoteByDay: boolean[] = hasAnyEntry ? new Array<boolean>(32) : (ALL_FALSE_32 as any);
   // `weekdayByDay` is only needed for VoiceOver labels on *pressable* days.
-  // CalendarView mini grids do not create day press handlers, so avoid 31 Date allocations per mini month.
+  // CalendarView mini grids do not create day press handlers, so avoid per-day Date work.
   const weekdayByDay: number[] = onPressDate ? new Array<number>(32) : (ALL_ZERO_32 as any);
-  if (onPressDate) weekdayByDay[0] = 0;
+  if (onPressDate) {
+    weekdayByDay[0] = 0;
+    fillLocalWeekdaysForMonthDays1to31(year, monthIndex0, weekdayByDay);
+  }
   if (hasAnyEntry) {
     moodColorByDay[0] = null;
     moodGradeByDay[0] = null;
@@ -272,11 +275,6 @@ export function getMonthRenderModel(opts: {
       moodColorByDay[d] = mood ? getMoodColor(mood) : null;
       moodGradeByDay[d] = mood;
       hasNoteByDay[d] = e ? hasNonWhitespace(e.note) : false;
-      if (onPressDate) weekdayByDay[d] = new Date(year, monthIndex0, d).getDay();
-    }
-  } else {
-    if (onPressDate) {
-      for (let d = 1; d <= 31; d++) weekdayByDay[d] = new Date(year, monthIndex0, d).getDay();
     }
   }
 
@@ -295,12 +293,12 @@ export function getMonthRenderModel(opts: {
     todayDay,
     isFillTheme,
     sizeKey,
-    monthName: MONTHS_LONG[monthIndex0] ?? '',
+    monthName: monthNameLongEn(monthIndex0),
     year,
     monthIndex0,
   };
 
-  monthModelCache.set(cacheKey, {
+  setWithLruEvict(monthModelCache, cacheKey, {
     entriesRevision,
     selectedDay,
     todayDay,
@@ -310,7 +308,7 @@ export function getMonthRenderModel(opts: {
     onHapticSelectRef: onHapticSelect,
     variant,
     model,
-  });
+  }, MONTH_RENDER_MODEL_CACHE_MAX);
 
   if (t0 > 0) {
     const dt = nowMs() - t0;

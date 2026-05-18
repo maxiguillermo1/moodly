@@ -13,7 +13,7 @@
 import { Platform } from 'react-native';
 import { interactionQueue } from './interactionQueue';
 
-type HapticKind = 'select' | 'success' | 'error' | 'toggle' | 'sheet';
+type HapticKind = 'select' | 'success' | 'error' | 'toggle' | 'sheet' | 'tab';
 
 const DEFAULT_COOLDOWN_MS: Record<HapticKind, number> = {
   select: 80,
@@ -21,14 +21,17 @@ const DEFAULT_COOLDOWN_MS: Record<HapticKind, number> = {
   sheet: 120,
   success: 120,
   error: 120,
+  /** Bottom tabs: allow rapid switches without stacking vibrations. */
+  tab: 52,
 };
 
-let lastAtByKind: Record<HapticKind, number> = {
+const lastAtByKind: Record<HapticKind, number> = {
   select: 0,
   success: 0,
   error: 0,
   toggle: 0,
   sheet: 0,
+  tab: 0,
 };
 
 function nowMs(): number {
@@ -101,6 +104,17 @@ export const haptics = Object.freeze({
     void safeCall(async () => {
       const Haptics = await getModule();
       await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Soft);
+    });
+  },
+
+  /**
+   * Main bottom tabs — lighter than `selectionAsync`, tuned for rapid tab switches.
+   */
+  tab(): void {
+    if (!shouldFire('tab')) return;
+    void safeCall(async () => {
+      const Haptics = await getModule();
+      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     });
   },
 });

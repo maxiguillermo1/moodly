@@ -11,6 +11,7 @@ import { colors, spacing, borderRadius, useAppTheme } from '../../theme';
 import { MoodGradeSurface } from './MoodGradeSurface';
 import { Touchable } from '../../ui/Touchable';
 import { haptics } from '../../system/haptics';
+import { announceForAccessibility, formatMoodA11yLabel } from '../../system/accessibility';
 
 interface MoodPickerProps {
   selectedMood: MoodGrade | null;
@@ -36,8 +37,8 @@ export function MoodPicker({
           marginBottom: spacing[1],
         },
         title: {
-          fontSize: 14,
-          lineHeight: 18,
+          fontSize: 13,
+          lineHeight: 17,
           fontWeight: '600',
           letterSpacing: -0.15,
           color: system.label,
@@ -76,8 +77,8 @@ export function MoodPicker({
           borderColor: system.separator,
         },
         grade: {
-          fontSize: 14,
-          lineHeight: 17,
+          fontSize: 13,
+          lineHeight: 16,
           fontWeight: '600',
           letterSpacing: -0.2,
           textAlign: 'center',
@@ -100,8 +101,8 @@ export function MoodPicker({
         },
         segmentSelected: {},
         segmentText: {
-          fontSize: 13,
-          lineHeight: 16,
+          fontSize: 12,
+          lineHeight: 15,
           fontWeight: '600',
           letterSpacing: -0.08,
         },
@@ -132,11 +133,12 @@ export function MoodPicker({
               onPress={() => {
                 haptics.select();
                 onSelect(mood.grade);
+                announceForAccessibility(`Mood ${formatMoodA11yLabel(mood.grade)} selected`);
               }}
               accessibilityRole="button"
-              accessibilityLabel={`Mood ${mood.grade}, ${mood.label}`}
-              accessibilityHint={isSelected ? 'Selected' : 'Select mood'}
-              accessibilityState={isSelected ? { selected: true } : undefined}
+              accessibilityLabel={`Mood ${formatMoodA11yLabel(mood.grade)}${isSelected ? ', selected' : ''}`}
+              accessibilityHint={isSelected ? 'Currently selected' : 'Selects this mood'}
+              accessibilityState={{ selected: isSelected, checked: isSelected }}
             >
               {isSelected && moodGradeColorStyle === 'gradient' ? (
                 <MoodGradeSurface
@@ -180,11 +182,12 @@ export function MoodPicker({
           onPress={() => {
             haptics.select();
             onSelect(mood.grade);
+            announceForAccessibility(`Mood ${formatMoodA11yLabel(mood.grade)} selected`);
           }}
           accessibilityRole="button"
-          accessibilityLabel={`Mood ${mood.grade}, ${mood.label}`}
-          accessibilityHint={isSelected ? 'Selected' : 'Select mood'}
-          accessibilityState={isSelected ? { selected: true } : undefined}
+          accessibilityLabel={`Mood ${formatMoodA11yLabel(mood.grade)}${isSelected ? ', selected' : ''}`}
+          accessibilityHint={isSelected ? 'Currently selected' : 'Selects this mood'}
+          accessibilityState={{ selected: isSelected, checked: isSelected }}
         >
           {isSelected && moodGradeColorStyle === 'gradient' ? (
             <MoodGradeSurface
@@ -213,7 +216,7 @@ export function MoodPicker({
   return (
     <View style={styles.container}>
       {title ? (
-        <Text style={styles.title} allowFontScaling maxFontSizeMultiplier={1.3}>
+        <Text style={styles.title} allowFontScaling maxFontSizeMultiplier={1.3} accessibilityRole="header">
           {title}
         </Text>
       ) : null}

@@ -14,11 +14,12 @@
 
 import React, { useMemo } from 'react';
 import type { Insets, StyleProp, ViewStyle, TextStyle } from 'react-native';
-import { Pressable, StyleSheet, Text } from 'react-native';
+import { Pressable, StyleSheet, Text, type AccessibilityState } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 
 import { LiquidGlass } from './LiquidGlass';
 import { sizing, typography, useAppTheme } from '../../theme';
+import { DEFAULT_HIT_SLOP } from '../../system/accessibility';
 
 type IconName = React.ComponentProps<typeof Ionicons>['name'];
 
@@ -28,6 +29,7 @@ type CapsuleButtonProps = {
   disabled?: boolean;
   accessibilityLabel: string;
   accessibilityHint?: string;
+  accessibilityState?: AccessibilityState;
   hitSlop?: Insets;
   testID?: string;
 
@@ -53,6 +55,7 @@ export function CapsuleButton(props: CapsuleButtonProps): React.ReactElement {
     disabled,
     accessibilityLabel,
     accessibilityHint,
+    accessibilityState,
     hitSlop,
     testID,
     iconName,
@@ -63,7 +66,7 @@ export function CapsuleButton(props: CapsuleButtonProps): React.ReactElement {
     labelStyle,
   } = props;
 
-  const resolvedHitSlop = hitSlop ?? { top: 10, left: 10, right: 10, bottom: 10 };
+  const resolvedHitSlop = hitSlop ?? DEFAULT_HIT_SLOP;
   const resolvedIconColor = iconColor ?? system.label;
   const resolvedLabelColor = labelColor ?? system.blue;
 
@@ -83,7 +86,7 @@ export function CapsuleButton(props: CapsuleButtonProps): React.ReactElement {
       disabled={disabled}
       hitSlop={resolvedHitSlop}
       accessibilityRole="button"
-      accessibilityState={disabled ? { disabled: true } : {}}
+      accessibilityState={{ ...accessibilityState, disabled: !!disabled }}
       accessibilityLabel={accessibilityLabel}
       accessibilityHint={accessibilityHint}
       android_disableSound
@@ -94,7 +97,13 @@ export function CapsuleButton(props: CapsuleButtonProps): React.ReactElement {
         {null}
       </LiquidGlass>
 
-      <Ionicons name={iconName} size={sizing.iconSm} color={resolvedIconColor} />
+      <Ionicons
+        name={iconName}
+        size={sizing.iconSm}
+        color={resolvedIconColor}
+        accessibilityElementsHidden
+        importantForAccessibility="no"
+      />
 
       {kind === 'back' ? (
         <Text

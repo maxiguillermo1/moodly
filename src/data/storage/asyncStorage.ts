@@ -1,5 +1,5 @@
 /**
- * @fileoverview AsyncStorage wrapper (single chaos injection point).
+ * @fileoverview AsyncStorage wrapper (single fault-injection hook).
  *
  * Rationale:
  * - Keep fault injection centralized (one place).
@@ -7,12 +7,12 @@
  *   but injected failures/delays should only happen at the actual I/O boundary.
  */
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { chaosBeforeStorageOp, type StorageOp } from './chaos';
+import { beforeAsyncStorageFaultInjection, type StorageOp } from './storageFaultInjection';
 
 type Key = string;
 
 async function before(op: StorageOp, key: Key): Promise<void> {
-  await chaosBeforeStorageOp(op, key);
+  await beforeAsyncStorageFaultInjection(op, key);
 }
 
 export const storage = Object.freeze({
@@ -32,7 +32,6 @@ export const storage = Object.freeze({
   },
 
   async multiGet(keys: readonly Key[]): Promise<readonly [string, string | null][]> {
-    // Inject a single delay/failure for the op (deterministic), but also include a key in logs.
     await before('multiGet', keys[0] ?? 'multiGet');
     return AsyncStorage.multiGet(keys as string[]);
   },
@@ -46,5 +45,9 @@ export const storage = Object.freeze({
     await before('multiRemove', keys[0] ?? 'multiRemove');
     await AsyncStorage.multiRemove(keys as string[]);
   },
-});
 
+  async getAllKeys(): Promise<readonly string[]> {
+    await before('getAllKeys', 'getAllKeys');
+    return AsyncStorage.getAllKeys();
+  },
+});

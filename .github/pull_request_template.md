@@ -5,8 +5,9 @@
 ## Quality gates (required)
 
 - [ ] `npm run lint`
-- [ ] `npx tsc --noEmit`
+- [ ] `npm run typecheck`
 - [ ] `npm test`
+- [ ] `npm run doctor` and `npm run export:bundles-check` when changing Metro/bundler-critical deps or native entry wiring
 
 ## Security checklist (required)
 
@@ -20,7 +21,7 @@
 ## Documentation (if user-visible copy, settings, or architecture changed)
 
 - [ ] `README.md` and/or **docs/** entries match this PR (see README “Documentation index”).
-- [ ] `summary.md` changelog entry appended when the change is milestone-sized (optional for tiny fixes).
+- [ ] [`docs/summary.md`](docs/summary.md) changelog entry appended when the change is milestone-sized (optional for tiny fixes).
 
 - [ ] Calendar: year swipe, month open, month scroll, day tap/save still feels smooth
 - [ ] Dev-only: captured `perf.report` before/after (or explain why not)

@@ -34,6 +34,9 @@ type LastNav = {
   to?: string;
 };
 
+/** Dev-only: last primary tab bar press (for tap → focus timing). */
+let lastMainTabPress: { tab: string; atMs: number } | null = null;
+
 const marks = new Map<MarkName, number>();
 const renderStats = new Map<RenderId, RenderStats>();
 let didLogDeviceInfo = false;
@@ -55,7 +58,12 @@ let didWarnSlowFrameDuringCalendarScroll = false;
 
 const SLOW_FRAME_WARN_THRESHOLD_MS = 16;
 function isCalendarScrollPhase(phase: string | null): boolean {
-  return phase === 'CalendarScreen.scroll' || phase === 'CalendarView.scroll';
+  return (
+    phase === 'CalendarScreen.scroll' ||
+    phase === 'CalendarView.scroll' ||
+    phase === 'CalendarScreen.windowExtend' ||
+    phase === 'CalendarScreen.recenter'
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -213,6 +221,48 @@ function nowMs(): number {
   return typeof p?.now === 'function' ? p.now() : Date.now();
 }
 
+let longTaskObserverInstalled = false;
+function tryInstallLongTaskObserver(): void {
+  if (!PERF_ENABLED || longTaskObserverInstalled) return;
+  const PO = (globalThis as any).PerformanceObserver;
+  if (typeof PO !== 'function') return;
+  longTaskObserverInstalled = true;
+  const MIN_DURATION_MS = 64;
+  const MIN_GAP_MS = 2500;
+  let lastEmit = 0;
+  try {
+    const obs = new PO((list: any) => {
+      const entries = typeof list?.getEntries === 'function' ? list.getEntries() : [];
+      for (let i = 0; i < entries.length; i++) {
+        const e = entries[i];
+        const dur = typeof e?.duration === 'number' ? e.duration : 0;
+        if (!Number.isFinite(dur) || dur < MIN_DURATION_MS) continue;
+        const t = nowMs();
+        if (t - lastEmit < MIN_GAP_MS) continue;
+        lastEmit = t;
+        const name = typeof e?.name === 'string' ? e.name.slice(0, 80) : 'task';
+        logger.perf('perf.longTask', { phase: 'warm', source: 'js', durationMs: Number(dur.toFixed(1)), name });
+        break;
+      }
+    });
+    try {
+      obs.observe({ entryTypes: ['longtask'] });
+    } catch {
+      try {
+        obs.observe({ type: 'longtask', buffered: false } as any);
+      } catch {
+        try {
+          obs.disconnect?.();
+        } catch {}
+        longTaskObserverInstalled = false;
+        return;
+      }
+    }
+  } catch {
+    longTaskObserverInstalled = false;
+  }
+}
+
 function safeRouteName(name: unknown): string | undefined {
   return typeof name === 'string' && name.length > 0 ? name : undefined;
 }
@@ -293,6 +343,8 @@ export const perfProbe = {
       };
       requestAnimationFrame(loop);
     }
+
+    tryInstallLongTaskObserver();
   },
 
   /**
@@ -314,6 +366,29 @@ export const perfProbe = {
    */
   breadcrumb(name: string): void {
     addBreadcrumb(name);
+  },
+
+  /**
+   * Dev-only: record a bottom-tab press before `navigation.navigate` (metadata-only).
+   * Pair with {@link consumeMainTabPressToFocus} from the focused screen's perf hook.
+   */
+  onMainTabPress(tab: string): void {
+    if (!PERF_ENABLED) return;
+    if (!tab) return;
+    lastMainTabPress = { tab, atMs: nowMs() };
+    addBreadcrumb(`tab.press:${tab}`);
+  },
+
+  /**
+   * Dev-only: if the focused screen matches the last tab press, log tap → this focus latency.
+   */
+  consumeMainTabPressToFocus(tab: string): void {
+    if (!PERF_ENABLED) return;
+    const lp = lastMainTabPress;
+    if (!lp || lp.tab !== tab) return;
+    const durationMs = Number((nowMs() - lp.atMs).toFixed(1));
+    logger.perf('perf.tabPressToFocus', { phase: 'warm', source: 'nav', tab, durationMs });
+    lastMainTabPress = null;
   },
 
   /**

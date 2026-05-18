@@ -53,6 +53,13 @@ export const interactionQueue = Object.freeze({
     emit();
   },
 
+  reset(): void {
+    if (!state.isUserScrolling && !state.isMomentum) return;
+    state.isUserScrolling = false;
+    state.isMomentum = false;
+    emit();
+  },
+
   subscribe(listener: Listener): () => void {
     listeners.add(listener);
     return () => listeners.delete(listener);

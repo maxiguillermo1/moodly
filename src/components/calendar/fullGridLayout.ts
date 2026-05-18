@@ -74,8 +74,8 @@ export function computeFullCalendarGridLayout(width: number): { cell: number; ga
 export function buildFullGridMetrics(contentWidth: number): FullGridMetrics {
   const { cell, gap } = computeFullCalendarGridLayout(contentWidth);
   const scale = cell / BASE_CELL;
-  const fontSize = Mround(17 * scale);
-  let lineHeight = Mround(22 * scale);
+  const fontSize = Mround(16 * scale);
+  let lineHeight = Mround(21 * scale);
   let dotSize = Math.max(2, Math.round(2 * scale));
   let dotMarginTop = Math.max(1, Math.round(1.5 * scale));
   const todayRingW = Math.max(2, Math.round(2 * scale));
