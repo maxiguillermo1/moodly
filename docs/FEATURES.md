@@ -1,4 +1,4 @@
-# Moodly — feature map & relationships
+# Kairo — feature map & relationships
 
 **Canonical product + engineering rules:** [`AGENTS.md`](./AGENTS.md). **Persistence keys:** [`../src/data/DATA_CONTRACT.md`](../src/data/DATA_CONTRACT.md). **Layers:** [`architecture.md`](./architecture.md). **Where files live (features ↔ paths):** [`CODEBASE_MAP.md`](./CODEBASE_MAP.md).
 
@@ -8,7 +8,7 @@ This page answers: *what features exist, how they connect, and where they live i
 
 ## Source layout (navigation aid)
 
-Moodly uses **layer-first** folders (`components/`, `data/`, …) plus **`src/features/*/screens/`** for route-level UI. For a plain-English map of each product area to those paths, see **[`CODEBASE_MAP.md`](./CODEBASE_MAP.md)** — prefer that over duplicating large trees here.
+Kairo uses **layer-first** folders (`components/`, `data/`, …) plus **`src/features/*/screens/`** for route-level UI. For a plain-English map of each product area to those paths, see **[`CODEBASE_MAP.md`](./CODEBASE_MAP.md)** — prefer that over duplicating large trees here.
 
 ## Core pillars (emotional timeline first)
 
@@ -42,7 +42,7 @@ Rendered below the mood sheet on **Today**, and inside **Journal / Calendar** da
 ## Reminders vs normalized tasks
 
 - **What users mostly see:** `DayTodoItem` rows — title, done, sort order, optional `reminderMinutes` (in-app only).
-- **What exists for scale / evolution:** full **`Task`** model under `moodly.tasks` (subtasks, recurrence, lists, tags, history). Not every field has a dedicated UI yet; agents must **read screens** before assuming parity.
+- **What exists for scale / evolution:** full **`Task`** model under `kairo.tasks` (subtasks, recurrence, lists, tags, history). Not every field has a dedicated UI yet; agents must **read screens** before assuming parity.
 
 ---
 
@@ -64,6 +64,6 @@ Rendered below the mood sheet on **Today**, and inside **Journal / Calendar** da
 
 ---
 
-## What Moodly deliberately avoids (today)
+## What Kairo deliberately avoids (today)
 
-See [`AGENTS.md`](./AGENTS.md) § Moodly identity and [`ROADMAP.md`](./ROADMAP.md): no cloud sync/account in core product, no OS push notification scheduling in the foundation slice, no AI pipeline — those are **future** tracks that must preserve calm, privacy, and the **emotional timeline as the hero surface**.
+See [`AGENTS.md`](./AGENTS.md) § Kairo identity and [`ROADMAP.md`](./ROADMAP.md): no cloud sync/account in core product, no OS push notification scheduling in the foundation slice, no AI pipeline — those are **future** tracks that must preserve calm, privacy, and the **emotional timeline as the hero surface**.

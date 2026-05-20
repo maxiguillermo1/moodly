@@ -1,5 +1,5 @@
 /**
- * @fileoverview Auth types for Moodly cloud account.
+ * @fileoverview Auth types for Kairo cloud account.
  * @module cloud/auth/types
  */
 

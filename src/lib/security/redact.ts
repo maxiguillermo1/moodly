@@ -2,7 +2,7 @@
  * @fileoverview Redaction helpers to prevent sensitive data leakage in logs.
  * @module lib/security/redact
  *
- * Moodly is a local-first app, but logs can still leak via:
+ * Kairo is a local-first app, but logs can still leak via:
  * - device logs
  * - crash reports / screenshots
  * - shared debug output
@@ -16,8 +16,8 @@ const SENSITIVE_KEYS = new Set([
   'entry',
   'entries',
   'mood',
-  'moodly.entries',
-  'moodly.settings',
+  'kairo.entries',
+  'kairo.settings',
   'payload',
   'data',
   'value',
@@ -46,7 +46,7 @@ function clampString(s: string, maxLen: number) {
   if (s.includes('"note"') || s.includes('"entries"') || s.includes('"mood"')) {
     return `[REDACTED_STRING len=${s.length}]`;
   }
-  if (!IS_DEV && (s.startsWith('moodly.') || /^\d{4}-\d{2}-\d{2}$/.test(s))) {
+  if (!IS_DEV && (s.startsWith('kairo.') || /^\d{4}-\d{2}-\d{2}$/.test(s))) {
     return '[REDACTED]';
   }
   return s;

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Unified Expo dev server launcher for Moodly.
+ * Unified Expo dev server launcher for Kairo.
  * - Always disables Metro lazy bundles (required for Expo Go on device).
  * - Surfaces LAN IP when useful for physical-device QR codes.
  * - Blocks spaced project paths unless explicitly overridden.

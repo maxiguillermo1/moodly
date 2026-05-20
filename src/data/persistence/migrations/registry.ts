@@ -8,6 +8,7 @@
  */
 
 import type { LocalMigration } from './types';
+import { migration002_renameLegacyStorageKeys } from './migration002_renameLegacyStorageKeys';
 
 /** v0 → v1: adopt schema meta file only; payload shapes unchanged. */
 const migration001_initialSchemaMeta: LocalMigration = async () => {
@@ -18,4 +19,7 @@ const migration001_initialSchemaMeta: LocalMigration = async () => {
  * MIGRATIONS[k] migrates from version `k` to `k + 1`.
  * Length must equal CURRENT_SCHEMA_VERSION (final app version after all steps).
  */
-export const MIGRATIONS: readonly LocalMigration[] = [migration001_initialSchemaMeta];
+export const MIGRATIONS: readonly LocalMigration[] = [
+  migration001_initialSchemaMeta,
+  migration002_renameLegacyStorageKeys,
+];

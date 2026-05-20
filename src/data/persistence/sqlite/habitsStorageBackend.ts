@@ -7,8 +7,8 @@ import type { HabitId } from '../../../lib/constants/habitsCatalog';
 import { isHabitId } from '../../../lib/constants/habitsCatalog';
 import { isValidISODateKey } from '../../model/entry';
 import type { KeyValueStore } from '../keyValueStore';
-import { ensureMoodlySqliteReady } from './database';
-import type { MoodlySqliteDatabase } from './databaseTypes';
+import { ensureKairoSqliteReady } from './database';
+import type { KairoSqliteDatabase } from './databaseTypes';
 import {
   countHabitSelectionRows,
   importHabitSelectionsToSqlite,
@@ -18,8 +18,8 @@ import { SQL_META_HABITS_BACKEND, SQL_META_HABITS_IMPORTED } from './schemaConst
 
 export type HabitSelectionsBackendKind = 'async' | 'sqlite';
 
-const HABITS_STORAGE_KEY = 'moodly.habitSelections';
-const BACKEND_FLAG_KEY = 'moodly.habitSelections.backend';
+const HABITS_STORAGE_KEY = 'kairo.habitSelections';
+const BACKEND_FLAG_KEY = 'kairo.habitSelections.backend';
 
 let resolvedBackend: HabitSelectionsBackendKind | null = null;
 
@@ -35,7 +35,7 @@ export async function resolveHabitSelectionsBackend(store: KeyValueStore): Promi
     return 'sqlite';
   }
   try {
-    const db = await ensureMoodlySqliteReady();
+    const db = await ensureKairoSqliteReady();
     if ((await readSqliteMeta(db, SQL_META_HABITS_BACKEND)) === 'sqlite') {
       await store.setItem(BACKEND_FLAG_KEY, 'sqlite');
       resolvedBackend = 'sqlite';
@@ -70,9 +70,9 @@ function parseHabitSelectionsForImport(raw: string | null): Record<string, Habit
 }
 
 export async function ensureHabitSelectionsImportedFromAsyncStorage(store: KeyValueStore): Promise<void> {
-  let db: MoodlySqliteDatabase;
+  let db: KairoSqliteDatabase;
   try {
-    db = await ensureMoodlySqliteReady();
+    db = await ensureKairoSqliteReady();
   } catch {
     return;
   }
@@ -104,7 +104,7 @@ export async function ensureHabitSelectionsImportedFromAsyncStorage(store: KeyVa
   resolvedBackend = 'sqlite';
 }
 
-export async function resetHabitSelectionsSqliteImportState(db: MoodlySqliteDatabase): Promise<void> {
+export async function resetHabitSelectionsSqliteImportState(db: KairoSqliteDatabase): Promise<void> {
   await db.runAsync('DELETE FROM habit_selections');
   await writeSqliteMeta(db, SQL_META_HABITS_IMPORTED, '0');
   await writeSqliteMeta(db, SQL_META_HABITS_BACKEND, '');

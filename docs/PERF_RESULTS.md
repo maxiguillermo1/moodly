@@ -1,4 +1,4 @@
-## Moodly performance results (before vs after)
+## Kairo performance results (before vs after)
 
 This document compares **baseline** probe numbers (`docs/PERF_BASELINE.md`) to **post-change** probe numbers, using the same `src/perf/*` logs.
 
@@ -48,7 +48,7 @@ Latest post-foundation audit fixes:
 |---|---|
 | Legacy Reminder migration | Date-scoped migrated ids prevent cross-day collisions; migration marker persists immediately to avoid repeated cold-start work. |
 | Task recurrence | Weekly weekday rules and month-end recurrence now use deterministic local-date logic; generation is bounded, persists `lastGeneratedDate`, and has restart duplicate-prevention coverage. |
-| Task day storage | Day-scoped Reminders now use `moodly.tasks.day.YYYY-MM-DD` shards plus a day index, so Today/Todo day loads and mutations avoid global task scans/rewrites. |
+| Task day storage | Day-scoped Reminders now use `kairo.tasks.day.YYYY-MM-DD` shards plus a day index, so Today/Todo day loads and mutations avoid global task scans/rewrites. |
 | Goal storage writes | Invalid dates and non-finite progress values are rejected/sanitized; long history/milestone arrays are bounded. |
 | Goal summaries | Today Goals reads lightweight summaries, avoiding full goal history/milestone cloning and duplicate streak scans on preview rendering. |
 | Soak profiling | Reports now split app hot-path timings from validation harness timings; `SOAK_PROFILE=hot-path` skips full validation scans for user-facing measurements. |

@@ -1,5 +1,5 @@
 /**
- * @fileoverview Moodly cloud auth React context.
+ * @fileoverview Kairo cloud auth React context.
  * @module cloud/auth/AuthContext
  */
 
@@ -18,7 +18,7 @@ import {
 } from './authService';
 import type { AuthState, SignInResult } from './types';
 import { runInitialCloudRestore, runSyncCycle, onUserSignedOut } from '../sync/syncEngine';
-import { registerMoodlyCloudPullApplier } from '../../data/sync/cloudPullApplier';
+import { registerKairoCloudPullApplier } from '../../data/sync/cloudPullApplier';
 import { enqueueFullLocalSnapshotForCloud } from '../../data/sync/cloudSnapshotEnqueue';
 import { clearLocalUserDataOnLogout } from '../../data/sync/cloudLogout';
 
@@ -36,7 +36,7 @@ type AuthContextValue = AuthState & {
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 async function handleSignedIn(session: Session): Promise<void> {
-  await registerMoodlyCloudPullApplier();
+  await registerKairoCloudPullApplier();
   await enqueueFullLocalSnapshotForCloud();
   await runInitialCloudRestore(session.user);
 }

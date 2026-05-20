@@ -4,8 +4,8 @@
  * No UI changes: scenarios are triggered via dev console.
  *
  * Usage (Metro console):
- *   globalThis.MoodlyDebug.list()
- *   globalThis.MoodlyDebug.run('rapidMonthTaps')
+ *   globalThis.KairoDebug.list()
+ *   globalThis.KairoDebug.run('rapidMonthTaps')
  *
  * Notes:
  * - Scenarios are deterministic and log PASS/FAIL via the structured logger.
@@ -68,9 +68,9 @@ export async function runDebugScenario(name: DebugScenarioName): Promise<void> {
     if (name === 'backgroundDuringSave') {
       // Best-effort: we can't programmatically drive AppState in a running app without UI tooling,
       // but we can at least exercise the write path under deterministic delay and ensure completion.
-      (globalThis as any).__MOODLY_CHAOS__ = { enabled: true, seed: 42, minDelayMs: 25, maxDelayMs: 25, pFail: 0, failOps: ['setItem'] };
+      (globalThis as any).__KAIRO_CHAOS__ = { enabled: true, seed: 42, minDelayMs: 25, maxDelayMs: 25, pFail: 0, failOps: ['setItem'] };
       await upsertEntry({ date: '2026-02-09', mood: 'A', note: '', createdAt: Date.now(), updatedAt: Date.now() });
-      (globalThis as any).__MOODLY_CHAOS__ = undefined;
+      (globalThis as any).__KAIRO_CHAOS__ = undefined;
       const all = await getAllEntries();
       if (!all['2026-02-09']) throw new Error('Entry missing after delayed save');
       pass(name, { ok: true });
@@ -79,13 +79,13 @@ export async function runDebugScenario(name: DebugScenarioName): Promise<void> {
 
     if (name === 'storageChaosPlan') {
       // Smoke test for deterministic chaos config + safe defaults.
-      (globalThis as any).__MOODLY_CHAOS__ = {
+      (globalThis as any).__KAIRO_CHAOS__ = {
         enabled: true,
         seed: 1,
         failNext: { getItem: 1 },
       };
       const s = await getSettings(); // should return defaults even if injected getItem fails
-      (globalThis as any).__MOODLY_CHAOS__ = undefined;
+      (globalThis as any).__KAIRO_CHAOS__ = undefined;
       if (!s || (s as any).calendarMoodStyle == null) throw new Error('Settings missing');
       pass(name, { calendarMoodStyle: s.calendarMoodStyle });
       return;

@@ -1,4 +1,4 @@
-# Moodly — data safety & local persistence reliability
+# Kairo — data safety & local persistence reliability
 
 **Audience:** engineers auditing correctness, corruption recovery, and future database migration.  
 **Pair with:** [`DATA_CONTRACT.md`](../src/data/DATA_CONTRACT.md), [`DATA_ARCHITECTURE.md`](./DATA_ARCHITECTURE.md), [`STABILITY_NOTES.md`](./STABILITY_NOTES.md).
@@ -9,27 +9,27 @@
 - **Validation:** `isValidLocalCalendarDayKey` / `isValidISODateKey` (shared semantics via `parseISODate` in `src/lib/utils/date.ts` and `src/data/model/entry.ts`).
 - **Rule:** Mood rows, journal list items, calendar selection, and per-day extension payloads **must** use this key. Route params that are not valid keys are **coerced** (e.g. Reminders screen → `coerceLocalDayKeyOrToday`).
 
-Mood, journal, and calendar UIs all read/write **`moodly.entries`** keyed by this string. There is **at most one** `MoodEntry` per date key.
+Mood, journal, and calendar UIs all read/write **`kairo.entries`** keyed by this string. There is **at most one** `MoodEntry` per date key.
 
 ## 2. Data models & storage keys
 
 | Key | Shape | Integrity notes |
 |-----|--------|-----------------|
-| `moodly.schemaMeta` | `{ schemaVersion, migratedAt? }` | Forward migrations only; corrupt meta quarantined. |
-| `moodly.entries` | `Record<YYYY-MM-DD, MoodEntry>` | Runtime validation on load (`validateEntriesRecord`); key must equal `entry.date`. |
-| `moodly.settings` | `AppSettings` | Safe parse + defaults; write queue. |
-| `moodly.habitSelections` | `{ v:3, selections: Record<YYYY-MM-DD, HabitId[]>, toggleTotals: {} }` | Per-day values; `toggleTotals` is legacy-only (always `{}`); marked-day totals are **derived** from `selections`. Quarantines corrupt root JSON; **not** deleted when habits toggle off. |
-| `moodly.trackedHabits` | `HabitId[]` | Extension **configuration** (which habits appear); corrupt root JSON resets to catalog defaults. |
-| `moodly.tasks.day.<YYYY-MM-DD>` | `DayTodoItem[]` | Hot day-scoped Reminders shard; normalized items; capped per day. |
-| `moodly.tasks.dayIndex` | `YYYY-MM-DD[]` | Index of day shards used for aggregate/debug reads. |
-| `moodly.tasks` | `TasksRecord` | Task metadata, recurrence templates/history, lists/tags, and legacy migration marker. |
-| `moodly.dayTodos` | `Record<YYYY-MM-DD, DayTodoItem[]>` | Legacy migration source only; corrupt root JSON quarantined. |
+| `kairo.schemaMeta` | `{ schemaVersion, migratedAt? }` | Forward migrations only; corrupt meta quarantined. |
+| `kairo.entries` | `Record<YYYY-MM-DD, MoodEntry>` | Runtime validation on load (`validateEntriesRecord`); key must equal `entry.date`. |
+| `kairo.settings` | `AppSettings` | Safe parse + defaults; write queue. |
+| `kairo.habitSelections` | `{ v:3, selections: Record<YYYY-MM-DD, HabitId[]>, toggleTotals: {} }` | Per-day values; `toggleTotals` is legacy-only (always `{}`); marked-day totals are **derived** from `selections`. Quarantines corrupt root JSON; **not** deleted when habits toggle off. |
+| `kairo.trackedHabits` | `HabitId[]` | Extension **configuration** (which habits appear); corrupt root JSON resets to catalog defaults. |
+| `kairo.tasks.day.<YYYY-MM-DD>` | `DayTodoItem[]` | Hot day-scoped Reminders shard; normalized items; capped per day. |
+| `kairo.tasks.dayIndex` | `YYYY-MM-DD[]` | Index of day shards used for aggregate/debug reads. |
+| `kairo.tasks` | `TasksRecord` | Task metadata, recurrence templates/history, lists/tags, and legacy migration marker. |
+| `kairo.dayTodos` | `Record<YYYY-MM-DD, DayTodoItem[]>` | Legacy migration source only; corrupt root JSON quarantined. |
 
 **Extensions:** Visibility/order live in **`AppSettings`** (`habitsEnabled`, `todayTodoEnabled`, `todayExtensionsOrder`, …). **Values** live in the per-day stores above. Toggling off or hiding from Today **does not** erase value stores (verified in tests).
 
 ## 3. Write safety & races
 
-- **Entries (`moodly.entries`):** All mutations go through **`withEntriesWriteLock`** — serialized writes, **persist-before-RAM** cache updates.
+- **Entries (`kairo.entries`):** All mutations go through **`withEntriesWriteLock`** — serialized writes, **persist-before-RAM** cache updates.
 - **Settings:** **`withSettingsWriteLock`** with read-modify-write inside the lock, so concurrent toggles cannot clobber sibling settings.
 - **Habit selections / day Reminders / tracked habits:** Each module has a **write tail** queue and awaits persistence bootstrap before mutations.
 - **Upsert invalid data:** `upsertEntry` **throws** on invalid date or mood so callers cannot assume persistence succeeded (no silent partial state).
@@ -40,7 +40,7 @@ Mood, journal, and calendar UIs all read/write **`moodly.entries`** keyed by thi
 ## 4. Load safety & corruption
 
 - **JSON.parse:** Used only inside **try/catch** (or validated `readSchemaMeta`); failures yield **defaults** or **empty maps**, plus **metadata-only** logs (no note text).
-- **Quarantine:** Unreadable primary values are copied to `moodly.<key>.corrupt.<timestamp>` and the primary key reset to a safe default (`DATA_CONTRACT.md`).
+- **Quarantine:** Unreadable primary values are copied to `kairo.<key>.corrupt.<timestamp>` and the primary key reset to a safe default (`DATA_CONTRACT.md`).
 - **Partial corruption:** Invalid **rows** are dropped; valid rows **retain** the rest of the map. Repairable partial settings are normalized with defaults instead of being reset wholesale.
 
 ## 5. Duplicates
@@ -50,7 +50,7 @@ Mood, journal, and calendar UIs all read/write **`moodly.entries`** keyed by thi
 
 ## 6. Migration strategy
 
-- **Version:** `CURRENT_SCHEMA_VERSION` in `src/data/persistence/schemaConstants.ts`; on-disk stamp in `moodly.schemaMeta`.
+- **Version:** `CURRENT_SCHEMA_VERSION` in `src/data/persistence/schemaConstants.ts`; on-disk stamp in `kairo.schemaMeta`.
 - **Runner:** `ensureLocalPersistenceReady()` before cold reads and extension first-write paths; steps in `MIGRATIONS` (forward-only).
 - **Policy:** Disk schema **newer** than app → bootstrap fails and writes are blocked (do not downgrade, do not overwrite future payloads). Missing step → logged and thrown. Transient bootstrap failures reset the session singleton so the next storage entrypoint retries; reads may fall back safely, but writes do not proceed until bootstrap succeeds.
 
@@ -58,11 +58,11 @@ Document each new step in [`DATA_ARCHITECTURE.md`](./DATA_ARCHITECTURE.md) when 
 
 ### Pre-migration backup blobs
 
-Before each migration step, Moodly writes **`moodly.migrationBackup.<from>_to_<to>.<timestamp>`** containing `kind: moodly.migrationBackup.v1` and a **`snapshot`** map of raw string values for primary `moodly.*` keys plus day reminder shards (see `src/data/persistence/migrations/migrationBackup.ts`). If a step fails after backup, support can inspect the latest backup; the app does **not** auto-restore (avoid re-running half-applied transforms).
+Before each migration step, Kairo writes **`kairo.migrationBackup.<from>_to_<to>.<timestamp>`** containing `kind: kairo.migrationBackup.v1` and a **`snapshot`** map of raw string values for primary `kairo.*` keys plus day reminder shards (see `src/data/persistence/migrations/migrationBackup.ts`). If a step fails after backup, support can inspect the latest backup; the app does **not** auto-restore (avoid re-running half-applied transforms).
 
 ### User export / import (Settings)
 
-`src/data/persistence/localExport/moodlyLocalExport.ts` defines **`moodly.localExport.v1`** — a validated JSON shape for a full local key snapshot. Settings → **Export My Data** / **Import Data** uses `userDataExportRepository` (`buildMoodlyUserExportV1`, `applyMoodlyLocalImportV1`). Export merges SQLite snapshots for mood entries, habit selections, and goals into `kv` before share; import restores AsyncStorage then re-imports SQLite domains.
+`src/data/persistence/localExport/kairoLocalExport.ts` defines **`kairo.localExport.v1`** — a validated JSON shape for a full local key snapshot. Settings → **Export My Data** / **Import Data** uses `userDataExportRepository` (`buildKairoUserExportV1`, `applyKairoLocalImportV1`). Export merges SQLite snapshots for mood entries, habit selections, and goals into `kv` before share; import restores AsyncStorage then re-imports SQLite domains.
 
 ## 7. Repository & UI boundary
 
@@ -76,12 +76,12 @@ Run on a device or simulator after substantive storage changes:
 1. **Today:** Save mood + note; kill app; reopen — same day shows same data.
 2. **Journal:** Edit entry; kill app; reopen — text and date unchanged.
 3. **Calendar:** Tap day, save mood; scroll away and back — same mood on that day.
-4. **Extensions:** Toggle Habits off → on; prior **per-day** selections still present (`moodly.habitSelections`).
+4. **Extensions:** Toggle Habits off → on; prior **per-day** selections still present (`kairo.habitSelections`).
 5. **Tracked habits:** Hide a completed habit from Today; completion remains in the Habits screen and per-day store.
 6. **Reminders:** Add item; invalid deep-link date → loads **today** without crashing (`coerceLocalDayKeyOrToday`); disabling/re-enabling Reminders in Settings must preserve the day shard.
 7. **Rapid saves:** Hammer Save / mood changes — no duplicate days, no lost last write (serialized queue).
 8. **Malformed disk (dev):** Inject corrupt JSON into a key — app opens, primary key reset or quarantined, no crash loop.
-9. **Future schema guard (dev):** Set `moodly.schemaMeta.schemaVersion` above `CURRENT_SCHEMA_VERSION`; app must not write over local payloads.
+9. **Future schema guard (dev):** Set `kairo.schemaMeta.schemaVersion` above `CURRENT_SCHEMA_VERSION`; app must not write over local payloads.
 10. **Cache mutation guard (dev):** Mutate objects returned by `getSettings()` / `getAllEntries()` in a test harness; subsequent reads must remain unchanged.
 
 ## 9. Future database

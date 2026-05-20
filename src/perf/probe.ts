@@ -1,5 +1,5 @@
 /**
- * Dev-only performance probes for Moodly.
+ * Dev-only performance probes for Kairo.
  *
  * ABSOLUTE RULES:
  * - Dev-only: must not add production runtime weight or change behavior.
@@ -18,7 +18,7 @@ import { logger } from '../security';
 const PERF_ENABLED =
   typeof __DEV__ !== 'undefined' &&
   !!__DEV__ &&
-  process.env.EXPO_PUBLIC_MOODLY_PERF_PROBE === '1';
+  process.env.EXPO_PUBLIC_KAIRO_PERF_PROBE === '1';
 
 type MarkName = string;
 type RenderId = string;

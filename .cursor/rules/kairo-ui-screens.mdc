@@ -1,10 +1,10 @@
 ---
-description: Moodly UI — theme, a11y, tab bar, Reminders/Goals surfaces
+description: Kairo UI — theme, a11y, tab bar, Reminders/Goals surfaces
 globs: src/{screens,features,components,extensions}/**/*.tsx
 alwaysApply: false
 ---
 
-# Moodly — UI & screens
+# Kairo — UI & screens
 
 - **Theme**: **`useAppTheme()`**, **`spacing`**, **`typography`** from **`src/theme`**. Match existing screen patterns (e.g. **`screenHeaderPrimaryTabPaddingX`** on primary-tab surfaces).
 - **Touch**: shared **`Touchable`** / **`CapsuleButton`**; **`src/system/haptics`** for feedback.

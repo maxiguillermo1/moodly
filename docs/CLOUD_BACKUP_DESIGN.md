@@ -1,4 +1,4 @@
-# Moodly — cloud backup design
+# Kairo — cloud backup design
 
 **Status:** **Implemented** — live Supabase Postgres sync with RLS (see [`SUPABASE.md`](./SUPABASE.md)).
 

@@ -4,7 +4,7 @@
  */
 
 import type { KeyValueStore } from '../keyValueStore';
-import { ensureMoodlySqliteReady } from './database';
+import { ensureKairoSqliteReady } from './database';
 import { clearMoodEntriesSqlite } from './moodEntriesStore';
 import { resetGoalsBackendCacheForTests, ensureGoalsImportedFromAsyncStorage } from './goalsStorageBackend';
 import { resetGoalsSqliteImportState } from './goalsStorageBackend';
@@ -22,15 +22,15 @@ import {
 } from './schemaConstants';
 
 const BACKEND_FLAGS = [
-  'moodly.entries.backend',
-  'moodly.habitSelections.backend',
-  'moodly.goals.backend',
+  'kairo.entries.backend',
+  'kairo.habitSelections.backend',
+  'kairo.goals.backend',
 ] as const;
 
 export async function forceReimportAllSqliteFromAsyncStorage(store: KeyValueStore): Promise<void> {
   let db;
   try {
-    db = await ensureMoodlySqliteReady();
+    db = await ensureKairoSqliteReady();
   } catch {
     return;
   }

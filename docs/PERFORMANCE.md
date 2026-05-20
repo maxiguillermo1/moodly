@@ -1,6 +1,6 @@
 # Performance notes (index)
 
-**Product context:** Moodly **v0.6** treats scroll and navigation fluidity as part of calm, native feel — see [`AGENTS.md`](./AGENTS.md) § Interaction quality & iOS fluidity and [`DESIGN_SYSTEM.md`](./DESIGN_SYSTEM.md) § Moodly UX constitution.
+**Product context:** Kairo **v0.6** treats scroll and navigation fluidity as part of calm, native feel — see [`AGENTS.md`](./AGENTS.md) § Interaction quality & iOS fluidity and [`DESIGN_SYSTEM.md`](./DESIGN_SYSTEM.md) § Kairo UX constitution.
 
 ## Fluidity pass (reconciliation + main tabs)
 

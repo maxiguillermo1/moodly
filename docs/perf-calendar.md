@@ -1,6 +1,6 @@
 ## Calendar performance playbook (current)
 
-This document describes Moodly’s calendar hot paths and the “rules of engagement” for keeping `CalendarScreen` and `CalendarView` Apple Calendar–smooth **without changing UI/UX**.
+This document describes Kairo’s calendar hot paths and the “rules of engagement” for keeping `CalendarScreen` and `CalendarView` Apple Calendar–smooth **without changing UI/UX**.
 
 ### Goals
 - **60fps-feeling scroll** in the month timeline (`CalendarScreen`) and year pager (`CalendarView`)

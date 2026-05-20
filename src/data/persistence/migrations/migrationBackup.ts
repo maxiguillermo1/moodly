@@ -7,7 +7,7 @@ import { logger } from '../../../lib/security/logger';
 import type { KeyValueStore } from '../keyValueStore';
 import { collectKeysForMigrationSnapshot, MIGRATION_BACKUP_KEY_PREFIX } from '../knownStorageKeys';
 
-export const MIGRATION_BACKUP_ENVELOPE_KIND = 'moodly.migrationBackup.v1' as const;
+export const MIGRATION_BACKUP_ENVELOPE_KIND = 'kairo.migrationBackup.v1' as const;
 
 export type MigrationBackupEnvelopeV1 = {
   readonly kind: typeof MIGRATION_BACKUP_ENVELOPE_KIND;

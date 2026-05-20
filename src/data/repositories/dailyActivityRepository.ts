@@ -4,7 +4,7 @@
  *
  * **Read-only:** callers must keep using domain repositories for writes (`entriesRepository`,
  * `extensionsRepository`, `goalsRepository`, `tasksRepository`, …). This module **never** mutates
- * `moodly.entries`, habits, goals, or task shards.
+ * `kairo.entries`, habits, goals, or task shards.
  *
  * **Source of truth:** underlying AsyncStorage-backed stores listed in `docs/DATA_ARCHITECTURE.md`.
  * All fields here are **derived** from those stores except echoed keys (`date`) and compose metadata.

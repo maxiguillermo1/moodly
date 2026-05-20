@@ -3,7 +3,7 @@
  * @module data/storage/moodStorage
  *
  * Data is stored as a single JSON object keyed by date for O(1) access.
- * Key: "moodly.entries"
+ * Key: "kairo.entries"
  * Value: Record<string, MoodEntry>
  *
  * Notes:
@@ -44,7 +44,7 @@ let entriesLoadPromise: Promise<MoodEntriesRecord> | null = null;
  * multiple screens, backgrounding mid-save). Without a lock, two writes can race and
  * silently lose data (last writer wins).
  *
- * This queue guarantees that mutations to `moodly.entries` are applied sequentially.
+ * This queue guarantees that mutations to `kairo.entries` are applied sequentially.
  * It does NOT change storage semantics/keys; it only prevents races.
  */
 let entriesWriteTail: Promise<void> = Promise.resolve();
@@ -685,7 +685,7 @@ export async function getMoodStats(): Promise<{ totalEntries: number; moodCounts
 }
 
 /**
- * Prime raw `moodly.entries` in RAM (no derived indexes). Used on app startup so Today can
+ * Prime raw `kairo.entries` in RAM (no derived indexes). Used on app startup so Today can
  * `getEntry` without cloning the full record; calendar/journal indexes build on demand.
  */
 export async function primeEntriesSessionCache(): Promise<void> {

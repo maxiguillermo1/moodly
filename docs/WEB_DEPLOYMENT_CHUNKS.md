@@ -1,6 +1,6 @@
 # Web deployment — logical work chunks
 
-Moodly is **optimized for native (iOS first)**. **`npm run web`** is supported via Expo, but **web is not the primary product** until you deliberately invest in it. Use this doc to sequence web work without blocking mobile release.
+Kairo is **optimized for native (iOS first)**. **`npm run web`** is supported via Expo, but **web is not the primary product** until you deliberately invest in it. Use this doc to sequence web work without blocking mobile release.
 
 ---
 

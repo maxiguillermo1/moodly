@@ -1,10 +1,10 @@
-# Scalability index (Moodly)
+# Scalability index (Kairo)
 
-**Purpose:** one-page entry to **how Moodly stays fast and safe as data grows**. Deep rules and product guardrails live elsewhere — this file only **routes** you there.
+**Purpose:** one-page entry to **how Kairo stays fast and safe as data grows**. Deep rules and product guardrails live elsewhere — this file only **routes** you there.
 
 | Topic | Read this |
 |--------|-----------|
-| Product stance (calm UX vs feature density, future sync/AI guardrails) | [`AGENTS.md`](./AGENTS.md) § Data, scale, and future evolution; § Moodly identity |
+| Product stance (calm UX vs feature density, future sync/AI guardrails) | [`AGENTS.md`](./AGENTS.md) § Data, scale, and future evolution; § Kairo identity |
 | Persistence layers, keys, repository swap for DB/sync | [`DATA_ARCHITECTURE.md`](./DATA_ARCHITECTURE.md) |
 | Current keys, write locks, shard layout, test map | [`ARCHITECTURE_STATE.md`](./ARCHITECTURE_STATE.md), [`../src/data/DATA_CONTRACT.md`](../src/data/DATA_CONTRACT.md) |
 | Scroll / list / calendar hot paths | [`PERFORMANCE.md`](./PERFORMANCE.md), [`perf-calendar.md`](./perf-calendar.md), [`PERFORMANCE_BENCHMARKS.md`](./PERFORMANCE_BENCHMARKS.md) |
@@ -13,10 +13,10 @@
 
 ## Implemented scale levers (cheat sheet)
 
-- **Reminders day path:** `moodly.tasks.day.<YYYY-MM-DD>` + `moodly.tasks.dayIndex` — touch **one day** at a time for Today/Todo hot paths (`tasksStorage.ts`).
-- **Task metadata / recurrence:** `moodly.tasks` — bounded recurrence generation (`lastGeneratedDate`, caps in code/tests).
-- **Goals:** single `moodly.goals` record with **history tail cap** and **`getGoalSummaries` / `getTodayGoalSummaries`** for list/Today previews (`goalsStorage.ts`).
-- **Mood entries:** `moodly.entries` + derived session caches — calendar uses **`fetchMoodCalendarSnapshot`** / **`getCalendarEntriesByMonthIndexSnapshot`**; Journal uses **`getJournalEntriesSortedDescSnapshot`**; warm **`upsertEntry`** / **`deleteEntry`** read cache in the write lock without cloning the full record (`moodStorage.ts`).
+- **Reminders day path:** `kairo.tasks.day.<YYYY-MM-DD>` + `kairo.tasks.dayIndex` — touch **one day** at a time for Today/Todo hot paths (`tasksStorage.ts`).
+- **Task metadata / recurrence:** `kairo.tasks` — bounded recurrence generation (`lastGeneratedDate`, caps in code/tests).
+- **Goals:** single `kairo.goals` record with **history tail cap** and **`getGoalSummaries` / `getTodayGoalSummaries`** for list/Today previews (`goalsStorage.ts`).
+- **Mood entries:** `kairo.entries` + derived session caches — calendar uses **`fetchMoodCalendarSnapshot`** / **`getCalendarEntriesByMonthIndexSnapshot`**; Journal uses **`getJournalEntriesSortedDescSnapshot`**; warm **`upsertEntry`** / **`deleteEntry`** read cache in the write lock without cloning the full record (`moodStorage.ts`).
 - **UI state vs disk:** no global store; focus reloads + defensive copies from storage — see [`architecture.md`](./architecture.md).
 
 ## When you change something “big”

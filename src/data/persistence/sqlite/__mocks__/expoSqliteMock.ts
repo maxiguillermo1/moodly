@@ -3,14 +3,14 @@
  */
 
 import {
-  getSharedInMemoryMoodlyDatabase,
-  resetSharedInMemoryMoodlyDatabase,
+  getSharedInMemoryKairoDatabase,
+  resetSharedInMemoryKairoDatabase,
 } from '../testInMemoryDatabase';
 
 export async function openDatabaseAsync(_name: string) {
-  return getSharedInMemoryMoodlyDatabase();
+  return getSharedInMemoryKairoDatabase();
 }
 
 export function __resetExpoSqliteMockForTests(): void {
-  resetSharedInMemoryMoodlyDatabase();
+  resetSharedInMemoryKairoDatabase();
 }

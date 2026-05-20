@@ -1,6 +1,6 @@
-# Contributing to Moodly
+# Contributing to Kairo
 
-Thanks for helping improve Moodly. This project values **small, reviewable changes**, **clear boundaries**, and **zero surprise** for users (local-first data, predictable behavior).
+Thanks for helping improve Kairo. This project values **small, reviewable changes**, **clear boundaries**, and **zero surprise** for users (local-first data, predictable behavior).
 
 **AI / agent sessions:** start with [`AGENTS.md`](AGENTS.md) as the canonical in-repo guide for this app. Cursor loads shorter rules from [`.cursor/rules/`](../.cursor/rules/) (`.mdc` files) in addition to that doc.
 
@@ -39,7 +39,7 @@ Thanks for helping improve Moodly. This project values **small, reviewable chang
 
 ## Release posture
 
-- Moodly is local-first: no backend, tracking, ads, analytics SDKs, or OS notifications today.
+- Kairo is local-first: no backend, tracking, ads, analytics SDKs, or OS notifications today.
 - App Store privacy answers and review notes live in `APP_STORE_READINESS.md`.
 - Icon/screenshots/support URL/App Store Connect ownership are account/assets work, not code gates.
 

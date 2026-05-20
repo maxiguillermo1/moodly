@@ -1,6 +1,6 @@
 describe('goalsStorage foundation', () => {
   beforeEach(async () => {
-    (globalThis as any).__MOODLY_CHAOS__ = undefined;
+    (globalThis as any).__KAIRO_CHAOS__ = undefined;
     jest.resetModules();
     const mod: any = require('@react-native-async-storage/async-storage');
     await (mod?.default ?? mod).clear();
@@ -228,7 +228,7 @@ describe('goalsStorage foundation', () => {
     const mod = require('@react-native-async-storage/async-storage');
     const AsyncStorage = mod.default ?? mod;
     await AsyncStorage.setItem(
-      'moodly.goals',
+      'kairo.goals',
       JSON.stringify({
         version: 1,
         goalsById: {
@@ -244,29 +244,29 @@ describe('goalsStorage foundation', () => {
         },
       })
     );
-    expect(await AsyncStorage.getItem('moodly.goals')).toContain('walk');
+    expect(await AsyncStorage.getItem('kairo.goals')).toContain('walk');
     const goals = require('./goalsStorage') as typeof import('./goalsStorage');
-    const pre = goals.testParseGoalsDiskJson(await AsyncStorage.getItem('moodly.goals'));
+    const pre = goals.testParseGoalsDiskJson(await AsyncStorage.getItem('kairo.goals'));
     expect(pre.corrupt).toBe(false);
     expect(pre.wasMigrated).toBe(true);
     expect(Object.keys(pre.record.goalsById)).toEqual(['walk']);
     await goals.getGoals();
-    const raw = await AsyncStorage.getItem('moodly.goals');
+    const raw = await AsyncStorage.getItem('kairo.goals');
     const body = JSON.parse(raw!) as { version: number; goalsById: Record<string, { id?: string }> };
     expect(body.version).toBe(2);
     expect(body.goalsById.walk?.id).toBe('walk');
     const keys = await AsyncStorage.getAllKeys();
-    expect(keys.some((k: string) => k.startsWith('moodly.goals.migrate_backup.'))).toBe(true);
+    expect(keys.some((k: string) => k.startsWith('kairo.goals.migrate_backup.'))).toBe(true);
   });
 
   it('does not re-backup when record is already v2', async () => {
     const mod = require('@react-native-async-storage/async-storage');
     const AsyncStorage = mod.default ?? mod;
-    await AsyncStorage.setItem('moodly.goals', JSON.stringify({ version: 2, goalsById: {} }));
+    await AsyncStorage.setItem('kairo.goals', JSON.stringify({ version: 2, goalsById: {} }));
     const goals = require('./goalsStorage') as typeof import('./goalsStorage');
     goals.resetGoalsStorageSessionStateForTests();
     await goals.getGoals();
     const keys = await AsyncStorage.getAllKeys();
-    expect(keys.some((k: string) => k.startsWith('moodly.goals.migrate_backup.'))).toBe(false);
+    expect(keys.some((k: string) => k.startsWith('kairo.goals.migrate_backup.'))).toBe(false);
   });
 });

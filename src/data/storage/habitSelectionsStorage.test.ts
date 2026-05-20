@@ -14,11 +14,11 @@ import {
   toggleHabitForDate,
 } from './habitSelectionsStorage';
 
-const KEY = 'moodly.habitSelections';
+const KEY = 'kairo.habitSelections';
 
 describe('habitSelectionsStorage', () => {
   beforeEach(async () => {
-    (globalThis as any).__MOODLY_CHAOS__ = undefined;
+    (globalThis as any).__KAIRO_CHAOS__ = undefined;
     await AsyncStorage.clear();
     resetPersistenceBootstrapForTests();
     resetHabitSelectionsStorageSessionStateForTests();

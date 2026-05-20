@@ -1,30 +1,30 @@
-# Moodly Terms of Use
+# Kairo Terms of Use
 
 **Last updated:** 2026-05-19
 
 ## Agreement
 
-By installing or using Moodly, you agree to these terms. If you do not agree, do not use the app.
+By installing or using Kairo, you agree to these terms. If you do not agree, do not use the app.
 
 ## The service
 
-Moodly is a **personal mood and journal utility** provided **as-is** on your device. It is **not** medical advice, diagnosis, or treatment. Consult qualified professionals for health decisions.
+Kairo is a **personal mood and journal utility** provided **as-is** on your device. It is **not** medical advice, diagnosis, or treatment. Consult qualified professionals for health decisions.
 
 ## Your content
 
-You own the content you enter. Moodly stores it locally on your device under your control. You are responsible for backups and device security.
+You own the content you enter. Kairo stores it locally on your device under your control. You are responsible for backups and device security.
 
 ## Acceptable use
 
-Do not use Moodly to store unlawful content or to attempt to reverse-engineer the app to harm others. Do not misuse the app in ways that violate applicable law.
+Do not use Kairo to store unlawful content or to attempt to reverse-engineer the app to harm others. Do not misuse the app in ways that violate applicable law.
 
 ## No warranty
 
-Moodly is provided **without warranties** of any kind, express or implied, including merchantability or fitness for a particular purpose, to the fullest extent permitted by law.
+Kairo is provided **without warranties** of any kind, express or implied, including merchantability or fitness for a particular purpose, to the fullest extent permitted by law.
 
 ## Limitation of liability
 
-To the fullest extent permitted by law, Moodly’s authors and contributors are not liable for indirect, incidental, or consequential damages arising from use of the app, including loss of data. **Back up important information** using means you trust.
+To the fullest extent permitted by law, Kairo’s authors and contributors are not liable for indirect, incidental, or consequential damages arising from use of the app, including loss of data. **Back up important information** using means you trust.
 
 ## Changes
 

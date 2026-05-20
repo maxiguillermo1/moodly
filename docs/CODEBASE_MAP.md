@@ -1,4 +1,4 @@
-# Moodly — codebase map & naming (human + agent guide)
+# Kairo — codebase map & naming (human + agent guide)
 
 **Purpose:** answer “where does this live?” and “what do we call things?” in **plain English**, without moving folders every release.
 
@@ -8,7 +8,7 @@
 
 ## 1. Logical features vs physical folders
 
-Moodly uses **layer-first** folders for shared code (`components/`, `hooks/`, `data/`, …) and **`src/features/*/screens/`** for route-level UI. A thin **`src/screens/index.ts`** barrel re-exports screens so existing `from '../screens'` imports stay short.
+Kairo uses **layer-first** folders for shared code (`components/`, `hooks/`, `data/`, …) and **`src/features/*/screens/`** for route-level UI. A thin **`src/screens/index.ts`** barrel re-exports screens so existing `from '../screens'` imports stay short.
 
 | Feature | User surface | Canonical UI | Primary data / rules |
 |--------|----------------|----------------|----------------------|
@@ -21,7 +21,7 @@ Moodly uses **layer-first** folders for shared code (`components/`, `hooks/`, `d
 | **Settings** | Settings modal | `src/features/settings/screens/SettingsScreen.tsx` | `settingsRepository`, `settingsStorage` |
 | **Day extensions** | Shared host | `src/extensions/*` | `DayScopeContext`, `dayExtensionRegistry`, `dayExtensionSlots.tsx` |
 | **Narrative (life timeline)** | Repository + pure engine | `src/data/repositories/narrativeRepository.ts`, `src/lib/narrative/*` | **`getDayActivityRange`** bounded window; see `docs/NARRATIVE.md` |
-| **Insights (foundation)** | Repository + pure engine | `src/data/repositories/insightsRepository.ts`, `src/lib/insights/*`, `insightsReflectionStateStorage.ts` | **`getDayActivityRange`** + goals; timing key `moodly.insights.reflectionTiming`; see `docs/INSIGHTS.md` |
+| **Insights (foundation)** | Repository + pure engine | `src/data/repositories/insightsRepository.ts`, `src/lib/insights/*`, `insightsReflectionStateStorage.ts` | **`getDayActivityRange`** + goals; timing key `kairo.insights.reflectionTiming`; see `docs/INSIGHTS.md` |
 | **Cross‑day read model** | Repository only | `src/data/repositories/dailyActivityRepository.ts` | Composed read — see `docs/DAILY_ACTIVITY.md` |
 
 **Barrel:** `src/screens/index.ts` groups default exports for navigators. Prefer **`@features/...`** for new code.
@@ -42,7 +42,7 @@ Moodly uses **layer-first** folders for shared code (`components/`, `hooks/`, `d
 | `src/storage/` | **Public persistence façade** | re-exports `src/data/repositories` |
 | `src/data/repositories/` | Stable domain APIs (read/write) | `src/data/storage`, `src/lib/*` as needed |
 | `src/data/storage/` | AsyncStorage + validation + caches | `persistence`, `lib/security/logger` |
-| `src/data/persistence/` | Schema meta, **forward migrations** (pre-step **backup** blobs), `KeyValueStore`, **internal export** (`localExport/moodlyLocalExport.ts`) | no UI |
+| `src/data/persistence/` | Schema meta, **forward migrations** (pre-step **backup** blobs), `KeyValueStore`, **internal export** (`localExport/kairoLocalExport.ts`) | no UI |
 | `src/lib/narrative/` | **Life timeline** narrative engines (phases, continuity, digest) | `types`, `lib/insights/*` (period + streak helpers), `lib/utils/date` |
 | `src/lib/insights/` | Deterministic reflection **engines** (week/month bundles); consumed by `insightsRepository` | `types`, `lib/constants/*`, `lib/utils/date` |
 | `src/lib/` | Pure rules (calendar math, goals math, dates, **journal** grouping, **insights**, **narrative**) | `types`, other `lib` per ESLint |
@@ -74,7 +74,7 @@ Moodly uses **layer-first** folders for shared code (`components/`, `hooks/`, `d
 
 | File | Meaning |
 |------|---------|
-| `src/data/storage/storageFaultInjection.ts` | **Deterministic test/dev fault injection** at the AsyncStorage boundary — not production logic. Prefer `globalThis.__MOODLY_STORAGE_FAULTS__`; legacy `__MOODLY_CHAOS__` still read. |
+| `src/data/storage/storageFaultInjection.ts` | **Deterministic test/dev fault injection** at the AsyncStorage boundary — not production logic. Prefer `globalThis.__KAIRO_STORAGE_FAULTS__`; legacy `__KAIRO_CHAOS__` still read. |
 | `src/data/storage/asyncStorage.ts` | Single integration point for persistence I/O (+ fault-injection hook). |
 
 ---
@@ -158,9 +158,9 @@ flowchart TB
 
 ```mermaid
 flowchart LR
-  E[(moodly.entries)]
+  E[(kairo.entries)]
   HS[(habitSelections)]
-  G[(moodly.goals)]
+  G[(kairo.goals)]
   TD[(day todo shards)]
   DAR[dailyActivityRepository]
   E --> DAR
@@ -195,4 +195,4 @@ flowchart TB
 
 ## 9. Historical note
 
-Older docs may reference `chaos.ts`; the module is now **`storageFaultInjection.ts`** with legacy globals `__MOODLY_CHAOS__` still honored.
+Older docs may reference `chaos.ts`; the module is now **`storageFaultInjection.ts`** with legacy globals `__KAIRO_CHAOS__` still honored.

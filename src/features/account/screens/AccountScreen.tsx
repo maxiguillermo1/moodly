@@ -134,7 +134,7 @@ export default function AccountScreen() {
   const handleDeleteAccount = useCallback(() => {
     Alert.alert(
       'Delete account',
-      'This permanently deletes your Moodly account and all cloud journal data. This cannot be undone.',
+      'This permanently deletes your Kairo account and all cloud journal data. This cannot be undone.',
       [
         { text: 'Cancel', style: 'cancel' },
         {

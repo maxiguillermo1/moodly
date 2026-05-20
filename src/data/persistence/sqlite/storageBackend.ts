@@ -4,8 +4,8 @@
  */
 
 import type { KeyValueStore } from '../keyValueStore';
-import { ensureMoodlySqliteReady } from './database';
-import type { MoodlySqliteDatabase } from './databaseTypes';
+import { ensureKairoSqliteReady } from './database';
+import type { KairoSqliteDatabase } from './databaseTypes';
 import { countMoodEntries, importMoodEntriesToSqlite } from './moodEntriesStore';
 import {
   SQL_META_ENTRIES_BACKEND,
@@ -15,28 +15,28 @@ import { safeParseEntriesForImport } from './importFromAsyncStorage';
 
 export type MoodEntriesBackendKind = 'async' | 'sqlite';
 
-const ENTRIES_STORAGE_KEY = 'moodly.entries';
-const BACKEND_FLAG_KEY = 'moodly.entries.backend';
+const ENTRIES_STORAGE_KEY = 'kairo.entries';
+const BACKEND_FLAG_KEY = 'kairo.entries.backend';
 
 let resolvedBackend: MoodEntriesBackendKind | null = null;
 
 function forcedBackendFromEnv(): MoodEntriesBackendKind | null {
   if (typeof process === 'undefined') return null;
-  const v = process.env.MOODLY_ENTRIES_BACKEND;
+  const v = process.env.KAIRO_ENTRIES_BACKEND;
   if (v === 'async' || v === 'sqlite') return v;
   return null;
 }
 
-async function readMeta(db: MoodlySqliteDatabase, key: string): Promise<string | null> {
+async function readMeta(db: KairoSqliteDatabase, key: string): Promise<string | null> {
   const row = await db.getFirstAsync<{ value: string }>(
-    'SELECT value FROM moodly_meta WHERE key = ?',
+    'SELECT value FROM kairo_meta WHERE key = ?',
     key
   );
   return row?.value ?? null;
 }
 
-async function writeMeta(db: MoodlySqliteDatabase, key: string, value: string): Promise<void> {
-  await db.runAsync('INSERT OR REPLACE INTO moodly_meta (key, value) VALUES (?, ?)', key, value);
+async function writeMeta(db: KairoSqliteDatabase, key: string, value: string): Promise<void> {
+  await db.runAsync('INSERT OR REPLACE INTO kairo_meta (key, value) VALUES (?, ?)', key, value);
 }
 
 export async function resolveMoodEntriesBackend(store: KeyValueStore): Promise<MoodEntriesBackendKind> {
@@ -55,7 +55,7 @@ export async function resolveMoodEntriesBackend(store: KeyValueStore): Promise<M
   }
 
   try {
-    const db = await ensureMoodlySqliteReady();
+    const db = await ensureKairoSqliteReady();
     const backendMeta = await readMeta(db, SQL_META_ENTRIES_BACKEND);
     if (backendMeta === 'sqlite') {
       await store.setItem(BACKEND_FLAG_KEY, 'sqlite');
@@ -72,16 +72,16 @@ export async function resolveMoodEntriesBackend(store: KeyValueStore): Promise<M
 }
 
 /**
- * One-shot import: legacy AsyncStorage `moodly.entries` → SQLite `mood_entries`.
+ * One-shot import: legacy AsyncStorage `kairo.entries` → SQLite `mood_entries`.
  * Idempotent when meta flag is already set.
  */
 export async function ensureMoodEntriesImportedFromAsyncStorage(store: KeyValueStore): Promise<void> {
   const forced = forcedBackendFromEnv();
   if (forced === 'async') return;
 
-  let db: MoodlySqliteDatabase;
+  let db: KairoSqliteDatabase;
   try {
-    db = await ensureMoodlySqliteReady();
+    db = await ensureKairoSqliteReady();
   } catch {
     return;
   }

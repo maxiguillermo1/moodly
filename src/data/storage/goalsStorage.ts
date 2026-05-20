@@ -17,11 +17,11 @@ import {
 import { notifyGoalsChanged } from '../sync/syncBridge';
 import { storage } from './asyncStorage';
 
-const STORAGE_KEY = 'moodly.goals';
+const STORAGE_KEY = 'kairo.goals';
 const CORRUPT_PREFIX = `${STORAGE_KEY}.corrupt.`;
 const MIGRATE_BACKUP_PREFIX = `${STORAGE_KEY}.migrate_backup.`;
 
-/** Current persisted **goals record** revision (`GoalsRecord.version`); revision 2 derives `progress.currentValue` from history on load. Not the Moodly app semver. */
+/** Current persisted **goals record** revision (`GoalsRecord.version`); revision 2 derives `progress.currentValue` from history on load. Not the Kairo app semver. */
 export const GOALS_RECORD_VERSION = 2 as const;
 
 const DEFAULT_RECORD: GoalsRecord = Object.freeze({ version: GOALS_RECORD_VERSION, goalsById: {} });

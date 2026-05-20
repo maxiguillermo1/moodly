@@ -1,5 +1,5 @@
 /**
- * @fileoverview Release metadata (keep in sync with app.json `expo.version` and package.json). Moodly v0.6 train.
+ * @fileoverview Release metadata (keep in sync with app.json `expo.version` and package.json). Kairo v0.6 train.
  * @module constants/app
  */
 

@@ -12,9 +12,9 @@ import { assertLocalPersistenceWritable, ensureLocalPersistenceReady } from '../
 import { storage } from './asyncStorage';
 import { createDayTask, dayTodoItemToTask, nextRecurrenceDate, taskReminderForDay, taskToDayTodoItem } from '../../lib/todos/taskModel';
 
-const STORAGE_KEY = 'moodly.tasks';
+const STORAGE_KEY = 'kairo.tasks';
 const CORRUPT_PREFIX = `${STORAGE_KEY}.corrupt.`;
-const LEGACY_DAY_TODOS_KEY = 'moodly.dayTodos';
+const LEGACY_DAY_TODOS_KEY = 'kairo.dayTodos';
 const LEGACY_CORRUPT_PREFIX = `${LEGACY_DAY_TODOS_KEY}.corrupt.`;
 const DAY_SHARD_PREFIX = `${STORAGE_KEY}.day.`;
 const DAY_INDEX_KEY = `${STORAGE_KEY}.dayIndex`;

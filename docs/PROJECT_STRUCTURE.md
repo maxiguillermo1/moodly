@@ -63,7 +63,7 @@ Root **`README.md`** and **`LICENSE`** are the only long-form docs at the repo r
 ### Ownership examples
 
 - New Today extension UI: `src/components/todayExtensions/`, registry wiring in `src/extensions/`, persistence in `src/data/storage/`, public access through `src/storage`.
-- New goal/task model logic: `src/types/*`, pure helpers in `src/lib/goals/` or `src/lib/todos/`, storage in `src/data/storage/`, public APIs through `src/storage`. Day-scoped Reminder hot paths use `moodly.tasks.day.<YYYY-MM-DD>` shards.
+- New goal/task model logic: `src/types/*`, pure helpers in `src/lib/goals/` or `src/lib/todos/`, storage in `src/data/storage/`, public APIs through `src/storage`. Day-scoped Reminder hot paths use `kairo.tasks.day.<YYYY-MM-DD>` shards.
 - New pure date/calendar helper: `src/lib/calendar/` or `src/lib/utils/`, then export through `src/utils` only if UI needs it.
 - New storage-backed domain: `src/data/storage/` for implementation, `src/data/repositories/` for future swappable facade, tests beside the storage module.
 - New screen-local modal: keep it under the owning feature’s `screens/` folder unless multiple screens use it.

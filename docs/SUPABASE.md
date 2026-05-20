@@ -1,15 +1,15 @@
-# Moodly — Supabase cloud architecture
+# Kairo — Supabase cloud architecture
 
 **Status:** Implemented (v1.x). Supabase Postgres is the **cloud source of truth** when the user is signed in. Local SQLite + AsyncStorage remain a **cache** for fast UI, offline viewing, and pending sync.
 
 ## Quick setup
 
 1. Create a [Supabase](https://supabase.com) project.
-2. Apply schema: `supabase/migrations/20260520100000_moodly_cloud_schema.sql` (Supabase SQL editor or CLI `supabase db push`).
+2. Apply schema: `supabase/migrations/20260520100000_kairo_cloud_schema.sql` (Supabase SQL editor or CLI `supabase db push`).
 3. Enable Auth providers in Supabase Dashboard → Authentication → Providers:
    - **Email** (password)
-   - **Apple** (iOS — configure Services ID + redirect `moodly://auth/callback`)
-   - **Google** (OAuth client + redirect `moodly://auth/callback`)
+   - **Apple** (iOS — configure Services ID + redirect `kairo://auth/callback`)
+   - **Google** (OAuth client + redirect `kairo://auth/callback`)
 4. Set env (copy from `.env.example`):
 
 ```bash
@@ -19,7 +19,7 @@ EXPO_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
 
 5. Rebuild native app after adding `expo-apple-authentication` (EAS / dev client).
 
-Without these env vars, Moodly runs **local-only** (existing behavior).
+Without these env vars, Kairo runs **local-only** (existing behavior).
 
 ## Architecture
 
@@ -41,7 +41,7 @@ UI (screens/hooks)
 
 ## Postgres schema
 
-See `supabase/migrations/20260520100000_moodly_cloud_schema.sql`.
+See `supabase/migrations/20260520100000_kairo_cloud_schema.sql`.
 
 | Table | Contents |
 |-------|----------|
@@ -73,7 +73,7 @@ See `supabase/migrations/20260520100000_moodly_cloud_schema.sql`.
 ### Write path (signed in)
 
 1. User saves mood/journal → local SQLite row (instant UI).
-2. `syncBridge` enqueues operation in AsyncStorage outbox (`moodly.sync.outbox`).
+2. `syncBridge` enqueues operation in AsyncStorage outbox (`kairo.sync.outbox`).
 3. Background push to Supabase (debounced ~400ms).
 4. Status: `syncing` → `saved` / `offline` (Settings + Account).
 

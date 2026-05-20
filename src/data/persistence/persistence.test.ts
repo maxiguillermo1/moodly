@@ -37,16 +37,16 @@ describe('local schema migrations (KeyValueStore)', () => {
 
   it('writes a migration backup envelope before advancing schema', async () => {
     const store = createMemoryStore({
-      'moodly.entries': JSON.stringify({ '2026-01-01': { date: '2026-01-01', mood: 'A', note: '', createdAt: 1, updatedAt: 1 } }),
+      'kairo.entries': JSON.stringify({ '2026-01-01': { date: '2026-01-01', mood: 'A', note: '', createdAt: 1, updatedAt: 1 } }),
     });
     await runLocalMigrations(store);
     const keys = await store.getAllKeys!();
-    const backupKeys = keys.filter((k) => k.startsWith('moodly.migrationBackup.'));
+    const backupKeys = keys.filter((k) => k.startsWith('kairo.migrationBackup.'));
     expect(backupKeys.length).toBeGreaterThan(0);
     const raw = await store.getItem(backupKeys[0]!);
     const env = parseMigrationBackupEnvelope(raw);
-    expect(env?.kind).toBe('moodly.migrationBackup.v1');
-    expect(env?.snapshot['moodly.entries']).toContain('2026-01-01');
+    expect(env?.kind).toBe('kairo.migrationBackup.v1');
+    expect(env?.snapshot['kairo.entries']).toContain('2026-01-01');
   });
 
   it('does not downgrade when disk schema is newer than app', async () => {
@@ -72,7 +72,7 @@ describe('local schema migrations (KeyValueStore)', () => {
 
 describe('local persistence bootstrap', () => {
   beforeEach(async () => {
-    (globalThis as any).__MOODLY_CHAOS__ = undefined;
+    (globalThis as any).__KAIRO_CHAOS__ = undefined;
     resetPersistenceBootstrapForTests();
     const mod: any = require('@react-native-async-storage/async-storage');
     await (mod?.default ?? mod).clear();
@@ -83,14 +83,14 @@ describe('local persistence bootstrap', () => {
     const AsyncStorage: any = mod?.default ?? mod;
     const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
     const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
-    (globalThis as any).__MOODLY_CHAOS__ = {
+    (globalThis as any).__KAIRO_CHAOS__ = {
       enabled: true,
       failNextByKey: { getItem: { [SCHEMA_META_STORAGE_KEY]: 1 } },
     };
 
     await expect(ensureLocalPersistenceReady()).resolves.toBeUndefined();
 
-    (globalThis as any).__MOODLY_CHAOS__ = undefined;
+    (globalThis as any).__KAIRO_CHAOS__ = undefined;
     errorSpy.mockRestore();
     warnSpy.mockRestore();
     const raw = await AsyncStorage.getItem(SCHEMA_META_STORAGE_KEY);
@@ -100,7 +100,7 @@ describe('local persistence bootstrap', () => {
   it('rejects when bootstrap storage stays unavailable after retries', async () => {
     const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
     const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
-    (globalThis as any).__MOODLY_CHAOS__ = {
+    (globalThis as any).__KAIRO_CHAOS__ = {
       enabled: true,
       failOps: ['getItem'],
       pFail: 1,
@@ -109,7 +109,7 @@ describe('local persistence bootstrap', () => {
     await expect(ensureLocalPersistenceReady()).rejects.toBeTruthy();
     resetPersistenceBootstrapForTests();
 
-    (globalThis as any).__MOODLY_CHAOS__ = undefined;
+    (globalThis as any).__KAIRO_CHAOS__ = undefined;
     errorSpy.mockRestore();
     warnSpy.mockRestore();
   });
@@ -128,7 +128,7 @@ describe('local persistence bootstrap', () => {
 
     errorSpy.mockRestore();
     warnSpy.mockRestore();
-    expect(await AsyncStorage.getItem('moodly.entries')).toBeNull();
+    expect(await AsyncStorage.getItem('kairo.entries')).toBeNull();
     const meta = await readSchemaMeta({
       getItem: AsyncStorage.getItem.bind(AsyncStorage),
       setItem: AsyncStorage.setItem.bind(AsyncStorage),
@@ -161,9 +161,9 @@ describe('local persistence bootstrap', () => {
 
     errorSpy.mockRestore();
     warnSpy.mockRestore();
-    expect(await AsyncStorage.getItem('moodly.settings')).toBeNull();
-    expect(await AsyncStorage.getItem('moodly.dayTodos')).toBeNull();
-    expect(await AsyncStorage.getItem('moodly.habitSelections')).toBeNull();
-    expect(await AsyncStorage.getItem('moodly.trackedHabits')).toBeNull();
+    expect(await AsyncStorage.getItem('kairo.settings')).toBeNull();
+    expect(await AsyncStorage.getItem('kairo.dayTodos')).toBeNull();
+    expect(await AsyncStorage.getItem('kairo.habitSelections')).toBeNull();
+    expect(await AsyncStorage.getItem('kairo.trackedHabits')).toBeNull();
   });
 });

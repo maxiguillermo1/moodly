@@ -8,7 +8,7 @@ import { clearAllUserData } from './userDataReset';
 
 describe('clearAllUserData', () => {
   beforeEach(async () => {
-    (globalThis as any).__MOODLY_CHAOS__ = undefined;
+    (globalThis as any).__KAIRO_CHAOS__ = undefined;
     resetPersistenceBootstrapForTests();
     await AsyncStorage.clear();
   });

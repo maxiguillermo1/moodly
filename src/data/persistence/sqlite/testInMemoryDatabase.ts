@@ -3,7 +3,7 @@
  * @module data/persistence/sqlite/testInMemoryDatabase
  */
 
-import type { MoodlySqliteDatabase } from './databaseTypes';
+import type { KairoSqliteDatabase } from './databaseTypes';
 
 type Row = Record<string, unknown>;
 
@@ -21,7 +21,7 @@ function placeholderCount(source: string): number {
   return (source.match(/\?/g) ?? []).length;
 }
 
-export function createInMemoryMoodlyDatabase(): MoodlySqliteDatabase {
+export function createInMemoryKairoDatabase(): KairoSqliteDatabase {
   const tables = new Map<string, Row[]>();
   const meta = new Map<string, number>();
 
@@ -38,7 +38,7 @@ export function createInMemoryMoodlyDatabase(): MoodlySqliteDatabase {
     else table.push(row);
   };
 
-  const db: MoodlySqliteDatabase = {
+  const db: KairoSqliteDatabase = {
     async execAsync(source: string): Promise<void> {
       const statements = source
         .split(';')
@@ -136,10 +136,10 @@ export function createInMemoryMoodlyDatabase(): MoodlySqliteDatabase {
         return [{ cnt: ensureTable(countMatch[1]!).length } as T];
       }
 
-      const metaMatch = normalized.match(/^SELECT value FROM moodly_meta WHERE key = \?\s*$/i);
+      const metaMatch = normalized.match(/^SELECT value FROM kairo_meta WHERE key = \?\s*$/i);
       if (metaMatch) {
         const key = bound[0];
-        const row = ensureTable('moodly_meta').find((r) => r.key === key);
+        const row = ensureTable('kairo_meta').find((r) => r.key === key);
         return row ? ([{ value: row.value }] as T[]) : [];
       }
 
@@ -180,13 +180,13 @@ export function createInMemoryMoodlyDatabase(): MoodlySqliteDatabase {
 }
 
 /** @internal Resets module singleton between tests. */
-let sharedTestDb: MoodlySqliteDatabase | null = null;
+let sharedTestDb: KairoSqliteDatabase | null = null;
 
-export function getSharedInMemoryMoodlyDatabase(): MoodlySqliteDatabase {
-  if (!sharedTestDb) sharedTestDb = createInMemoryMoodlyDatabase();
+export function getSharedInMemoryKairoDatabase(): KairoSqliteDatabase {
+  if (!sharedTestDb) sharedTestDb = createInMemoryKairoDatabase();
   return sharedTestDb;
 }
 
-export function resetSharedInMemoryMoodlyDatabase(): void {
-  sharedTestDb = createInMemoryMoodlyDatabase();
+export function resetSharedInMemoryKairoDatabase(): void {
+  sharedTestDb = createInMemoryKairoDatabase();
 }

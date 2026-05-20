@@ -6,7 +6,7 @@
 import type { MoodEntriesRecord, MoodEntry } from '../../types';
 import { validateEntriesRecord } from '../model/entry';
 import { getDefaultLocalKeyValueStore } from '../persistence/localStore';
-import { ensureMoodlySqliteReady } from '../persistence/sqlite/database';
+import { ensureKairoSqliteReady } from '../persistence/sqlite/database';
 import {
   clearMoodEntriesSqlite,
   deleteMoodEntrySqlite,
@@ -17,7 +17,7 @@ import {
 import { resolveMoodEntriesBackend } from '../persistence/sqlite/storageBackend';
 import { storage } from './asyncStorage';
 
-export const MOOD_ENTRIES_STORAGE_KEY = 'moodly.entries';
+export const MOOD_ENTRIES_STORAGE_KEY = 'kairo.entries';
 
 async function usesSqlite(): Promise<boolean> {
   const store = getDefaultLocalKeyValueStore();
@@ -30,7 +30,7 @@ export async function moodEntriesUsesSqlite(): Promise<boolean> {
 
 export async function loadMoodEntriesFromDisk(): Promise<MoodEntriesRecord> {
   if (await usesSqlite()) {
-    const db = await ensureMoodlySqliteReady();
+    const db = await ensureKairoSqliteReady();
     return loadAllMoodEntriesFromSqlite(db);
   }
   const json = await storage.getItem(MOOD_ENTRIES_STORAGE_KEY);
@@ -45,7 +45,7 @@ export async function loadMoodEntriesFromDisk(): Promise<MoodEntriesRecord> {
 
 export async function persistMoodEntriesBlob(record: MoodEntriesRecord): Promise<void> {
   if (await usesSqlite()) {
-    const db = await ensureMoodlySqliteReady();
+    const db = await ensureKairoSqliteReady();
     await clearMoodEntriesSqlite(db);
     await importMoodEntriesToSqlite(db, record);
     return;
@@ -55,7 +55,7 @@ export async function persistMoodEntriesBlob(record: MoodEntriesRecord): Promise
 
 export async function persistMoodEntryRow(entry: MoodEntry, fullRecord: MoodEntriesRecord): Promise<void> {
   if (await usesSqlite()) {
-    const db = await ensureMoodlySqliteReady();
+    const db = await ensureKairoSqliteReady();
     await upsertMoodEntrySqlite(db, entry);
     return;
   }
@@ -64,7 +64,7 @@ export async function persistMoodEntryRow(entry: MoodEntry, fullRecord: MoodEntr
 
 export async function deleteMoodEntryRow(date: string, fullRecord: MoodEntriesRecord): Promise<void> {
   if (await usesSqlite()) {
-    const db = await ensureMoodlySqliteReady();
+    const db = await ensureKairoSqliteReady();
     await deleteMoodEntrySqlite(db, date);
     return;
   }
@@ -73,7 +73,7 @@ export async function deleteMoodEntryRow(date: string, fullRecord: MoodEntriesRe
 
 export async function clearMoodEntriesOnDisk(): Promise<void> {
   if (await usesSqlite()) {
-    const db = await ensureMoodlySqliteReady();
+    const db = await ensureKairoSqliteReady();
     await clearMoodEntriesSqlite(db);
     return;
   }
@@ -87,7 +87,7 @@ export async function readRawMoodEntriesJson(): Promise<string | null> {
 export async function quarantineRawMoodEntriesJson(rawJson: string, backupKey: string): Promise<void> {
   await storage.setItem(backupKey, rawJson);
   if (await usesSqlite()) {
-    const db = await ensureMoodlySqliteReady();
+    const db = await ensureKairoSqliteReady();
     await clearMoodEntriesSqlite(db);
     return;
   }

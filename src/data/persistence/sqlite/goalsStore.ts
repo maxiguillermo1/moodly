@@ -5,7 +5,7 @@
 
 import type { Goal, GoalHistory, GoalsRecord } from '../../../types';
 import { isValidISODateKey } from '../../model/entry';
-import type { MoodlySqliteDatabase } from './databaseTypes';
+import type { KairoSqliteDatabase } from './databaseTypes';
 
 const GOALS_SQLITE_RECORD_VERSION = 2 as const;
 
@@ -18,7 +18,7 @@ function goalWithoutHistory(goal: Goal): Omit<Goal, 'history'> & { history?: nev
   return rest;
 }
 
-export async function loadGoalsRecordFromSqlite(db: MoodlySqliteDatabase): Promise<GoalsRecord> {
+export async function loadGoalsRecordFromSqlite(db: KairoSqliteDatabase): Promise<GoalsRecord> {
   const goalRows = await db.getAllAsync<GoalRow>('SELECT id, payload_json, updated_at_ms FROM goals');
   const progressRows = await db.getAllAsync<ProgressRow>(
     'SELECT goal_id, date, value, note, created_at_ms FROM goal_progress'
@@ -53,12 +53,12 @@ export async function loadGoalsRecordFromSqlite(db: MoodlySqliteDatabase): Promi
   return { version: GOALS_SQLITE_RECORD_VERSION, goalsById };
 }
 
-export async function clearGoalsSqlite(db: MoodlySqliteDatabase): Promise<void> {
+export async function clearGoalsSqlite(db: KairoSqliteDatabase): Promise<void> {
   await db.runAsync('DELETE FROM goal_progress');
   await db.runAsync('DELETE FROM goals');
 }
 
-export async function importGoalsRecordToSqlite(db: MoodlySqliteDatabase, record: GoalsRecord): Promise<number> {
+export async function importGoalsRecordToSqlite(db: KairoSqliteDatabase, record: GoalsRecord): Promise<number> {
   let imported = 0;
   await db.withTransactionAsync(async () => {
     await clearGoalsSqlite(db);
@@ -87,11 +87,11 @@ export async function importGoalsRecordToSqlite(db: MoodlySqliteDatabase, record
   return imported;
 }
 
-export async function persistGoalsRecordToSqlite(db: MoodlySqliteDatabase, record: GoalsRecord): Promise<void> {
+export async function persistGoalsRecordToSqlite(db: KairoSqliteDatabase, record: GoalsRecord): Promise<void> {
   await importGoalsRecordToSqlite(db, record);
 }
 
-export async function countGoalsSqlite(db: MoodlySqliteDatabase): Promise<number> {
+export async function countGoalsSqlite(db: KairoSqliteDatabase): Promise<number> {
   const row = await db.getFirstAsync<{ cnt: number }>('SELECT COUNT(*) as cnt FROM goals');
   return row?.cnt ?? 0;
 }

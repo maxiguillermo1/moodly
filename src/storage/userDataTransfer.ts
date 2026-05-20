@@ -8,7 +8,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import { formatDateToISO } from '../lib/utils/date';
 
-export async function shareJsonExport(json: string, filenamePrefix = 'moodly-export'): Promise<void> {
+export async function shareJsonExport(json: string, filenamePrefix = 'kairo-export'): Promise<void> {
   const filename = `${filenamePrefix}-${formatDateToISO(new Date())}.json`;
   const baseDir = FileSystem.cacheDirectory ?? FileSystem.documentDirectory;
   if (!baseDir) throw new Error('No writable cache directory');
@@ -20,7 +20,7 @@ export async function shareJsonExport(json: string, filenamePrefix = 'moodly-exp
   }
   await Sharing.shareAsync(uri, {
     mimeType: 'application/json',
-    dialogTitle: 'Export Moodly data',
+    dialogTitle: 'Export Kairo data',
     UTI: 'public.json',
   });
 }

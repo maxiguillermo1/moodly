@@ -5,7 +5,7 @@
 
 import * as SecureStore from 'expo-secure-store';
 
-const STORAGE_KEY = 'moodly.supabase.auth.session';
+const STORAGE_KEY = 'kairo.supabase.auth.session';
 
 export const supabaseSecureStorage = {
   async getItem(key: string): Promise<string | null> {

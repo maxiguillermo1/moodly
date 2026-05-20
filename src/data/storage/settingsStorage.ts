@@ -9,7 +9,7 @@ import { assertLocalPersistenceWritable, ensureLocalPersistenceReady } from '../
 import { notifySettingsChanged } from '../sync/syncBridge';
 import { storage } from './asyncStorage';
 
-const SETTINGS_KEY = 'moodly.settings';
+const SETTINGS_KEY = 'kairo.settings';
 const CORRUPT_PREFIX = `${SETTINGS_KEY}.corrupt.`;
 
 const DEFAULT_SETTINGS: AppSettings = {

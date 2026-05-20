@@ -4,7 +4,7 @@
  * @module constants/legal
  */
 
-const DEFAULT_REPO = 'https://github.com/maxiguillermo1/moodly';
+const DEFAULT_REPO = 'https://github.com/maxiguillermo1/kairo';
 
 function envUrl(key: string, fallback: string): string {
   const v = process.env[key];

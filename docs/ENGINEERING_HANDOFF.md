@@ -1,12 +1,12 @@
-## Moodly engineering handoff (read this first)
+## Kairo engineering handoff (read this first)
 
-**Full product vision, UX rules, and agent constitution:** [`AGENTS.md`](./AGENTS.md) — read that for *what Moodly is*, Today vs extensions hierarchy, Goals/Reminders philosophy, and non-negotiables.
+**Full product vision, UX rules, and agent constitution:** [`AGENTS.md`](./AGENTS.md) — read that for *what Kairo is*, Today vs extensions hierarchy, Goals/Reminders philosophy, and non-negotiables.
 
-**Moodly v0.6 (0.6.0)** — See **`docs/CHANGELOG.md`** for the maturity model, UI consolidation (**`MoodEntryFields`**), tab bar polish, **`src/constants/`** release metadata, **`npm run typecheck`**, **`export:bundles-check`** in CI, calendar **`fetchMoodCalendarSnapshot`**, **`AppErrorBoundary`**, and **`eas.json`**. Settings **Appearance** (Auto/Light/Dark + Solid/Gradient) unchanged.
+**Kairo v0.6 (0.6.0)** — See **`docs/CHANGELOG.md`** for the maturity model, UI consolidation (**`MoodEntryFields`**), tab bar polish, **`src/constants/`** release metadata, **`npm run typecheck`**, **`export:bundles-check`** in CI, calendar **`fetchMoodCalendarSnapshot`**, **`AppErrorBoundary`**, and **`eas.json`**. Settings **Appearance** (Auto/Light/Dark + Solid/Gradient) unchanged.
 
 Goal: a new engineer can ship safely in ~10 minutes.
 
-### What Moodly is
+### What Kairo is
 
 - Local-first mood + note tracker (**Calendar year + month timeline**, **Today**, **Journal**).
 - No backend. No network. All data is **AsyncStorage**.
@@ -35,7 +35,7 @@ Reserved-but-empty ESLint buckets **`src/domain/`**, **`src/logic/`**, **`src/in
 - **`FloatingTabBar`**: **`LiquidGlass`** capsule, **`useSafeAreaInsets()`** for bottom inset, narrower than legacy tab bars.
 - **Settings**: modal stack screen (**not** a tab); Appearance = **segmented capsule** (**Auto / Light / Dark**) + Theme row (calendar dot vs fill). Gear from `ScreenHeader` / Calendar toolbar.
 - **Journal**: **`FlashList`** by default (`JOURNAL_LIST_IMPL` in `JournalScreen`); **`freezeOnBlur: false`** on that tab only to reduce thaw hitches — see **`docs/PERFORMANCE.md`**.
-- **Other stack screens**: **Habits**, **Goals**, **Reminders** — **Reminders** is route **`Todo`** (`RootNavigator`) with optional **`date`** param; hot day data lives in **`moodly.tasks.day.<YYYY-MM-DD>`** shards while recurrence/metadata stays in **`moodly.tasks`**. See **`docs/AGENTS.md`** and **`src/data/DATA_CONTRACT.md`**.
+- **Other stack screens**: **Habits**, **Goals**, **Reminders** — **Reminders** is route **`Todo`** (`RootNavigator`) with optional **`date`** param; hot day data lives in **`kairo.tasks.day.<YYYY-MM-DD>`** shards while recurrence/metadata stays in **`kairo.tasks`**. See **`docs/AGENTS.md`** and **`src/data/DATA_CONTRACT.md`**.
 
 ### Data flow: “tap day → edit → save”
 
@@ -94,10 +94,10 @@ See **`docs/logger.md`** and **`docs/perf-calendar.md`**.
 In Metro console:
 
 ```js
-globalThis.MoodlyDebug.list()
-globalThis.MoodlyDebug.runAll()
-globalThis.MoodlyDebug.run('rapidMonthTaps')
-globalThis.MoodlyDebug.setChaos({ enabled: true, seed: 1, failNext: { getItem: 1 } })
+globalThis.KairoDebug.list()
+globalThis.KairoDebug.runAll()
+globalThis.KairoDebug.run('rapidMonthTaps')
+globalThis.KairoDebug.setChaos({ enabled: true, seed: 1, failNext: { getItem: 1 } })
 ```
 
 ### Quality gates

@@ -11,7 +11,7 @@ import type { MoodEntry } from './mood.types';
 import type { Goal } from './goals.types';
 import type { Task } from './todo.types';
 
-/** One row in `moodly.entries` / future `entries` table. */
+/** One row in `kairo.entries` / future `entries` table. */
 export type PersistedMoodJournalEntry = MoodEntry;
 export type PersistedTask = Task;
 export type PersistedGoal = Goal;

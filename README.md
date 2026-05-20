@@ -1,8 +1,8 @@
-# Moodly
+# Kairo
 
 ### Local-first mood tracking for iOS and Android — built with [Expo](https://expo.dev) and [React Native](https://reactnative.dev)
 
-**Moodly v0.6** (release **0.6.0**) is a **daily mood + journal** app with an iOS-native feel: **Today**, **Calendar** (year grid + month timeline), **Journal**, **Goals**, **Reminders**, and **Settings** — all **on device**, with **no backend** and **no required account**. Data lives in **AsyncStorage**; you control the install and the backup story. The product line is **intentionally pre-1.0** — refining foundations, not claiming a “2.0” platform; see [`docs/CHANGELOG.md`](./docs/CHANGELOG.md) § Versioning and [`docs/AGENTS.md`](./docs/AGENTS.md) § Product maturity & versioning.
+**Kairo v0.6** (release **0.6.0**) is a **daily mood + journal** app with an iOS-native feel: **Today**, **Calendar** (year grid + month timeline), **Journal**, **Goals**, **Reminders**, and **Settings** — all **on device**, with **no backend** and **no required account**. Data lives in **AsyncStorage**; you control the install and the backup story. The product line is **intentionally pre-1.0** — refining foundations, not claiming a “2.0” platform; see [`docs/CHANGELOG.md`](./docs/CHANGELOG.md) § Versioning and [`docs/AGENTS.md`](./docs/AGENTS.md) § Product maturity & versioning.
 
 **Elevator pitch:** One calm place to log how your day felt, skim the year at a glance, read back journal lines, and keep lightweight goals/reminders nearby — with a **floating glass tab bar**, shared **mood + note** editing everywhere, and documentation aimed at **shipping** (tests, CI, App Store–style hygiene) without turning the product into a spreadsheet.
 
@@ -14,7 +14,7 @@
 
 ## Why this exists
 
-Many mood apps want accounts, feeds, or cloud sync first. Moodly is for people who want **something small and local**: tap a grade, jot a line, see patterns on a calendar, and leave. The goal is **low friction** and **predictable privacy** — your entries stay on the phone unless *you* move them.
+Many mood apps want accounts, feeds, or cloud sync first. Kairo is for people who want **something small and local**: tap a grade, jot a line, see patterns on a calendar, and leave. The goal is **low friction** and **predictable privacy** — your entries stay on the phone unless *you* move them.
 
 ---
 
@@ -40,13 +40,13 @@ Structured **privacy-safe logging**, ESLint **import boundaries**, **Jest** cove
 - Anyone who prefers **on-device** journaling until they explicitly choose otherwise  
 - Contributors who care about **performance on scroll** (calendar hot paths, FlashList journal list) and **maintainable** layering
 
-If you want multi-device sync, social sharing, or clinical workflows out of the box, Moodly is **not** that — and that is intentional.
+If you want multi-device sync, social sharing, or clinical workflows out of the box, Kairo is **not** that — and that is intentional.
 
 ---
 
 ## Important disclaimers
 
-- **Not medical advice.** Moodly is a **personal logging** tool, not a diagnosis or treatment service.  
+- **Not medical advice.** Kairo is a **personal logging** tool, not a diagnosis or treatment service.  
 - **You own backups.** Uninstalling the app or losing the device can mean losing local data unless you have a platform backup strategy.  
 - **No warranty.** The software is provided **“as is”** — see [`LICENSE`](./LICENSE).  
 - **Review storage keys** before fork integrations: [`src/data/DATA_CONTRACT.md`](./src/data/DATA_CONTRACT.md).
@@ -64,7 +64,7 @@ Plain language: what you actually open in the app.
 | **Today** | Log **today’s** mood and note in one card; save persists immediately to local storage. |
 | **Calendar** | **Year** swipe grid opens the **month** timeline; tap a **day** to view or edit that date’s entry. |
 | **Journal** | Newest-first list of entries; open editor, save, long-press to delete. |
-| **Reminders** (stack **`Todo`**) | Full **Reminders** screen for one **`YYYY-MM-DD`**: hot day rows in **`moodly.tasks.day.<date>`** shards; metadata/recurrence in **`moodly.tasks`** (legacy **`moodly.dayTodos`** migrates once), optional time-of-day cues (in-app only), drag reorder / swipe delete; opened from **Today** strip, **Journal** / **Calendar** day flows, or **Settings**. |
+| **Reminders** (stack **`Todo`**) | Full **Reminders** screen for one **`YYYY-MM-DD`**: hot day rows in **`kairo.tasks.day.<date>`** shards; metadata/recurrence in **`kairo.tasks`** (legacy **`kairo.dayTodos`** migrates once), optional time-of-day cues (in-app only), drag reorder / swipe delete; opened from **Today** strip, **Journal** / **Calendar** day flows, or **Settings**. |
 | **Settings** | Appearance (**Auto / Light / Dark**), calendar style (**dot / fill**), mood visuals (**solid / gradient**), **Extensions** (Habits, Goals, **Reminders** per-day list), stats, About (version from `APP_RELEASE_VERSION`). |
 
 **Settings** opens as a **modal** (not a tab), from headers where a gear is shown (including Calendar).
@@ -74,7 +74,7 @@ Plain language: what you actually open in the app.
 ## How it works
 
 ```
-You log mood + note  →  Moodly validates + writes AsyncStorage  →  Calendar / Journal read the same local-day keys
+You log mood + note  →  Kairo validates + writes AsyncStorage  →  Calendar / Journal read the same local-day keys
 ```
 
 ### Simple picture
@@ -87,7 +87,7 @@ You log mood + note  →  Moodly validates + writes AsyncStorage  →  Calendar 
 
 ```mermaid
 flowchart LR
-  subgraph Client["Moodly app"]
+  subgraph Client["Kairo app"]
     UI["Screens + components"]
     Nav["React Navigation"]
     Theme["AppThemeProvider"]
@@ -113,8 +113,8 @@ On boot, **`AppErrorBoundary`** (inside **`AppThemeProvider`**) can catch a subt
 ### 1. Install dependencies
 
 ```bash
-git clone https://github.com/maxiguillermo1/moodly.git moodly
-cd moodly
+git clone https://github.com/maxiguillermo1/kairo.git kairo
+cd kairo
 npm install
 ```
 
@@ -212,7 +212,7 @@ Replace placeholder icons under **`assets/images/`** before public App Store mar
 ## Project structure (abbreviated)
 
 ```
-moodly/
+kairo/
 ├── App.tsx                    # Re-exports src/App (Expo entry)
 ├── README.md                  # Project overview (you are here)
 ├── LICENSE
@@ -275,7 +275,7 @@ Mechanical map: [`docs/PROJECT_STRUCTURE.md`](./docs/PROJECT_STRUCTURE.md). **Pl
 
 ## Contributing
 
-See **[`docs/CONTRIBUTING.md`](./docs/CONTRIBUTING.md)** for quality gates, layer rules, and PR expectations. **AI / Cursor:** start with **[`docs/AGENTS.md`](./docs/AGENTS.md)** and **`.cursor/rules/`** (Moodly-specific agent rules). The repo includes **[`.editorconfig`](./.editorconfig)** for consistent basic formatting across editors.
+See **[`docs/CONTRIBUTING.md`](./docs/CONTRIBUTING.md)** for quality gates, layer rules, and PR expectations. **AI / Cursor:** start with **[`docs/AGENTS.md`](./docs/AGENTS.md)** and **`.cursor/rules/`** (Kairo-specific agent rules). The repo includes **[`.editorconfig`](./.editorconfig)** for consistent basic formatting across editors.
 
 Improvements are welcome: bug fixes, documentation, performance work on calendar/journal hot paths, and tests that protect **date** and **storage** invariants.
 
@@ -289,7 +289,7 @@ Improvements are welcome: bug fixes, documentation, performance work on calendar
 
 > *The best habit tracker is the one you can open without dread.*
 
-Moodly favors **calm defaults**: readable typography, **accessible** labels where it matters, and **no clutter** — just mood, note, calendar, and journal.
+Kairo favors **calm defaults**: readable typography, **accessible** labels where it matters, and **no clutter** — just mood, note, calendar, and journal.
 
 ---
 
@@ -302,7 +302,7 @@ Moodly favors **calm defaults**: readable typography, **accessible** labels wher
 ---
 
 <p align="center">
-  <i>Moodly — mood, note, calendar, journal, reminders. On your device.</i>
+  <i>Kairo — mood, note, calendar, journal, reminders. On your device.</i>
   <br><br>
   <a href="./docs/ENGINEERING_HANDOFF.md"><strong>Engineering handoff</strong></a> ·
   <a href="./docs/CHANGELOG.md"><strong>Changelog</strong></a> ·

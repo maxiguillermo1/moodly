@@ -67,7 +67,7 @@ export async function runLocalMigrations(store: KeyValueStore): Promise<void> {
 
 /** Dev/test helper: repair unreadable schema meta. */
 export async function resetCorruptSchemaMeta(store: KeyValueStore): Promise<void> {
-  const raw = await store.getItem('moodly.schemaMeta');
+  const raw = await store.getItem('kairo.schemaMeta');
   if (typeof raw === 'string' && raw.length > 0) {
     const m = await readSchemaMeta(store);
     if (!m) await quarantineSchemaMeta(store, raw);

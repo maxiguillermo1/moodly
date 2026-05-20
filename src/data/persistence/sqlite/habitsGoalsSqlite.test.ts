@@ -10,11 +10,11 @@ function getAsyncStorage(): typeof import('@react-native-async-storage/async-sto
 function resetSqliteTestHarness(): void {
   const { __resetExpoSqliteMockForTests } = require('./__mocks__/expoSqliteMock');
   __resetExpoSqliteMockForTests();
-  const { __setMoodlySqliteDatabaseForTests, resetMoodlySqliteBootstrapForTests } = require('./database');
-  const { getSharedInMemoryMoodlyDatabase, resetSharedInMemoryMoodlyDatabase } = require('./testInMemoryDatabase');
-  resetSharedInMemoryMoodlyDatabase();
-  __setMoodlySqliteDatabaseForTests(getSharedInMemoryMoodlyDatabase());
-  resetMoodlySqliteBootstrapForTests();
+  const { __setKairoSqliteDatabaseForTests, resetKairoSqliteBootstrapForTests } = require('./database');
+  const { getSharedInMemoryKairoDatabase, resetSharedInMemoryKairoDatabase } = require('./testInMemoryDatabase');
+  resetSharedInMemoryKairoDatabase();
+  __setKairoSqliteDatabaseForTests(getSharedInMemoryKairoDatabase());
+  resetKairoSqliteBootstrapForTests();
   const { resetMoodEntriesBackendCacheForTests } = require('./storageBackend');
   const { resetHabitSelectionsBackendCacheForTests } = require('./habitsStorageBackend');
   const { resetGoalsBackendCacheForTests } = require('./goalsStorageBackend');
@@ -34,19 +34,19 @@ describe('sqlite habits and goals persistence', () => {
 
   it('imports legacy habit selections into habit_selections on bootstrap', async () => {
     await getAsyncStorage().setItem(
-      'moodly.habitSelections',
+      'kairo.habitSelections',
       JSON.stringify({ v: 3, selections: { '2026-05-01': ['workout'] }, toggleTotals: {} })
     );
 
     const { ensureLocalPersistenceReady } = require('../bootstrap');
     await ensureLocalPersistenceReady();
 
-    const { ensureMoodlySqliteReady } = require('./database');
+    const { ensureKairoSqliteReady } = require('./database');
     const { countHabitSelectionRows, loadHabitSelectionsFromSqlite } = require('./habitSelectionsStore');
-    const db = await ensureMoodlySqliteReady();
+    const db = await ensureKairoSqliteReady();
     expect(await countHabitSelectionRows(db)).toBe(1);
     expect(await loadHabitSelectionsFromSqlite(db)).toEqual({ '2026-05-01': ['workout'] });
-    expect(await getAsyncStorage().getItem('moodly.habitSelections.backend')).toBe('sqlite');
+    expect(await getAsyncStorage().getItem('kairo.habitSelections.backend')).toBe('sqlite');
   });
 
   it('imports legacy goals into goals tables on bootstrap', async () => {
@@ -66,18 +66,18 @@ describe('sqlite habits and goals persistence', () => {
         },
       },
     };
-    await getAsyncStorage().setItem('moodly.goals', JSON.stringify(goalsRecord));
+    await getAsyncStorage().setItem('kairo.goals', JSON.stringify(goalsRecord));
 
     const { ensureLocalPersistenceReady } = require('../bootstrap');
     await ensureLocalPersistenceReady();
 
-    const { ensureMoodlySqliteReady } = require('./database');
+    const { ensureKairoSqliteReady } = require('./database');
     const { countGoalsSqlite, loadGoalsRecordFromSqlite } = require('./goalsStore');
-    const db = await ensureMoodlySqliteReady();
+    const db = await ensureKairoSqliteReady();
     expect(await countGoalsSqlite(db)).toBe(1);
     const loaded = await loadGoalsRecordFromSqlite(db);
     expect(loaded.goalsById.g1?.title).toBe('Run');
     expect(loaded.goalsById.g1?.history).toHaveLength(1);
-    expect(await getAsyncStorage().getItem('moodly.goals.backend')).toBe('sqlite');
+    expect(await getAsyncStorage().getItem('kairo.goals.backend')).toBe('sqlite');
   });
 });

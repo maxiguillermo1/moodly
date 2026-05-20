@@ -8,7 +8,7 @@ This document is a **point-in-time summary** for audits and handoffs. Canonical 
 |---------|--------|------|
 | npm `package.json` / `app.json` / `APP_RELEASE_VERSION` | `0.6.0` | App **release train** (semver); not `CURRENT_SCHEMA_VERSION` nor per-blob JSON revision fields. |
 | Local persistence **schema version** | **`1`** (`CURRENT_SCHEMA_VERSION`) | `src/data/persistence/schemaConstants.ts` |
-| Schema stamp key | `moodly.schemaMeta` | Written by migration runner after forward steps |
+| Schema stamp key | `kairo.schemaMeta` | Written by migration runner after forward steps |
 
 **Bump schema version when:** renaming keys, changing persisted JSON shape in a breaking way, or requiring a one-time transform of existing user data. Append a migration; document in `DATA_ARCHITECTURE.md` and `DATA_SAFETY.md`.
 
@@ -30,7 +30,7 @@ UI / hooks
 
 | Repository | Backing modules | Responsibility |
 |--------------|-----------------|------------------|
-| `entriesRepository` | `moodStorage` | Mood + journal rows (`moodly.entries`). |
+| `entriesRepository` | `moodStorage` | Mood + journal rows (`kairo.entries`). |
 | `settingsRepository` | `settingsStorage` | `AppSettings` + extension visibility/order. |
 | `extensionsRepository` | habit selections, tracking, day Reminders APIs | Per-day extension **values** (namespaced API). |
 | `tasksRepository` | `tasksStorage`, day Reminder shards | Normalized task metadata, recurrence, and day-scoped Reminder compatibility APIs. |
@@ -48,8 +48,8 @@ UI / hooks
 
 | Store | Mechanism |
 |-------|-----------|
-| `moodly.entries` | `withEntriesWriteLock` |
-| `moodly.settings` | `withSettingsWriteLock`; read-modify-write happens inside the lock |
+| `kairo.entries` | `withEntriesWriteLock` |
+| `kairo.settings` | `withSettingsWriteLock`; read-modify-write happens inside the lock |
 | Habits / Reminders / tracked | Per-module `writeTail` queue; bootstrap before first-write paths |
 | Goals | `writeTail` queue; full reads clone records; summary reads avoid full history clones |
 
@@ -62,15 +62,15 @@ Calendar render snapshots are the exception: they use stable read-only month-map
 
 | Store | Current shape | Hot-path note |
 |-------|---------------|---------------|
-| `moodly.tasks.day.<YYYY-MM-DD>` | `DayTodoItem[]` | Today/Todo day reads and mutations touch only the active day shard. |
-| `moodly.tasks.dayIndex` | `YYYY-MM-DD[]` | Lets aggregate/debug reads reconstruct day-sharded Reminder tasks. |
-| `moodly.tasks` | `TasksRecord` | Metadata, recurrence templates/history, lists/tags, and legacy migration marker. |
-| `moodly.goals` | `GoalsRecord` | Single normalized record; list/Today use lightweight summary selectors. |
+| `kairo.tasks.day.<YYYY-MM-DD>` | `DayTodoItem[]` | Today/Todo day reads and mutations touch only the active day shard. |
+| `kairo.tasks.dayIndex` | `YYYY-MM-DD[]` | Lets aggregate/debug reads reconstruct day-sharded Reminder tasks. |
+| `kairo.tasks` | `TasksRecord` | Metadata, recurrence templates/history, lists/tags, and legacy migration marker. |
+| `kairo.goals` | `GoalsRecord` | Single normalized record; list/Today use lightweight summary selectors. |
 
 ## Corruption & recovery
 
 - Parse failures → safe defaults / `{}` / dropped invalid rows.
-- Backup corrupt blob → `moodly.<key>.corrupt.<timestamp>`.
+- Backup corrupt blob → `kairo.<key>.corrupt.<timestamp>`.
 - Transient migration/bootstrap failures are retried on the next storage entrypoint; writes remain blocked until bootstrap succeeds.
 - Disk schema newer than the app logs and fails bootstrap rather than downgrading or writing over future data.
 - **No note content** in production logs.
@@ -106,7 +106,7 @@ See **§ Manual smoke** in [`DATA_SAFETY.md`](./DATA_SAFETY.md).
 - **2026-05 remaining-concerns pass:** Month-index/todo cache exposure closed, warmed derived-cache mutation paths tested, calendar frame/scroll retries cancellable or guarded, global scroll interaction state resets on blur, and CI/local release validation share `npm run validate:release`.
 - **2026-05 final readiness pass:** Calendar focus reloads keep stable month-map references, timeline virtualizer sizing uses viewport height, deferred window extension is cancellable, and Habits screen async loads/writes are mounted/focus guarded.
 - **2026-05 zero-compromise pass:** Data/storage no longer imports the React-facing perf barrel, extension caches ignore stale cold-load results after newer writes, day-todo writes reuse warmed records, theme hydration ignores stale initial settings after user mutations, and Journal avoids no-op focus reload state replacement.
-- **2026-05 App Store/storage-scale pass:** Day Reminders moved to `moodly.tasks.day.<YYYY-MM-DD>` shards, recurrence generation is bounded and incremental, Goals Today/list rendering uses summaries, and `npm run validate:ios-release` is the fastest iOS gate.
-- **2026-05 doc sync:** Product line repositioned through **Moodly v0.6** (**semver 0.6.0**); clarified independence from per-blob JSON revisions (e.g. goals record `version`).
+- **2026-05 App Store/storage-scale pass:** Day Reminders moved to `kairo.tasks.day.<YYYY-MM-DD>` shards, recurrence generation is bounded and incremental, Goals Today/list rendering uses summaries, and `npm run validate:ios-release` is the fastest iOS gate.
+- **2026-05 doc sync:** Product line repositioned through **Kairo v0.6** (**semver 0.6.0**); clarified independence from per-blob JSON revisions (e.g. goals record `version`).
 - **2026-05 insights foundation:** `insightsRepository` + `src/lib/insights/*` deterministic reflection bundles over `getDayActivityRange` + goals; see **`docs/INSIGHTS.md`**.
 - **2026-05 emotional timeline constitution:** `AGENTS.md`, `FEATURES.md`, `ROADMAP.md`, and companion docs state the **yearly mood color map** as the primary artifact; habits/goals/reminders/insights framed as supporting context.

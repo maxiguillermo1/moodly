@@ -1,5 +1,5 @@
 /**
- * @fileoverview Cold-load benchmarks for moodly.entries at 1k / 5k / 10k synthetic rows.
+ * @fileoverview Cold-load benchmarks for kairo.entries at 1k / 5k / 10k synthetic rows.
  */
 
 import {
@@ -8,7 +8,7 @@ import {
   generateSyntheticMoodEntries,
 } from './entriesScaleHarness';
 
-const STORAGE_KEY = 'moodly.entries';
+const STORAGE_KEY = 'kairo.entries';
 
 function getAsyncStorage(): typeof import('@react-native-async-storage/async-storage').default {
   const mod: any = require('@react-native-async-storage/async-storage');
@@ -21,16 +21,16 @@ describe('entriesScaleHarness', () => {
     await getAsyncStorage().clear();
     const { __resetExpoSqliteMockForTests } = require('../data/persistence/sqlite/__mocks__/expoSqliteMock') as typeof import('../data/persistence/sqlite/__mocks__/expoSqliteMock');
     __resetExpoSqliteMockForTests();
-    const { __setMoodlySqliteDatabaseForTests, resetMoodlySqliteBootstrapForTests } =
+    const { __setKairoSqliteDatabaseForTests, resetKairoSqliteBootstrapForTests } =
       require('../data/persistence/sqlite/database') as typeof import('../data/persistence/sqlite/database');
-    const { getSharedInMemoryMoodlyDatabase } =
+    const { getSharedInMemoryKairoDatabase } =
       require('../data/persistence/sqlite/testInMemoryDatabase') as typeof import('../data/persistence/sqlite/testInMemoryDatabase');
     const { resetMoodEntriesBackendCacheForTests } =
       require('../data/persistence/sqlite/storageBackend') as typeof import('../data/persistence/sqlite/storageBackend');
     const { resetPersistenceBootstrapForTests } =
       require('../data/persistence/bootstrap') as typeof import('../data/persistence/bootstrap');
-    __setMoodlySqliteDatabaseForTests(getSharedInMemoryMoodlyDatabase());
-    resetMoodlySqliteBootstrapForTests();
+    __setKairoSqliteDatabaseForTests(getSharedInMemoryKairoDatabase());
+    resetKairoSqliteBootstrapForTests();
     resetMoodEntriesBackendCacheForTests();
     resetPersistenceBootstrapForTests();
   });

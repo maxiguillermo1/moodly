@@ -1,6 +1,6 @@
-# Moodly design system
+# Kairo design system
 
-## Visual and interaction polish (Moodly v0.6)
+## Visual and interaction polish (Kairo v0.6)
 
 - **Emotional timeline first:** calendar **month** and **year** mood treatments should read as **memory surfaces** (soft, legible color fields) — not analytics heatmaps or dense dashboards.
 - **Shared mood entry block**: `MoodEntryFields` (`src/components/mood/MoodEntryFields.tsx`) drives **Mood / Note** labeling, compact segmented grades, and the note field on **Today**, **Calendar day sheet**, and **Journal editor** for one coherent pattern.
@@ -116,7 +116,7 @@ Do **not** hardcode hex grays in new UI unless there is a documented exception (
 
 ---
 
-## Moodly UX constitution (calm + iOS-native)
+## Kairo UX constitution (calm + iOS-native)
 
 **Full narrative (product + agents):** [`AGENTS.md`](./AGENTS.md). This section captures **visual and motion rules** that belong next to tokens.
 

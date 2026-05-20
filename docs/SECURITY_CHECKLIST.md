@@ -1,6 +1,6 @@
 # Security & privacy checklist (App Store‑friendly)
 
-Moodly is a local‑first journaling app. User notes can be sensitive. This checklist exists to keep the privacy posture simple, provable, and reviewable.
+Kairo is a local‑first journaling app. User notes can be sensitive. This checklist exists to keep the privacy posture simple, provable, and reviewable.
 
 ## What we promise (current posture)
 
@@ -20,7 +20,7 @@ Moodly is a local‑first journaling app. User notes can be sensitive. This chec
   - UI imports persistence APIs from `src/storage` only
 - [ ] **Storage reads are untrusted**:
   - safe parse + validation
-  - corruption → **quarantine** to `moodly.<key>.corrupt.<timestamp>` and reset primary key
+  - corruption → **quarantine** to `kairo.<key>.corrupt.<timestamp>` and reset primary key
   - app must not crash‑loop
 - [ ] **Storage writes are safe**:
   - date keys validated (`YYYY-MM-DD`, local‑day)
@@ -38,7 +38,7 @@ Moodly is a local‑first journaling app. User notes can be sensitive. This chec
 ### Release hygiene (v0.5 phase, 2026)
 
 - **`npm audit fix`** (non–breaking) was applied during the foundation-hardening passes; some **moderate/low** advisories may remain tied to **Expo SDK / Metro / jest-expo** until those packages publish patched trees.
-- **Version surfaces**: `app.json` → `expo.version`, `package.json` → `version`, **`scheme`**, **`ios.bundleIdentifier`**, **`android.package`**, and `APP_RELEASE_VERSION` in `src/constants/app.ts` should match or be intentionally updated before tagging a build (replace **`com.moodly.app`** if your Apple / Play registration uses another id).
+- **Version surfaces**: `app.json` → `expo.version`, `package.json` → `version`, **`scheme`**, **`ios.bundleIdentifier`**, **`android.package`**, and `APP_RELEASE_VERSION` in `src/constants/app.ts` should match or be intentionally updated before tagging a build (replace **`com.maxiguillermo.kairo`** if your Apple / Play registration uses another id).
 
 - **ESLint guardrails**: `eslint.config.cjs`
   - bans AsyncStorage in UI code

@@ -1,5 +1,5 @@
 /**
- * @fileoverview Repository façade for mood + journal persisted rows (`moodly.entries`).
+ * @fileoverview Repository façade for mood + journal persisted rows (`kairo.entries`).
  * @module data/repositories/entriesRepository
  *
  * Hot paths: `getJournalEntriesSortedDescSnapshot` (Journal list), `getCalendarEntriesByMonthIndexSnapshot`

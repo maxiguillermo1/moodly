@@ -1,27 +1,27 @@
 /**
- * @fileoverview Moodly SQLite connection singleton + session bootstrap.
+ * @fileoverview Kairo SQLite connection singleton + session bootstrap.
  * @module data/persistence/sqlite/database
  */
 
 import { logger } from '../../../lib/security/logger';
-import type { MoodlySqliteDatabase } from './databaseTypes';
-import { MOODLY_SQLITE_DATABASE_NAME } from './schemaConstants';
+import type { KairoSqliteDatabase } from './databaseTypes';
+import { KAIRO_SQLITE_DATABASE_NAME } from './schemaConstants';
 import { runSqlMigrations } from './migrations/runSqlMigrations';
 
-let dbPromise: Promise<MoodlySqliteDatabase> | null = null;
+let dbPromise: Promise<KairoSqliteDatabase> | null = null;
 let bootstrapPromise: Promise<void> | null = null;
 let lastBootstrapError: unknown = null;
 
-async function openNativeDatabase(): Promise<MoodlySqliteDatabase> {
+async function openNativeDatabase(): Promise<KairoSqliteDatabase> {
   const SQLite = await import('expo-sqlite');
-  const db = await SQLite.openDatabaseAsync(MOODLY_SQLITE_DATABASE_NAME);
-  return db as unknown as MoodlySqliteDatabase;
+  const db = await SQLite.openDatabaseAsync(KAIRO_SQLITE_DATABASE_NAME);
+  return db as unknown as KairoSqliteDatabase;
 }
 
 /**
- * Returns the shared Moodly SQLite handle (opens + migrates on first call).
+ * Returns the shared Kairo SQLite handle (opens + migrates on first call).
  */
-export function getMoodlySqliteDatabase(): Promise<MoodlySqliteDatabase> {
+export function getKairoSqliteDatabase(): Promise<KairoSqliteDatabase> {
   if (!dbPromise) {
     dbPromise = openNativeDatabase().catch((e) => {
       dbPromise = null;
@@ -32,23 +32,23 @@ export function getMoodlySqliteDatabase(): Promise<MoodlySqliteDatabase> {
 }
 
 /** @internal Tests inject an in-memory database instead of expo-sqlite. */
-export function __setMoodlySqliteDatabaseForTests(db: MoodlySqliteDatabase | null): void {
+export function __setKairoSqliteDatabaseForTests(db: KairoSqliteDatabase | null): void {
   dbPromise = db ? Promise.resolve(db) : null;
   bootstrapPromise = null;
   lastBootstrapError = null;
 }
 
-export function assertMoodlySqliteReady(): void {
+export function assertKairoSqliteReady(): void {
   if (lastBootstrapError) {
     throw new Error('[persistence] SQLite is not ready until bootstrap succeeds');
   }
 }
 
-export async function ensureMoodlySqliteReady(): Promise<MoodlySqliteDatabase> {
+export async function ensureKairoSqliteReady(): Promise<KairoSqliteDatabase> {
   if (!bootstrapPromise) {
     lastBootstrapError = null;
     bootstrapPromise = (async () => {
-      const db = await getMoodlySqliteDatabase();
+      const db = await getKairoSqliteDatabase();
       await runSqlMigrations(db);
     })().catch((e) => {
       logger.error('persistence.sqlite.bootstrap.failed', { error: e });
@@ -58,11 +58,11 @@ export async function ensureMoodlySqliteReady(): Promise<MoodlySqliteDatabase> {
     });
   }
   await bootstrapPromise;
-  return getMoodlySqliteDatabase();
+  return getKairoSqliteDatabase();
 }
 
 /** @internal Jest only */
-export function resetMoodlySqliteBootstrapForTests(): void {
+export function resetKairoSqliteBootstrapForTests(): void {
   bootstrapPromise = null;
   lastBootstrapError = null;
 }

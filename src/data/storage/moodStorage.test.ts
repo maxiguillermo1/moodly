@@ -1,8 +1,8 @@
-const STORAGE_KEY = 'moodly.entries';
+const STORAGE_KEY = 'kairo.entries';
 
 describe('moodStorage reliability edge cases', () => {
   beforeEach(async () => {
-    (globalThis as any).__MOODLY_CHAOS__ = undefined;
+    (globalThis as any).__KAIRO_CHAOS__ = undefined;
     jest.resetModules();
     const faultMod = require('./storageFaultInjection') as typeof import('./storageFaultInjection');
     faultMod.__resetAsyncStorageFaultInjectionForTests();
@@ -27,7 +27,7 @@ describe('moodStorage reliability edge cases', () => {
     const mod: any = require('@react-native-async-storage/async-storage');
     const AsyncStorage: any = mod?.default ?? mod;
     await AsyncStorage.clear();
-    (globalThis as any).__MOODLY_CHAOS__ = {
+    (globalThis as any).__KAIRO_CHAOS__ = {
       enabled: true,
       seed: 1,
       failNextByKey: { setItem: { [STORAGE_KEY]: 1 } },
@@ -37,7 +37,7 @@ describe('moodStorage reliability edge cases', () => {
     ).rejects.toBeTruthy();
 
     // Disable fault injection and confirm the entry does not appear.
-    (globalThis as any).__MOODLY_CHAOS__ = undefined;
+    (globalThis as any).__KAIRO_CHAOS__ = undefined;
     const e = await getEntry('2026-02-09');
     expect(e).toBeNull();
     const all = await getAllEntries();
@@ -58,7 +58,7 @@ describe('moodStorage reliability edge cases', () => {
 
   it('getItem failure returns safe defaults; no crash (#9)', async () => {
     const { getAllEntries } = require('./moodStorage') as typeof import('./moodStorage');
-    (globalThis as any).__MOODLY_CHAOS__ = {
+    (globalThis as any).__KAIRO_CHAOS__ = {
       enabled: true,
       seed: 1,
       failNextByKey: { getItem: { [STORAGE_KEY]: 1 } },
@@ -76,10 +76,10 @@ describe('moodStorage reliability edge cases', () => {
     const before = await getAllEntries();
     expect(Object.keys(before)).toHaveLength(1);
 
-    (globalThis as any).__MOODLY_CHAOS__ = { enabled: true, seed: 1, failNext: { removeItem: 1 } };
+    (globalThis as any).__KAIRO_CHAOS__ = { enabled: true, seed: 1, failNext: { removeItem: 1 } };
     await expect(clearAllEntries()).rejects.toBeTruthy();
 
-    (globalThis as any).__MOODLY_CHAOS__ = undefined;
+    (globalThis as any).__KAIRO_CHAOS__ = undefined;
     const after = await getAllEntries();
     expect(Object.keys(after)).toHaveLength(1);
     expect(after['2026-02-09']?.mood).toBe('A');
@@ -90,7 +90,7 @@ describe('moodStorage reliability edge cases', () => {
     const mod: any = require('@react-native-async-storage/async-storage');
     const AsyncStorage: any = mod?.default ?? mod;
     await AsyncStorage.clear();
-    (globalThis as any).__MOODLY_CHAOS__ = {
+    (globalThis as any).__KAIRO_CHAOS__ = {
       enabled: true,
       seed: 7,
       // Deterministic, small delay to maximize interleaving pressure.
@@ -105,7 +105,7 @@ describe('moodStorage reliability edge cases', () => {
       upsertEntry({ date: '2026-02-10', mood: 'B', note: '', createdAt: 1, updatedAt: 1 }),
     ]);
 
-    (globalThis as any).__MOODLY_CHAOS__ = undefined;
+    (globalThis as any).__KAIRO_CHAOS__ = undefined;
     const all = await getAllEntries();
     expect(all['2026-02-09']?.mood).toBe('A');
     expect(all['2026-02-10']?.mood).toBe('B');
@@ -113,7 +113,7 @@ describe('moodStorage reliability edge cases', () => {
 
   it('large entries map round-trips after session cache reset (simulated relaunch)', async () => {
     const faultMod = require('./storageFaultInjection') as typeof import('./storageFaultInjection');
-    (globalThis as any).__MOODLY_CHAOS__ = undefined;
+    (globalThis as any).__KAIRO_CHAOS__ = undefined;
     faultMod.__resetAsyncStorageFaultInjectionForTests();
 
     const { setAllEntries, getAllEntries, getEntry, getEntriesSortedDesc, resetEntriesStorageSessionStateForTests } =
@@ -267,7 +267,7 @@ describe('moodStorage reliability edge cases', () => {
     await upsertEntry({ date: '2026-05-21', mood: 'F', note: '', createdAt: 1, updatedAt: 2 });
     const e = await getEntry('2026-05-21');
     expect(e?.mood).toBe('F');
-    const raw = await AsyncStorage.getItem('moodly.entries');
+    const raw = await AsyncStorage.getItem('kairo.entries');
     expect(Object.keys(JSON.parse(raw!))).toHaveLength(1);
   });
 

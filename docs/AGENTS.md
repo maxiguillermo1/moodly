@@ -1,18 +1,18 @@
-# AGENTS.md — Moodly master guide
+# AGENTS.md — Kairo master guide
 
 **This file is the primary onboarding and constitution for humans and AI agents.** Read it before writing code so changes stay aligned with product identity, architecture, data safety, and CI.
 
-**Cursor IDE:** shorter rules live in **`.cursor/rules/*.mdc`** — `moodly-core` (always on), `moodly-data-storage` (`src/data/**/*.ts`), `moodly-ui-screens` (`src/{screens,features,components,extensions}/**/*.tsx`). They echo the hard constraints here; **this document is the full source of truth.**
+**Cursor IDE:** shorter rules live in **`.cursor/rules/*.mdc`** — `kairo-core` (always on), `kairo-data-storage` (`src/data/**/*.ts`), `kairo-ui-screens` (`src/{screens,features,components,extensions}/**/*.tsx`). They echo the hard constraints here; **this document is the full source of truth.**
 
 **Companion docs:** [`architecture.md`](./architecture.md) (layers, imports), [`CODEBASE_MAP.md`](./CODEBASE_MAP.md) (plain‑English map, **import aliases**, Mermaid diagrams), [`ZERO_COMPROMISE.md`](./ZERO_COMPROMISE.md) (quality bar), [`DESIGN_SYSTEM.md`](./DESIGN_SYSTEM.md) (tokens, surfaces), [`DATA_ARCHITECTURE.md`](./DATA_ARCHITECTURE.md) + [`../src/data/DATA_CONTRACT.md`](../src/data/DATA_CONTRACT.md) (persistence), [`DAILY_ACTIVITY.md`](./DAILY_ACTIVITY.md) (composed cross-facet **read model**), [`INSIGHTS.md`](./INSIGHTS.md) (reflection engine + `insightsRepository`), [`NARRATIVE.md`](./NARRATIVE.md) (life timeline + `narrativeRepository`), [`SCALABILITY.md`](./SCALABILITY.md) (index of scale topics + cheat sheet), [`FEATURES.md`](./FEATURES.md) (feature map), [`ROADMAP.md`](./ROADMAP.md) (direction), [`TESTING.md`](./TESTING.md), [`PERFORMANCE.md`](./PERFORMANCE.md).
 
 ---
 
-## Moodly identity
+## Kairo identity
 
 ### The heart of the product (non‑negotiable)
 
-Moodly is **not** primarily a productivity suite, a goals hub, a habit tracker, a reminders manager, or an AI assistant. Its **true core** is:
+Kairo is **not** primarily a productivity suite, a goals hub, a habit tracker, a reminders manager, or an AI assistant. Its **true core** is:
 
 > **A beautiful emotional timeline of your life** — especially the **yearly color map of moods across time**.
 
@@ -28,7 +28,7 @@ When auditing habits, goals, reminders, insights, narrative, Daily Activity, Tod
 4. **Context systems** — habits, goals, reminders as **optional context** around *why a period might have felt the way it did* (never “maximize output”).
 5. **Supporting insights** — sparse, trustworthy observations; never a dashboard of scores.
 
-### What Moodly is
+### What Kairo is
 
 - A **calm, local-first emotional memory** anchored in **mood across time**, rendered as a **visual, year-scale color story** users can return to for years.
 - **Apple-inspired**: minimal chrome, soft surfaces, native-feeling motion, premium restraint — tuned for **emotional calm**, not dashboard energy.
@@ -36,7 +36,7 @@ When auditing habits, goals, reminders, insights, narrative, Daily Activity, Tod
 - **Lightweight**: no accounts, no network for core use; data stays on device (AsyncStorage today).
 - **Emotionally intelligent in tone**: observational, humble language; supportive without toxic positivity or pseudo-therapy.
 
-### What Moodly is not
+### What Kairo is not
 
 - **Not** a corporate planner, OKR tracker, or productivity command center.
 - **Not** a habit or goals product **first** — those are **supporting context** for mood reflection, not the hero surface.
@@ -45,13 +45,13 @@ When auditing habits, goals, reminders, insights, narrative, Daily Activity, Tod
 
 ### Why it exists
 
-Moodly exists so people can keep a **private, beautiful record of how life felt** — and optionally add **gentle** structure (habits strip, long-horizon goals, day reminders) that **contextualizes** the colored timeline **without hijacking** it.
+Kairo exists so people can keep a **private, beautiful record of how life felt** — and optionally add **gentle** structure (habits strip, long-horizon goals, day reminders) that **contextualizes** the colored timeline **without hijacking** it.
 
 ### Product maturity & versioning
 
-Moodly uses a **deliberate pre-1.0** product line so the repository stays honest about scope: the app is **not unfinished noise** — it is **intentionally refining** toward a credible **v1.0** public-ready platform.
+Kairo uses a **deliberate pre-1.0** product line so the repository stays honest about scope: the app is **not unfinished noise** — it is **intentionally refining** toward a credible **v1.0** public-ready platform.
 
-#### Moodly Product Maturity Model
+#### Kairo Product Maturity Model
 
 | Phase | What it means |
 |-------|----------------|
@@ -67,7 +67,7 @@ Moodly uses a **deliberate pre-1.0** product line so the repository stays honest
 
 ## Emotional design & UX inspirations
 
-Moodly borrows **feel** from products people already trust for calm structure — e.g. **Apple Calendar, Journal, Reminders, Health**, and gentle habit metaphors (**Strides**, **Things**, **Structured**) — **without** importing their density wholesale.
+Kairo borrows **feel** from products people already trust for calm structure — e.g. **Apple Calendar, Journal, Reminders, Health**, and gentle habit metaphors (**Strides**, **Things**, **Structured**) — **without** importing their density wholesale.
 
 The **yearly mood color field** should feel closer to **browsing meaningful memories** than to scanning analytics: emotional density at a glance, not a dashboard.
 
@@ -92,7 +92,7 @@ If any answer is “no,” **do not ship** without an explicit product decision 
 4. **Run the right gates** (§ Quality gates).
 5. **Prefer small, reviewable diffs** — one concern per change unless the user asked for a broad pass.
 
-Human process overlap: [`CONTRIBUTING.md`](./CONTRIBUTING.md). **Agents should still treat this file as authoritative** for Moodly-specific product and architecture rules.
+Human process overlap: [`CONTRIBUTING.md`](./CONTRIBUTING.md). **Agents should still treat this file as authoritative** for Kairo-specific product and architecture rules.
 
 ---
 
@@ -102,7 +102,7 @@ Human process overlap: [`CONTRIBUTING.md`](./CONTRIBUTING.md). **Agents should s
 2. **Storage boundaries** — UI imports **`src/storage`** only; never **`AsyncStorage`** or **`src/data/storage/*`** from screens, components, hooks, theme, navigation, app shells, or extensions.
 3. **Date keys** — Calendar identity uses local **`YYYY-MM-DD`** only; never `toISOString().slice(...)` for day keys (ESLint enforces this).
 4. **Logging** — No `console.*` in UI layers; use **`logger`** from **`src/security`** with **metadata only** (no journal text, full entries, or raw settings blobs).
-5. **Local data safety** — Forward-only schema rail; each migration step is preceded by an automatic **`moodly.migrationBackup.*`** snapshot (see **`docs/DATA_SAFETY.md`** + **`docs/DATA_ARCHITECTURE.md`**). Internal full-export envelope for tools/tests: **`src/data/persistence/localExport/moodlyLocalExport.ts`**. New persisted keys require **`DATA_CONTRACT.md`** updates in the same PR.
+5. **Local data safety** — Forward-only schema rail; each migration step is preceded by an automatic **`kairo.migrationBackup.*`** snapshot (see **`docs/DATA_SAFETY.md`** + **`docs/DATA_ARCHITECTURE.md`**). Internal full-export envelope for tools/tests: **`src/data/persistence/localExport/kairoLocalExport.ts`**. New persisted keys require **`DATA_CONTRACT.md`** updates in the same PR.
 6. **Accessibility & App Store readiness** — Ship only after **`docs/ACCESSIBILITY.md`** manual matrix (VoiceOver, Dynamic Type, Reduce Motion) on **physical devices** plus **`docs/RELEASE_CHECKLIST.md`** gates. Icon-only controls need labels; modals use **`accessibilityViewIsModal`** where implemented; respect **`a11y.reduceMotion`** for navigation and sheets.
 
 See also [`ZERO_COMPROMISE.md`](./ZERO_COMPROMISE.md) for PR blockers and engineering defaults.
@@ -111,9 +111,9 @@ See also [`ZERO_COMPROMISE.md`](./ZERO_COMPROMISE.md) for PR blockers and engine
 
 ## Daily Activity (read model)
 
-**Product:** A **single-day lens** that joins mood with *lightweight* context (habits, goals, reminders) so reflection and future insights can ask **“what else was true that day?”** — without turning Moodly into a productivity dashboard or overshadowing the **yearly mood color map**.
+**Product:** A **single-day lens** that joins mood with *lightweight* context (habits, goals, reminders) so reflection and future insights can ask **“what else was true that day?”** — without turning Kairo into a productivity dashboard or overshadowing the **yearly mood color map**.
 
-**Engineering:** `dailyActivityRepository` (`src/data/repositories/dailyActivityRepository.ts`) exposes **`getDayActivity`**, **`getDayActivityRange`**, **`getTodayActivity`** and returns a stable **`DayActivity`** DTO (`src/types/dailyActivity.types.ts`). It is **read-only**: it never writes `moodly.entries`, habits, goals, or reminder shards. **Source of truth** stays in existing stores; Daily Activity is **derived** and safe to recompute anytime.
+**Engineering:** `dailyActivityRepository` (`src/data/repositories/dailyActivityRepository.ts`) exposes **`getDayActivity`**, **`getDayActivityRange`**, **`getTodayActivity`** and returns a stable **`DayActivity`** DTO (`src/types/dailyActivity.types.ts`). It is **read-only**: it never writes `kairo.entries`, habits, goals, or reminder shards. **Source of truth** stays in existing stores; Daily Activity is **derived** and safe to recompute anytime.
 
 - **Writes** remain domain-specific (`entriesRepository`, `extensionsRepository`, `goalsRepository`, `tasksRepository`, …).
 - **Date identity** is local **`YYYY-MM-DD`** only (same rule as calendar; never UTC string slicing for day keys).
@@ -156,7 +156,7 @@ Types are defined in `src/types/goals.types.ts` (`GoalType`). The **Goals** scre
 
 ### Persistence & performance
 
-- **`moodly.goals`**: **`GoalsRecord`** at **`GOALS_RECORD_VERSION` 2** (`goalsStorage.ts`). Legacy **v1** payloads migrate on first read (idempotent), with a **`moodly.goals.migrate_backup.*`** snapshot of the pre-migrate JSON when upgrading from v1.
+- **`kairo.goals`**: **`GoalsRecord`** at **`GOALS_RECORD_VERSION` 2** (`goalsStorage.ts`). Legacy **v1** payloads migrate on first read (idempotent), with a **`kairo.goals.migrate_backup.*`** snapshot of the pre-migrate JSON when upgrading from v1.
 - **List / Today previews**: use **`getGoalSummaries`** for full sorted summaries; **`getTodayGoalSummaries`** only materializes **active** goals (sorted by `updatedAt`, then title) up to the limit — avoid cloning full histories on Today.
 - Summary fields (**percent, streak, `completedToday`, `loggedDays`**) all come from **`computeGoalProgress`** so UI cannot drift from the canonical model.
 - **Insights**: `buildGoalInsight` / `computeGoalProgress` generate short **encouraging** strings — keep new copy in that spirit.
@@ -177,13 +177,13 @@ Types are defined in `src/types/goals.types.ts` (`GoalType`). The **Goals** scre
 ### Two layers (important for agents)
 
 1. **Day list UX** — `TodoScreen` + `useDayTodos` operate on **`DayTodoItem[]`**: `title`, `done`, `sortIndex`, optional **`reminderMinutes`** (0–1439, **in-app cue only**), cap **`DAY_TODO_MAX_ITEMS_PER_DAY`**. This is the **simple, calm** Reminders experience aligned with Apple Reminders–style day lists.
-2. **Normalized task foundation** — `TasksRecord` under **`moodly.tasks`** holds richer **`Task`** objects: **subtasks**, **tags**, **lists**, **recurrence**, **`TaskHistory`**, priorities, archive fields, etc. This exists for **evolution, migration, and bounded recurrence generation** — not all fields have first-class UI yet.
+2. **Normalized task foundation** — `TasksRecord` under **`kairo.tasks`** holds richer **`Task`** objects: **subtasks**, **tags**, **lists**, **recurrence**, **`TaskHistory`**, priorities, archive fields, etc. This exists for **evolution, migration, and bounded recurrence generation** — not all fields have first-class UI yet.
 
 ### Persistence (current)
 
-- **Hot day reads/writes**: shards **`moodly.tasks.day.<YYYY-MM-DD>`** + index **`moodly.tasks.dayIndex`**.
-- **Metadata / recurrence / history**: **`moodly.tasks`** (`TasksRecord`).
-- **Legacy**: **`moodly.dayTodos`** is **migration input only** (migrated into tasks + shards).
+- **Hot day reads/writes**: shards **`kairo.tasks.day.<YYYY-MM-DD>`** + index **`kairo.tasks.dayIndex`**.
+- **Metadata / recurrence / history**: **`kairo.tasks`** (`TasksRecord`).
+- **Legacy**: **`kairo.dayTodos`** is **migration input only** (migrated into tasks + shards).
 
 ### Recurrence engine
 
@@ -220,7 +220,7 @@ The **emotional timeline** (especially **year** and **month** mood color surface
 
 ## UI / UX standards
 
-### Moodly should always feel
+### Kairo should always feel
 
 - **Soft, premium, fluid**, emotionally **calming**, and **native to iOS** in spacing and motion habits.
 - **Intentionally uncluttered** — fewer, better pixels.
@@ -244,13 +244,13 @@ The **emotional timeline** (especially **year** and **month** mood color surface
 - **Harsh chrome** — heavy black borders, stacked noisy shadows, rainbow accent explosions.
 - **Productivity theater** — cluttered counters, redundant progress widgets, corporate tables in the journal/calendar emotional surfaces.
 
-Fuller “never / always” list: [`DESIGN_SYSTEM.md`](./DESIGN_SYSTEM.md) § Moodly UX constitution.
+Fuller “never / always” list: [`DESIGN_SYSTEM.md`](./DESIGN_SYSTEM.md) § Kairo UX constitution.
 
 ---
 
 ## Interaction quality & iOS fluidity
 
-Moodly should feel **responsive and tactile** — interaction quality is part of the product, not polish icing.
+Kairo should feel **responsive and tactile** — interaction quality is part of the product, not polish icing.
 
 - **Scrolling**: calendar month timeline, journal lists, and Today scroll are **hot paths** — avoid synchronous heavy work in scroll handlers; prefer patterns already used (`FlashList`, deferred work, refs). See [`perf-calendar.md`](./perf-calendar.md) and [`PERFORMANCE.md`](./PERFORMANCE.md).
 - **Navigation / tab focus**: schedule **storage-backed** refetches from **`useFocusEffect`** with **`InteractionManager.runAfterInteractions`** on primary surfaces (Today, Journal, calendar stack, Settings, Habits, Goals) so transitions stay fluid; **`useDayTodos`** already defers when the screen is focused. Do not move work *into* scroll handlers to compensate.

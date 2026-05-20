@@ -3,24 +3,24 @@
  * @module data/repositories/userDataExportRepository
  */
 
-import { applyMoodlyLocalImportV1 } from '../persistence/localExport/applyMoodlyLocalImport';
-import { buildMoodlyUserExportJson, buildMoodlyUserExportV1 } from '../persistence/localExport/buildUserExport';
-import { parseMoodlyLocalExportJson } from '../persistence/localExport/moodlyLocalExport';
+import { applyKairoLocalImportV1 } from '../persistence/localExport/applyKairoLocalImport';
+import { buildKairoUserExportJson, buildKairoUserExportV1 } from '../persistence/localExport/buildUserExport';
+import { parseKairoLocalExportJson } from '../persistence/localExport/kairoLocalExport';
 
 export async function exportUserDataJson(): Promise<string> {
-  return buildMoodlyUserExportJson();
+  return buildKairoUserExportJson();
 }
 
 export async function validateUserDataImportJson(json: string) {
-  return parseMoodlyLocalExportJson(json);
+  return parseKairoLocalExportJson(json);
 }
 
 export async function importUserDataFromJson(json: string): Promise<void> {
-  const parsed = parseMoodlyLocalExportJson(json);
+  const parsed = parseKairoLocalExportJson(json);
   if (!parsed.ok) {
-    throw new Error(`Invalid Moodly export (${parsed.errors.join(', ')})`);
+    throw new Error(`Invalid Kairo export (${parsed.errors.join(', ')})`);
   }
-  await applyMoodlyLocalImportV1(parsed.value);
+  await applyKairoLocalImportV1(parsed.value);
 }
 
-export { buildMoodlyUserExportV1 };
+export { buildKairoUserExportV1 };

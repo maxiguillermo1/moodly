@@ -44,7 +44,7 @@ function looksSensitiveKey(k: string) {
     s === 'entry' ||
     s === 'entries' ||
     s === 'mood' ||
-    s.includes('moodly.') ||
+    s.includes('kairo.') ||
     s.includes('entry') ||
     s.includes('note')
   );

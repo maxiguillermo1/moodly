@@ -2,7 +2,7 @@
  * @fileoverview Production wipe of all user-generated local content (store "delete my data").
  * @module data/storage/userDataReset
  *
- * Does **not** reset appearance/settings preferences (`moodly.settings`).
+ * Does **not** reset appearance/settings preferences (`kairo.settings`).
  */
 
 import { assertLocalPersistenceWritable, ensureLocalPersistenceReady } from '../persistence/bootstrap';

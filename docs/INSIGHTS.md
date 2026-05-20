@@ -1,4 +1,4 @@
-# Moodly — Insights & Reflection Engine (v0.6+)
+# Kairo — Insights & Reflection Engine (v0.6+)
 
 **Status:** Foundation + **signal quality layer** — still **no mandatory new UI**; bundles are safe to consume from `src/storage` when a surface ships. Everything remains **local-first**, **deterministic**, and **inspectable**.
 
@@ -25,8 +25,8 @@
 
 ## What this is not
 
-- **Not** a replacement for `moodly.entries`, habits, goals, or reminders — those remain canonical.
-- **Not** a persisted “insights feed” blob — computed bundles are ephemeral; only **`moodly.insights.reflectionTiming`** stores last-surfaced timestamps per **topicId** (see below).
+- **Not** a replacement for `kairo.entries`, habits, goals, or reminders — those remain canonical.
+- **Not** a persisted “insights feed” blob — computed bundles are ephemeral; only **`kairo.insights.reflectionTiming`** stores last-surfaced timestamps per **topicId** (see below).
 - **Not** allowed to embed **user journal text** or **user-authored goal titles** in templates — params are structural (counts, catalog habit labels, spans in days).
 
 ## Architecture
@@ -39,7 +39,7 @@
 | **Signal quality** | `src/lib/insights/signalQualityEngine.ts` | **Confidence** (`low` \| `medium` \| `high`), **topicId**, **signalScore**; dedupe, low-value suppression, sort, cap. |
 | **Semantic topics** | `src/lib/insights/insightTopics.ts` | Maps artifacts → **topicId** (dedupe + cooldown keys). |
 | **Timing** | `src/lib/insights/reflectionTiming.ts` | `filterInsightsByCooldowns`, `timingStateAfterRecording` — pure rules + ms constants. |
-| **Timing persistence** | `src/data/storage/insightsReflectionStateStorage.ts` | Key **`moodly.insights.reflectionTiming`**: `{ schemaVersion: 1, topicLastSurfacedAtMs }`. |
+| **Timing persistence** | `src/data/storage/insightsReflectionStateStorage.ts` | Key **`kairo.insights.reflectionTiming`**: `{ schemaVersion: 1, topicLastSurfacedAtMs }`. |
 | **Summary metrics** | `src/lib/insights/summaryGenerators.ts` | `buildPeriodMetrics` — transparent aggregates. |
 | **Trends** | `src/lib/insights/trendCalculators.ts` | Streak / density helpers. |
 | **Mood ordering** | `src/lib/insights/moodOrdinal.ts` | Grade ordering for soft correlations. |

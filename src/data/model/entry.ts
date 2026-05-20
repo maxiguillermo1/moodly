@@ -1,5 +1,5 @@
 /**
- * @fileoverview Canonical domain model helpers for Moodly entries.
+ * @fileoverview Canonical domain model helpers for Kairo entries.
  * @module data/model/entry
  *
  * This module is designed for analytics/ML readiness:

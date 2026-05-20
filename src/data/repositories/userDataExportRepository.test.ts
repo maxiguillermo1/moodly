@@ -12,13 +12,13 @@ function getAsyncStorage(): typeof import('@react-native-async-storage/async-sto
 function resetHarness(): void {
   const { __resetExpoSqliteMockForTests } = require('../persistence/sqlite/__mocks__/expoSqliteMock');
   __resetExpoSqliteMockForTests();
-  const { __setMoodlySqliteDatabaseForTests, resetMoodlySqliteBootstrapForTests } =
+  const { __setKairoSqliteDatabaseForTests, resetKairoSqliteBootstrapForTests } =
     require('../persistence/sqlite/database');
-  const { getSharedInMemoryMoodlyDatabase, resetSharedInMemoryMoodlyDatabase } =
+  const { getSharedInMemoryKairoDatabase, resetSharedInMemoryKairoDatabase } =
     require('../persistence/sqlite/testInMemoryDatabase');
-  resetSharedInMemoryMoodlyDatabase();
-  __setMoodlySqliteDatabaseForTests(getSharedInMemoryMoodlyDatabase());
-  resetMoodlySqliteBootstrapForTests();
+  resetSharedInMemoryKairoDatabase();
+  __setKairoSqliteDatabaseForTests(getSharedInMemoryKairoDatabase());
+  resetKairoSqliteBootstrapForTests();
   const { resetMoodEntriesBackendCacheForTests } = require('../persistence/sqlite/storageBackend');
   const { resetHabitSelectionsBackendCacheForTests } = require('../persistence/sqlite/habitsStorageBackend');
   const { resetGoalsBackendCacheForTests } = require('../persistence/sqlite/goalsStorageBackend');
@@ -51,13 +51,13 @@ describe('userDataExportRepository', () => {
     const { exportUserDataJson } = require('./userDataExportRepository') as typeof import('./userDataExportRepository');
     const json = await exportUserDataJson();
     const parsed = JSON.parse(json) as { kv: Record<string, string> };
-    expect(parsed.kv['moodly.entries']).toContain('2026-05-01');
-    expect(parsed.kv['moodly.entries']).toContain('export me');
+    expect(parsed.kv['kairo.entries']).toContain('2026-05-01');
+    expect(parsed.kv['kairo.entries']).toContain('export me');
   });
 
   it('import restores entries from export round-trip', async () => {
     const record = generateSyntheticMoodEntries(3);
-    await getAsyncStorage().setItem('moodly.entries', JSON.stringify(record));
+    await getAsyncStorage().setItem('kairo.entries', JSON.stringify(record));
 
     const { exportUserDataJson, importUserDataFromJson } =
       require('./userDataExportRepository') as typeof import('./userDataExportRepository');

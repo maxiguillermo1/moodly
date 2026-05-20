@@ -1,6 +1,6 @@
 # Accessibility Contract
 
-Moodly **v0.6** accessibility should feel as calm and intentional as the visual product. Improvements must preserve visual minimalism while making core flows usable with VoiceOver, Dynamic Type, Reduce Motion, and larger touch targets.
+Kairo **v0.6** accessibility should feel as calm and intentional as the visual product. Improvements must preserve visual minimalism while making core flows usable with VoiceOver, Dynamic Type, Reduce Motion, and larger touch targets.
 
 ## VoiceOver
 

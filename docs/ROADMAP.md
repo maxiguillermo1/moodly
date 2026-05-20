@@ -1,12 +1,12 @@
-# Moodly Technical Roadmap
+# Kairo Technical Roadmap
 
-**Product line:** **Moodly v0.6** (semver **0.6.0**) — pre-1.0 refinement; see [`CHANGELOG.md`](./CHANGELOG.md) § Versioning and [`AGENTS.md`](./AGENTS.md) § Product maturity & versioning.
+**Product line:** **Kairo v0.6** (semver **0.6.0**) — pre-1.0 refinement; see [`CHANGELOG.md`](./CHANGELOG.md) § Versioning and [`AGENTS.md`](./AGENTS.md) § Product maturity & versioning.
 
-**North star:** the **yearly emotional color map** and continuity across months/seasons — see [`AGENTS.md`](./AGENTS.md) § Moodly identity (heart of the product).
+**North star:** the **yearly emotional color map** and continuity across months/seasons — see [`AGENTS.md`](./AGENTS.md) § Kairo identity (heart of the product).
 
 **Product guardrails and agent rules:** [`AGENTS.md`](./AGENTS.md) (identity, calm/minimal defaults, testing expectations). This file is the **time-ordered** technical roadmap.
 
-This roadmap is intentionally conservative. Moodly should scale by preserving trust, calmness, and local-first clarity, not by adding visible complexity early.
+This roadmap is intentionally conservative. Kairo should scale by preserving trust, calmness, and local-first clarity, not by adding visible complexity early.
 
 ## Near: Release Foundation
 
@@ -22,8 +22,8 @@ This roadmap is intentionally conservative. Moodly should scale by preserving tr
 - Define delete/reset semantics in user-facing language.
 - Add larger synthetic data harnesses for multi-year mood/journal histories and dense reminders.
 - Decide when to graduate remaining AsyncStorage blobs (habits, goals) to SQLite — **mood entries migrated in v0.7** (`src/data/persistence/sqlite/`).
-- Expand the new `moodly.tasks` model into Inbox/Upcoming/Lists/detail UI only if it stays lightweight and **never** reads as a productivity dashboard competing with the mood map.
-- Extend `moodly.goals` with richer milestones and reminders **only** when framed as **context for emotional arcs**, after physical-device validation.
+- Expand the new `kairo.tasks` model into Inbox/Upcoming/Lists/detail UI only if it stays lightweight and **never** reads as a productivity dashboard competing with the mood map.
+- Extend `kairo.goals` with richer milestones and reminders **only** when framed as **context for emotional arcs**, after physical-device validation.
 
 ## Later: Sync And Cloud Readiness
 
@@ -34,7 +34,7 @@ This roadmap is intentionally conservative. Moodly should scale by preserving tr
 
 ## Later: AI And Insights
 
-- AI should be optional, privacy-forward, and explainable — and **must not** reframing Moodly as an “assistant” product; the **color timeline remains primary**.
+- AI should be optional, privacy-forward, and explainable — and **must not** reframing Kairo as an “assistant” product; the **color timeline remains primary**.
 - Default posture: no raw journal note upload without explicit opt-in.
 - Prefer local or on-device preprocessing where practical.
 - Any AI insight must feel **reflective and emotional**, not performative — avoid clinical claims, scoring, productivity percentages, or manipulative engagement loops.
@@ -47,4 +47,4 @@ This roadmap is intentionally conservative. Moodly should scale by preserving tr
 
 ## Later: Collaboration
 
-Collaboration is not aligned with Moodly’s current private reflection identity. If explored, it should start with controlled export/share flows, not live shared journals. Real collaboration would require accounts, permissions, sync conflict handling, abuse controls, and a new privacy model.
+Collaboration is not aligned with Kairo’s current private reflection identity. If explored, it should start with controlled export/share flows, not live shared journals. Real collaboration would require accounts, permissions, sync conflict handling, abuse controls, and a new privacy model.

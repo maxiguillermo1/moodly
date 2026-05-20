@@ -1,4 +1,4 @@
-## Moodly — Owner Decisions (5-year mindset)
+## Kairo — Owner Decisions (5-year mindset)
 
 This doc captures *implicit decisions* that are easy to accidentally break as the codebase grows.
 If you change one of these, update this doc and the relevant module comments.
@@ -115,7 +115,7 @@ If you change one of these, update this doc and the relevant module comments.
 - **Decision**: CI and release discipline target **iOS + Android** bundles first. **Web** is supported via Expo but not the primary product until explicitly invested in (see **`docs/WEB_DEPLOYMENT_CHUNKS.md`**).
 - **Where**: `npm run export:bundles-check` (`expo export -p all`) validates native JS output; **`npm run web`** remains dev/preview.
 
-### 14) Day-scoped **Reminders** (`moodly.dayTodos`) — in-app times, not push by default
+### 14) Day-scoped **Reminders** (`kairo.dayTodos`) — in-app times, not push by default
 
 - **Decision**: Per local **`YYYY-MM-DD`**, users get a **Reminders** list (user-facing name). Optional **`reminderMinutes`** (`0..1439`, local wall clock) drives **UI** ordering/teasers/overdue styling on **that day** only. **No OS notification** is scheduled unless a future feature adds **`expo-notifications`** (or similar) with explicit permission UX.
 - **Where**: `src/data/storage/dayTodosStorage.ts`, `src/types/todo.types.ts`, `src/lib/todos/reminderTime.ts`, `src/features/reminders/screens/TodoScreen.tsx`, `DayExtensionsHostContext` for modal → stack navigation.

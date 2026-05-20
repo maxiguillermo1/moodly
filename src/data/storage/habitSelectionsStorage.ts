@@ -2,7 +2,7 @@
  * @fileoverview Per-day habit chip selections (AsyncStorage)
  * @module data/storage/habitSelectionsStorage
  *
- * ## Storage contract (`moodly.habitSelections`)
+ * ## Storage contract (`kairo.habitSelections`)
  *
  * - **Single source of truth**: `selections` — `Record<YYYY-MM-DD, HabitId[]>` (local calendar day keys only).
  * - **Version**: On disk, values are wrapped as **`{ v: 3, selections, toggleTotals }`**. `v` must be `3` for the
@@ -37,7 +37,7 @@ import {
 } from './habitSelectionsBackend';
 import { notifyHabitSelectionsChanged } from '../sync/syncBridge';
 
-const STORAGE_KEY = 'moodly.habitSelections';
+const STORAGE_KEY = 'kairo.habitSelections';
 const STORAGE_VERSION = 3;
 const CORRUPT_PREFIX = `${STORAGE_KEY}.corrupt.`;
 

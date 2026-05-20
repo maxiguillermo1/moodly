@@ -7,15 +7,15 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { getSupabaseConfig } from '../config';
 import { supabaseSecureStorage } from './sessionStorage';
 
-export type MoodlySupabaseClient = SupabaseClient;
+export type KairoSupabaseClient = SupabaseClient;
 
-let client: MoodlySupabaseClient | null = null;
+let client: KairoSupabaseClient | null = null;
 
 export function isSupabaseConfigured(): boolean {
   return getSupabaseConfig().enabled;
 }
 
-export function getSupabaseClient(): MoodlySupabaseClient | null {
+export function getSupabaseClient(): KairoSupabaseClient | null {
   if (!isSupabaseConfigured()) return null;
   if (client) return client;
   const { url, anonKey } = getSupabaseConfig();

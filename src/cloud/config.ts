@@ -26,8 +26,8 @@ export function getSupabaseConfig(): SupabaseConfig {
 }
 
 /** OAuth redirect scheme — must match app.config.ts `scheme`. */
-export const MOODLY_AUTH_REDIRECT_SCHEME = 'moodly';
+export const KAIRO_AUTH_REDIRECT_SCHEME = 'kairo';
 
 export function getAuthRedirectUri(): string {
-  return `${MOODLY_AUTH_REDIRECT_SCHEME}://auth/callback`;
+  return `${KAIRO_AUTH_REDIRECT_SCHEME}://auth/callback`;
 }

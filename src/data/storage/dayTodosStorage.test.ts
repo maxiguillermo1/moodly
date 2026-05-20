@@ -1,9 +1,9 @@
-const STORAGE_KEY = 'moodly.dayTodos';
-const TASKS_KEY = 'moodly.tasks';
+const STORAGE_KEY = 'kairo.dayTodos';
+const TASKS_KEY = 'kairo.tasks';
 
 describe('dayTodosStorage resilience', () => {
   beforeEach(async () => {
-    (globalThis as any).__MOODLY_CHAOS__ = undefined;
+    (globalThis as any).__KAIRO_CHAOS__ = undefined;
     jest.resetModules();
     const mod: any = require('@react-native-async-storage/async-storage');
     await (mod?.default ?? mod).clear();

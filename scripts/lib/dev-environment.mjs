@@ -9,7 +9,7 @@ Expo Go on a physical phone cannot load this project while the folder path conta
 
   Current:  {current}
   Fix:      npm run fix:dev-path
-  Or move:  mv "{current}" ~/Desktop/moodly && cd ~/Desktop/moodly
+  Or move:  mv "{current}" ~/Desktop/kairo && cd ~/Desktop/kairo
 
 Then restart with a clean Metro cache:
   npm run start:clear
@@ -46,12 +46,12 @@ export function assertDevEnvironment(projectRoot, options = {}) {
 
   const message = SPACED_PATH_HINT.replaceAll('{current}', canonical);
 
-  if (process.env.MOODLY_ALLOW_SPACED_PATH === '1') {
-    console.warn(`⚠️  Moodly dev: spaced path override is enabled (Expo Go may still fail).${message}`);
+  if (process.env.KAIRO_ALLOW_SPACED_PATH === '1') {
+    console.warn(`⚠️  Kairo dev: spaced path override is enabled (Expo Go may still fail).${message}`);
     return;
   }
 
-  console.error(`❌  Moodly dev: project path contains spaces — Expo Go QR loading will not work reliably.${message}`);
+  console.error(`❌  Kairo dev: project path contains spaces — Expo Go QR loading will not work reliably.${message}`);
 
   if (strict) {
     process.exit(1);

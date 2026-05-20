@@ -101,30 +101,30 @@ export function RootApp() {
   useEffect(() => {
     if (typeof __DEV__ === 'undefined' || !__DEV__) return;
     // Dev-only debug harness (no UI changes). Trigger from Metro console:
-    //   globalThis.MoodlyDebug.list()
-    //   globalThis.MoodlyDebug.run('rapidMonthTaps')
+    //   globalThis.KairoDebug.list()
+    //   globalThis.KairoDebug.run('rapidMonthTaps')
     const dbg = require('../dev/debugScenarios') as typeof import('../dev/debugScenarios');
     const fullDemoSeed = require('../data/storage/fullDemoSeed') as typeof import('../data/storage/fullDemoSeed');
-    (globalThis as any).MoodlyDebug = {
+    (globalThis as any).KairoDebug = {
       list: dbg.listDebugScenarios,
       run: dbg.runDebugScenario,
       runAll: dbg.runAllDebugScenarios,
       // Deterministic fault injection config for storage (dev-only).
       setChaos(config: any) {
-        (globalThis as any).__MOODLY_CHAOS__ = config;
+        (globalThis as any).__KAIRO_CHAOS__ = config;
       },
     };
-    (globalThis as any).MoodlySeed = {
+    (globalThis as any).KairoSeed = {
       /** Wipe local mood/goals/tasks/habits (not settings) and re-seed 2020→today. */
       rebuild: () => fullDemoSeed.runFullDemoRebuild(),
     };
     return () => {
       try {
-        delete (globalThis as any).MoodlyDebug;
-        delete (globalThis as any).MoodlySeed;
+        delete (globalThis as any).KairoDebug;
+        delete (globalThis as any).KairoSeed;
       } catch {
-        (globalThis as any).MoodlyDebug = undefined;
-        (globalThis as any).MoodlySeed = undefined;
+        (globalThis as any).KairoDebug = undefined;
+        (globalThis as any).KairoSeed = undefined;
       }
     };
   }, []);

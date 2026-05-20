@@ -2,7 +2,7 @@
  * @fileoverview Local-first **insights** façade — read-only composition over existing stores.
  * @module data/repositories/insightsRepository
  *
- * - Source of truth: `moodly.*` via `getDayActivityRange` + `goalsRepository.getGoals()` (no duplicate entry reads).
+ * - Source of truth: `kairo.*` via `getDayActivityRange` + `goalsRepository.getGoals()` (no duplicate entry reads).
  * - Deterministic engine: `src/lib/insights/reflectionEngine.ts`.
  * - Signal quality + optional presentation timing: `signalQualityEngine`, `reflectionTiming`, `insightsReflectionStateStorage`.
  */

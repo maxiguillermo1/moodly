@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Moves the Moodly repo to a space-free path (~/Desktop/moodly) for Expo Go.
+ * Moves the Kairo repo to a space-free path (~/Desktop/kairo) for Expo Go.
  * Run: npm run fix:dev-path
  * Apply: npm run fix:dev-path -- --apply
  */
@@ -13,7 +13,7 @@ import { resolveProjectRoot } from './lib/dev-environment.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const sourceRoot = resolveProjectRoot(path.resolve(__dirname, '..'));
-const targetRoot = path.join(os.homedir(), 'Desktop', 'moodly');
+const targetRoot = path.join(os.homedir(), 'Desktop', 'kairo');
 const shouldApply = process.argv.includes('--apply');
 
 if (!/\s/.test(sourceRoot)) {
@@ -33,7 +33,7 @@ if (fs.existsSync(targetRoot)) {
   process.exit(1);
 }
 
-console.log(`Move Moodly to a space-free path for Expo Go:
+console.log(`Move Kairo to a space-free path for Expo Go:
 
   From: ${sourceRoot}
   To:   ${targetRoot}
@@ -46,7 +46,7 @@ if (!shouldApply) {
 
 Then:
 
-  cd ~/Desktop/moodly
+  cd ~/Desktop/kairo
   npm run start:clear
 `);
   process.exit(0);
@@ -61,6 +61,6 @@ console.log(`✓ Moved to:
 
 Next:
 
-  cd ~/Desktop/moodly
+  cd ~/Desktop/kairo
   npm run start:clear
 `);

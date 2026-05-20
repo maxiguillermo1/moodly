@@ -1,12 +1,12 @@
 /**
- * @fileoverview Forward SQL migrations for Moodly local SQLite.
+ * @fileoverview Forward SQL migrations for Kairo local SQLite.
  * @module data/persistence/sqlite/migrations/registry
  */
 
-import type { MoodlySqliteDatabase } from '../databaseTypes';
+import type { KairoSqliteDatabase } from '../databaseTypes';
 
 export type SqlMigrationContext = {
-  db: MoodlySqliteDatabase;
+  db: KairoSqliteDatabase;
   fromVersion: number;
   toVersion: number;
 };
@@ -18,7 +18,7 @@ export const SQL_MIGRATIONS: readonly SqlMigrationStep[] = [
   async ({ db }) => {
     await db.execAsync(`
       PRAGMA journal_mode = WAL;
-      CREATE TABLE IF NOT EXISTS moodly_meta (
+      CREATE TABLE IF NOT EXISTS kairo_meta (
         key TEXT PRIMARY KEY NOT NULL,
         value TEXT NOT NULL
       );
@@ -60,5 +60,13 @@ export const SQL_MIGRATIONS: readonly SqlMigrationStep[] = [
       );
       CREATE INDEX IF NOT EXISTS idx_goal_progress_goal ON goal_progress(goal_id);
     `);
+  },
+  async ({ db }) => {
+    const legacyMeta = await db.getFirstAsync<{ name: string }>(
+      "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'moodly_meta'"
+    );
+    if (legacyMeta) {
+      await db.execAsync('ALTER TABLE moodly_meta RENAME TO kairo_meta');
+    }
   },
 ];

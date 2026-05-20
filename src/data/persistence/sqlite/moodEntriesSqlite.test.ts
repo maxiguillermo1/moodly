@@ -4,7 +4,7 @@
 
 import { generateSyntheticMoodEntries } from '../../../qa/entriesScaleHarness';
 
-const STORAGE_KEY = 'moodly.entries';
+const STORAGE_KEY = 'kairo.entries';
 
 function getAsyncStorage(): typeof import('@react-native-async-storage/async-storage').default {
   const mod: any = require('@react-native-async-storage/async-storage');
@@ -14,13 +14,13 @@ function getAsyncStorage(): typeof import('@react-native-async-storage/async-sto
 function resetSqliteTestHarness(): void {
   const { __resetExpoSqliteMockForTests } = require('./__mocks__/expoSqliteMock') as typeof import('./__mocks__/expoSqliteMock');
   __resetExpoSqliteMockForTests();
-  const { __setMoodlySqliteDatabaseForTests, resetMoodlySqliteBootstrapForTests } =
+  const { __setKairoSqliteDatabaseForTests, resetKairoSqliteBootstrapForTests } =
     require('./database') as typeof import('./database');
-  const { getSharedInMemoryMoodlyDatabase, resetSharedInMemoryMoodlyDatabase } =
+  const { getSharedInMemoryKairoDatabase, resetSharedInMemoryKairoDatabase } =
     require('./testInMemoryDatabase') as typeof import('./testInMemoryDatabase');
-  resetSharedInMemoryMoodlyDatabase();
-  __setMoodlySqliteDatabaseForTests(getSharedInMemoryMoodlyDatabase());
-  resetMoodlySqliteBootstrapForTests();
+  resetSharedInMemoryKairoDatabase();
+  __setKairoSqliteDatabaseForTests(getSharedInMemoryKairoDatabase());
+  resetKairoSqliteBootstrapForTests();
   const { resetMoodEntriesBackendCacheForTests } = require('./storageBackend') as typeof import('./storageBackend');
   resetMoodEntriesBackendCacheForTests();
   const { resetPersistenceBootstrapForTests } = require('../bootstrap') as typeof import('../bootstrap');
@@ -44,10 +44,10 @@ describe('sqlite mood entries persistence', () => {
     const { ensureLocalPersistenceReady } = require('../bootstrap') as typeof import('../bootstrap');
     await ensureLocalPersistenceReady();
 
-    const { ensureMoodlySqliteReady } = require('./database') as typeof import('./database');
+    const { ensureKairoSqliteReady } = require('./database') as typeof import('./database');
     const { countMoodEntries, loadAllMoodEntriesFromSqlite } =
       require('./moodEntriesStore') as typeof import('./moodEntriesStore');
-    const db = await ensureMoodlySqliteReady();
+    const db = await ensureKairoSqliteReady();
     expect(await countMoodEntries(db)).toBe(5);
     expect(Object.keys(await loadAllMoodEntriesFromSqlite(db))).toHaveLength(5);
 
@@ -56,7 +56,7 @@ describe('sqlite mood entries persistence', () => {
     expect(Object.keys(loaded)).toHaveLength(5);
     expect(loaded['2016-01-01']?.mood).toBe('A+');
 
-    const backendFlag = await getAsyncStorage().getItem('moodly.entries.backend');
+    const backendFlag = await getAsyncStorage().getItem('kairo.entries.backend');
     expect(backendFlag).toBe('sqlite');
   });
 
@@ -83,13 +83,13 @@ describe('sqlite mood entries persistence', () => {
 
   it('quarantines corrupt AsyncStorage JSON before sqlite import path', async () => {
     await getAsyncStorage().setItem(STORAGE_KEY, '{not json');
-    process.env.MOODLY_ENTRIES_BACKEND = 'async';
+    process.env.KAIRO_ENTRIES_BACKEND = 'async';
 
     const { getAllEntries } = require('../../storage/moodStorage') as typeof import('../../storage/moodStorage');
     const loaded = await getAllEntries();
     expect(loaded).toEqual({});
 
-    delete process.env.MOODLY_ENTRIES_BACKEND;
+    delete process.env.KAIRO_ENTRIES_BACKEND;
   });
 
   it('preserves write-lock serialization under sqlite backend', async () => {

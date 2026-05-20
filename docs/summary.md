@@ -1,6 +1,6 @@
-# Moodly – Engineering Summary Log
+# Kairo – Engineering Summary Log
 
-**Product versioning:** The shipped app line is **Moodly v0.6** (**`0.6.0`** in `package.json` / `app.json` / `APP_RELEASE_VERSION`). See [`CHANGELOG.md`](./CHANGELOG.md) § Versioning and [`AGENTS.md`](./AGENTS.md) § Product maturity & versioning.  
+**Product versioning:** The shipped app line is **Kairo v0.6** (**`0.6.0`** in `package.json` / `app.json` / `APP_RELEASE_VERSION`). See [`CHANGELOG.md`](./CHANGELOG.md) § Versioning and [`AGENTS.md`](./AGENTS.md) § Product maturity & versioning.  
 **About this file:** Dated entries below are an **engineering log**; some older internal headings use “Version 0.x” labels from earlier passes — they are **not** a second source of truth for app semver.
 
 ## Changelog Index
@@ -49,10 +49,10 @@
 
 ### Version 0.5 — Core Foundation (2026-02-03)
 
-> **Historical note:** This heading is an **internal milestone label** from February 2026. **Current** product line: **Moodly v0.6** (**`0.6.0`**). Older milestones (e.g. v0.5) remain in [`CHANGELOG.md`](./CHANGELOG.md) § Versioning and [`AGENTS.md`](./AGENTS.md) § Product maturity & versioning.
+> **Historical note:** This heading is an **internal milestone label** from February 2026. **Current** product line: **Kairo v0.6** (**`0.6.0`**). Older milestones (e.g. v0.5) remain in [`CHANGELOG.md`](./CHANGELOG.md) § Versioning and [`AGENTS.md`](./AGENTS.md) § Product maturity & versioning.
 
 #### Why we did it (layman terms)
-Moodly v0.5 is a local-first app with no accounts, backend, sync, or networking. This milestone focuses on foundations: clear layer boundaries, predictable data handling, privacy-safe logging, and performance hygiene in calendar hot paths.
+Kairo v0.5 is a local-first app with no accounts, backend, sync, or networking. This milestone focuses on foundations: clear layer boundaries, predictable data handling, privacy-safe logging, and performance hygiene in calendar hot paths.
 
 Scope is intentionally limited to internal quality upgrades. The app’s UI/UX and behavior remain the same, while the codebase is made harder to misuse and more resilient to real-world device/storage conditions.
 
@@ -259,7 +259,7 @@ Example PERF line format (metadata-only):
 
 #### Constraints confirmation
 - **No feature changes** (no new screens/flows/routes; behavior on success paths unchanged)
-- **No storage semantic/key changes** (`moodly.entries` / `moodly.settings` unchanged; only write safety added)
+- **No storage semantic/key changes** (`kairo.entries` / `kairo.settings` unchanged; only write safety added)
 - **Expo Go compatible**
 
 #### Quick validation checklist (2–5 minutes)
@@ -613,7 +613,7 @@ v0.6 adds a reliability layer that makes storage writes **deterministic and race
 
 #### Fixes added (engineering summary)
 - **`src/extensions/`**: day scope + registry + memo slots; host **`onBeforeDetailNavigate`** for stack navigation from modals.
-- **`moodly.dayTodos`**: **`DayTodoItem.reminderMinutes`** (validated `0..1439` or `null`); **`setDayTodoReminder`** and related mutations on **`src/storage`**.
+- **`kairo.dayTodos`**: **`DayTodoItem.reminderMinutes`** (validated `0..1439` or `null`); **`setDayTodoReminder`** and related mutations on **`src/storage`**.
 - **UI**: **`TodoScreen`** (**`Todo`** route, **Reminders** chrome), **`TodayTodoExtension`**, **`TodoTaskRow`**, **`TodoReminderPicker`**; draggable open list; strip matches **Goals**-style indigo alarm well.
 - **Pure helpers**: **`src/lib/todos/`** re-exported via **`src/utils`** for ESLint-safe imports.
 
@@ -637,7 +637,7 @@ v0.6 adds a reliability layer that makes storage writes **deterministic and race
 - Reduce surprise at **real deploy** time: native identifiers, crash containment, calendar load consistency, and CI that catches broken Metro bundles early.
 
 #### Fixes added (engineering summary)
-- **`app.json`**: URL **`scheme`**, **`ios.bundleIdentifier`**, **`android.package`** (interim **`com.moodly.app`** — replace when final).
+- **`app.json`**: URL **`scheme`**, **`ios.bundleIdentifier`**, **`android.package`** (interim **`com.maxiguillermo.kairo`** — replace when final).
 - **`AppErrorBoundary`**: fallback UI + **Try again** inside **`AppThemeProvider`**; **`app.boundary.render`** (error name only).
 - **`eas.json`**: starter EAS profiles (**development** / **preview** / **production**).
 - **Calendar**: **`fetchMoodCalendarSnapshot`**, **`dateKeys`**, shared **`afterNextFrame`**.

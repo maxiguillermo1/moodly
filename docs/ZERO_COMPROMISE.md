@@ -1,6 +1,6 @@
-# Moodly Zero-Compromise Engineering Policy
+# Kairo Zero-Compromise Engineering Policy
 
-This document is the canonical quality bar for Moodly. It exists to keep future changes calm, local-first, private, fast, and emotionally consistent. **Expanded product identity, UX constitution, and agent onboarding:** [`docs/AGENTS.md`](./docs/AGENTS.md).
+This document is the canonical quality bar for Kairo. It exists to keep future changes calm, local-first, private, fast, and emotionally consistent. **Expanded product identity, UX constitution, and agent onboarding:** [`docs/AGENTS.md`](./docs/AGENTS.md).
 
 ## Non-Negotiables
 

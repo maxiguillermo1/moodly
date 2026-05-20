@@ -1,11 +1,11 @@
-const TASKS_KEY = 'moodly.tasks';
-const LEGACY_KEY = 'moodly.dayTodos';
-const DAY_INDEX_KEY = 'moodly.tasks.dayIndex';
-const dayShardKey = (date: string) => `moodly.tasks.day.${date}`;
+const TASKS_KEY = 'kairo.tasks';
+const LEGACY_KEY = 'kairo.dayTodos';
+const DAY_INDEX_KEY = 'kairo.tasks.dayIndex';
+const dayShardKey = (date: string) => `kairo.tasks.day.${date}`;
 
 describe('tasksStorage foundation', () => {
   beforeEach(async () => {
-    (globalThis as any).__MOODLY_CHAOS__ = undefined;
+    (globalThis as any).__KAIRO_CHAOS__ = undefined;
     jest.resetModules();
     const mod: any = require('@react-native-async-storage/async-storage');
     await (mod?.default ?? mod).clear();

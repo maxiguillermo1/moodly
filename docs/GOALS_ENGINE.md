@@ -4,7 +4,7 @@ This note complements **`docs/AGENTS.md`** § Goals — it is the **technical co
 
 ## Product shape
 
-- **Goals** are **long-horizon tracking** (targets, streaks, optional day-length). They are **not** the Habits chip strip; Habits use `moodly.habitSelections`.
+- **Goals** are **long-horizon tracking** (targets, streaks, optional day-length). They are **not** the Habits chip strip; Habits use `kairo.habitSelections`.
 - **`GoalsScreen`** is the full **create / log / manage** hub. **Today** (`TodayGoalsExtension`) is **summary-only**: it calls **`getTodayGoalSummaries`**, shows percent + `completedToday`, and **deep-links** to `Goals` with `{ date }`. It must not mutate goal state.
 
 ## Source of truth
@@ -30,9 +30,9 @@ This note complements **`docs/AGENTS.md`** § Goals — it is the **technical co
 
 ## Storage
 
-- Key: **`moodly.goals`**. Record: **`GoalsRecord`** with **`version: 2`** (`GOALS_RECORD_VERSION` in `goalsStorage.ts`) — this is the **on-disk goals payload revision**, not the Moodly app marketing version.
-- **Goals disk format v1 → v2**: on first read of a v1 payload, a **`moodly.goals.migrate_backup.<timestamp>`** copy of the raw JSON is stored, then the canonical v2 record is written. Safe to run repeatedly (idempotent).
-- **Corrupt JSON**: quarantine to `moodly.goals.corrupt.<timestamp>` and reset to an empty safe record (see `goalsStorage.ts`).
+- Key: **`kairo.goals`**. Record: **`GoalsRecord`** with **`version: 2`** (`GOALS_RECORD_VERSION` in `goalsStorage.ts`) — this is the **on-disk goals payload revision**, not the Kairo app marketing version.
+- **Goals disk format v1 → v2**: on first read of a v1 payload, a **`kairo.goals.migrate_backup.<timestamp>`** copy of the raw JSON is stored, then the canonical v2 record is written. Safe to run repeatedly (idempotent).
+- **Corrupt JSON**: quarantine to `kairo.goals.corrupt.<timestamp>` and reset to an empty safe record (see `goalsStorage.ts`).
 
 ## APIs (repository)
 

@@ -4,7 +4,7 @@
 
 describe('journal list projection (persisted mood rows)', () => {
   beforeEach(async () => {
-    (globalThis as any).__MOODLY_CHAOS__ = undefined;
+    (globalThis as any).__KAIRO_CHAOS__ = undefined;
     jest.resetModules();
     const faultMod = require('./storageFaultInjection') as typeof import('./storageFaultInjection');
     faultMod.__resetAsyncStorageFaultInjectionForTests();

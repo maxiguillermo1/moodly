@@ -2,7 +2,7 @@
  * @fileoverview Per-day to-do lists (AsyncStorage).
  * @module data/storage/dayTodosStorage
  *
- * Key: `moodly.dayTodos`
+ * Key: `kairo.dayTodos`
  * Value: `{ [date: YYYY-MM-DD]: DayTodoItem[] }`
  */
 
@@ -23,7 +23,7 @@ import {
   setTaskReminderForDate,
 } from './tasksStorage';
 
-const STORAGE_KEY = 'moodly.dayTodos';
+const STORAGE_KEY = 'kairo.dayTodos';
 const CORRUPT_PREFIX = `${STORAGE_KEY}.corrupt.`;
 const MAX_ITEMS_PER_DAY = DAY_TODO_MAX_ITEMS_PER_DAY;
 

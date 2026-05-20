@@ -1,5 +1,5 @@
 /**
- * @fileoverview Moodly v0.6 — Daily Mood Tracker
+ * @fileoverview Kairo v0.6 — Daily Mood Tracker
  * iOS-inspired design with floating navigation
  */
 
@@ -14,7 +14,7 @@ installSafeConsole();
 if (
   typeof __DEV__ !== 'undefined' &&
   __DEV__ &&
-  process.env.EXPO_PUBLIC_MOODLY_PERF_PROBE === '1'
+  process.env.EXPO_PUBLIC_KAIRO_PERF_PROBE === '1'
 ) {
   queueMicrotask(() => {
     require('./perf').initPerfProbe();

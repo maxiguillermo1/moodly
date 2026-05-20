@@ -4,7 +4,7 @@ Notable product-facing changes and the **release train** are recorded here. Date
 
 ## Versioning and maturity
 
-Moodly is intentionally **pre-1.0**. The repository uses a calm, engineering-driven maturity model:
+Kairo is intentionally **pre-1.0**. The repository uses a calm, engineering-driven maturity model:
 
 | Line | Meaning |
 |------|--------|
@@ -26,11 +26,11 @@ Moodly is intentionally **pre-1.0**. The repository uses a calm, engineering-dri
 ### Upcoming
 
 - **v0.7+** — Stability, data ownership UX, and on-device ecosystem refinement.  
-- **v1.0** — When the bar in [`RELEASE_CHECKLIST.md`](./RELEASE_CHECKLIST.md) is met for a public-ready Moodly platform.
+- **v1.0** — When the bar in [`RELEASE_CHECKLIST.md`](./RELEASE_CHECKLIST.md) is met for a public-ready Kairo platform.
 
 ---
 
-## [0.6.0] — Moodly v0.6 · Insights & Reflection foundation · 2026-05-12
+## [0.6.0] — Kairo v0.6 · Insights & Reflection foundation · 2026-05-12
 
 **Theme:** Local-first, deterministic **reflection** over existing stores — no cloud, no chatbot, no hidden scores. UI surfaces can adopt later via `insightsRepository` + `InsightArtifact.messageKey` / `params`.
 
@@ -76,7 +76,7 @@ Moodly is intentionally **pre-1.0**. The repository uses a calm, engineering-dri
 
 ---
 
-## [0.5.0] — Moodly v0.5 · 2026-05-11
+## [0.5.0] — Kairo v0.5 · 2026-05-11
 
 **Theme:** Foundation stabilization, honest pre-1.0 labeling, and continued polish without changing the calm product surface described below.
 
@@ -85,8 +85,8 @@ Moodly is intentionally **pre-1.0**. The repository uses a calm, engineering-dri
 - Unified **mood + note** editing via **`MoodEntryFields`**: same **MOOD / NOTE** labels, compact grade control, note field styling, and placeholder (**“Add a short note…”**) on **Today**, **Calendar** day sheet, and **Journal** editor.
 - **Floating tab bar**: wider glass capsule, improved horizontal spacing, **larger active tab icon**, refined inactive/active indicator.
 - **Today** card: calendar-aligned **Save** (system blue), shared typography with calendar sheet header; **Settings** uses **glass capsule** gear (default `ScreenHeader` behavior). Optional **extensions stack** below the card (**Habits**, **Goals**, **Reminders**) when enabled in Settings — strips use the same **secondaryBackground** + hairline borders as grouped content where applicable.
-- **Reminders**: stack screen **`Todo`** with user-facing title **“Reminders”** — hot per-day lists live in **`moodly.tasks.day.<YYYY-MM-DD>`** shards while recurrence/metadata stays in **`moodly.tasks`** (legacy **`moodly.dayTodos`** migrates once), optional **in-app** time-of-day cues, **Goals**-style indigo alarm well on the **Today** strip; full screen uses bordered lists aligned with **Today** canvas (**`s.background`**).
-- **Goals**: functional local Goals foundation with active/completed/archived states, progress history, Today preview, and local-first persistence under **`moodly.goals`**.
+- **Reminders**: stack screen **`Todo`** with user-facing title **“Reminders”** — hot per-day lists live in **`kairo.tasks.day.<YYYY-MM-DD>`** shards while recurrence/metadata stays in **`kairo.tasks`** (legacy **`kairo.dayTodos`** migrates once), optional **in-app** time-of-day cues, **Goals**-style indigo alarm well on the **Today** strip; full screen uses bordered lists aligned with **Today** canvas (**`s.background`**).
+- **Goals**: functional local Goals foundation with active/completed/archived states, progress history, Today preview, and local-first persistence under **`kairo.goals`**.
 - **Settings → About**: version reads from **`APP_RELEASE_VERSION`** (kept in sync with `app.json` / `package.json`).
 
 ### Engineering
@@ -105,7 +105,7 @@ Moodly is intentionally **pre-1.0**. The repository uses a calm, engineering-dri
 
 ### Engineering — production hardening (ongoing, 2026-05)
 
-- **`app.json`**: `scheme` (**`moodly`**), **`ios.bundleIdentifier`**, **`android.package`** (defaults **`com.moodly.app`** — replace before final App Store registration if needed).
+- **`app.json`**: `scheme` (**`kairo`**), **`ios.bundleIdentifier`**, **`android.package`** (defaults **`com.maxiguillermo.kairo`** — replace before final App Store registration if needed).
 - **Calendar load**: **`fetchMoodCalendarSnapshot`** in **`src/data/storage/calendarSnapshot.ts`** (parallel entries index + settings); **CalendarScreen** / **CalendarView** consume one snapshot path.
 - **Date helpers**: **`src/lib/utils/dateKeys.ts`** (calendar day/month mapping); **`parseISODate`** / display formatters hardened against malformed keys (**`src/lib/utils/date.ts`**).
 - **Reliability**: **`AppErrorBoundary`** wraps navigation inside **`AppThemeProvider`** (**`src/app/AppErrorBoundary.tsx`**); logs **`app.boundary.render`** (error name only).
@@ -116,12 +116,12 @@ Moodly is intentionally **pre-1.0**. The repository uses a calm, engineering-dri
 - **`react-native-draggable-flatlist`** on **Reminders** open list; Jest mocks in **`jest.setup.ts`**.
 - **Day extensions module**: `src/extensions/` (scope, registry, memo slots), **`DayExtensionsHostContext`**, **`useDayTodos`** / **`useTodayHabitStripModel`** (focused load), todo pure helpers under **`src/lib/todos/`** re-exported from **`src/utils`**.
 - **Goals + Tasks foundation**: normalized task/goal models, repositories, storage write locks, corruption quarantine, defensive copies, bounded goal history/milestones, date-scoped legacy task migration, deterministic local-date recurrence helpers, and focused regression coverage.
-- **Storage hot paths**: day-scoped Reminders use `moodly.tasks.day.<YYYY-MM-DD>` shards and `moodly.tasks.dayIndex`, Today Goals uses lightweight summaries, recurrence generation is bounded/incremental, and soak timings split app hot paths from validation harness work.
+- **Storage hot paths**: day-scoped Reminders use `kairo.tasks.day.<YYYY-MM-DD>` shards and `kairo.tasks.dayIndex`, Today Goals uses lightweight summaries, recurrence generation is bounded/incremental, and soak timings split app hot paths from validation harness work.
 - **iOS release readiness**: added `npm run validate:ios-release`, explicit iOS display/encryption metadata, App Store Connect privacy/review answers, and verified the iOS gate (`30` Jest suites / `130` tests, storage stress `39` tests, Expo Doctor `17/17`, iOS export, production audit `0 vulnerabilities`).
 
 ### Documentation
 
-- **README**, **CHANGELOG**, **DESIGN_SYSTEM**, **PROJECT_STRUCTURE**, **TESTING**, **APP_STORE_READINESS**, **DECISIONS**, **WEB_DEPLOYMENT_CHUNKS** (web roadmap), **ENGINEERING_HANDOFF**, **SECURITY_CHECKLIST**, **AGENTS**, **COMPONENTS**, **architecture**, **DATA_CONTRACT**, **summary**, and related pointers updated for **Moodly v0.5** maturity labeling, extensions, Reminders, and ongoing release prep.
+- **README**, **CHANGELOG**, **DESIGN_SYSTEM**, **PROJECT_STRUCTURE**, **TESTING**, **APP_STORE_READINESS**, **DECISIONS**, **WEB_DEPLOYMENT_CHUNKS** (web roadmap), **ENGINEERING_HANDOFF**, **SECURITY_CHECKLIST**, **AGENTS**, **COMPONENTS**, **architecture**, **DATA_CONTRACT**, **summary**, and related pointers updated for **Kairo v0.5** maturity labeling, extensions, Reminders, and ongoing release prep.
 
 ---
 

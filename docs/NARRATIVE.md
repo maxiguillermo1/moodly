@@ -1,4 +1,4 @@
-# Moodly — Narrative Intelligence & Life Timeline Engine
+# Kairo — Narrative Intelligence & Life Timeline Engine
 
 **Status:** Foundation (v0.6+) — **no new UI routes** in this milestone. All logic is **local-first**, **deterministic**, and **inspectable**. This is **not** generative AI, **not** therapy, and **not** a hidden life score.
 
@@ -14,7 +14,7 @@ A **second read layer** above Daily Activity that turns **structural signals** (
 
 ## What this is not
 
-- **Not** a replacement for `moodly.entries`, goals, habits, or tasks — those remain canonical.
+- **Not** a replacement for `kairo.entries`, goals, habits, or tasks — those remain canonical.
 - **Not** clinical assessment, diagnosis, or “emotional truth” claims — language stays **observational** and **uncertainty-aware**.
 - **Not** engagement optimization — narratives are **capped**, **deduped by message family**, and the closing line is always a **gentle span overview** (calm framing).
 

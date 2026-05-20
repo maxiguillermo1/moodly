@@ -10,12 +10,12 @@ const APP_VARIANT = process.env.APP_VARIANT ?? 'production';
 const IS_DEV_CLIENT = APP_VARIANT === 'development';
 
 const config: ExpoConfig = {
-  name: IS_DEV_CLIENT ? 'Moodly (Dev)' : 'Moodly',
-  slug: 'moodly',
+  name: IS_DEV_CLIENT ? 'Kairo (Dev)' : 'Kairo',
+  slug: 'kairo',
   version: '0.6.0',
   /** Must match the Expo SDK in package.json so Expo Go accepts the QR manifest. */
   sdkVersion: '54.0.0',
-  scheme: 'moodly',
+  scheme: 'kairo',
   orientation: 'portrait',
   userInterfaceStyle: 'automatic',
   icon: './assets/images/icon.png',
@@ -50,11 +50,11 @@ const config: ExpoConfig = {
     ],
   ],
   ios: {
-    bundleIdentifier: 'com.moodly.app',
+    bundleIdentifier: 'com.maxiguillermo.kairo',
     buildNumber: '1',
     supportsTablet: true,
     infoPlist: {
-      CFBundleDisplayName: IS_DEV_CLIENT ? 'Moodly Dev' : 'Moodly',
+      CFBundleDisplayName: IS_DEV_CLIENT ? 'Kairo Dev' : 'Kairo',
       ITSAppUsesNonExemptEncryption: false,
     },
     config: {
@@ -62,7 +62,7 @@ const config: ExpoConfig = {
     },
   },
   android: {
-    package: 'com.moodly.app',
+    package: 'com.maxiguillermo.kairo',
     versionCode: 1,
     permissions: [],
     adaptiveIcon: {

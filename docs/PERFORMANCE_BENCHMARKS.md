@@ -1,4 +1,4 @@
-# Moodly Performance Benchmarks
+# Kairo Performance Benchmarks
 
 Point-in-time benchmark and validation notes for the foundation-hardening pass. Pair with [`PERFORMANCE.md`](./PERFORMANCE.md), [`PERFORMANCE_NOTES.md`](./PERFORMANCE_NOTES.md), and [`perf-calendar.md`](./perf-calendar.md).
 
@@ -35,8 +35,8 @@ Bundle export output:
 - Journal focus reloads avoid no-op state replacement when sorted entries are semantically unchanged.
 - Extension rendering remains registry-driven. Visibility toggles and tracked-habit visibility are treated as configuration; per-day values remain intact.
 - Day Reminder and habit caches protect against stale cold-load promises overwriting newer writes.
-- Task day APIs now use `moodly.tasks.day.YYYY-MM-DD` shards plus a small day index, so Today/Todo reads and one-day mutations avoid full task-record scans and rewrites.
-- Legacy `moodly.dayTodos` migration persists its `moodly.tasks` marker during the cold read and derives migrated ids from both date and legacy id, preventing repeated migration work and cross-day id collisions.
+- Task day APIs now use `kairo.tasks.day.YYYY-MM-DD` shards plus a small day index, so Today/Todo reads and one-day mutations avoid full task-record scans and rewrites.
+- Legacy `kairo.dayTodos` migration persists its `kairo.tasks` marker during the cold read and derives migrated ids from both date and legacy id, preventing repeated migration work and cross-day id collisions.
 - Task recurrence uses local calendar-day iteration with weekday matching and month-end clamping, avoiding UTC drift, skipped weekdays, and Jan 31-style overflow.
 - Goal writes are normalized at the storage boundary: invalid dates/non-finite values are rejected, history/milestone arrays are bounded, and summary selectors avoid cloning full history/milestone arrays for Today/list rendering.
 - Today Goals reads lightweight goal summaries, no longer reloads the full goal store on unrelated date prop changes, and exposes a more informative accessibility label without changing visuals.
@@ -86,7 +86,7 @@ npm run validate:release
 ## Remaining Bottlenecks Before Future Scale
 
 - Large mood and journal histories still live in full AsyncStorage JSON blobs. This is acceptable for the first production foundation, but SQLite/month sharding should be considered before backend sync or very large imported histories.
-- Day-scoped Reminders are now sharded by local day, while `moodly.tasks` remains the normalized metadata/recurrence record. Goals remain a normalized JSON payload with read-optimized summaries. True Instagram/Spotify-scale histories still require SQLite/sharded stores before cloud sync or import/export growth.
+- Day-scoped Reminders are now sharded by local day, while `kairo.tasks` remains the normalized metadata/recurrence record. Goals remain a normalized JSON payload with read-optimized summaries. True Instagram/Spotify-scale histories still require SQLite/sharded stores before cloud sync or import/export growth.
 - Calendar derived indexes are session caches over local blobs. They are fast for current local-first scope, but future sync/import flows should benchmark cold load and incremental invalidation under 10k+ rows.
 - Physical-device profiling is a release evidence requirement, not an automated-code blocker: true frame pacing, memory growth, keyboard transitions, haptics, VoiceOver focus, and low-memory behavior must be recorded from TestFlight/release-style builds using the matrix in `RELEASE_CHECKLIST.md`.
 - Defensive copying adds small object allocation cost to public entry/settings reads. This is intentional for cache integrity; profile again before raising large-history targets or adding sync/import.

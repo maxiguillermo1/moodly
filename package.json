@@ -1,5 +1,5 @@
 {
-  "name": "moodly",
+  "name": "kairo",
   "version": "0.6.0",
   "main": "expo/AppEntry.js",
   "scripts": {
@@ -15,7 +15,7 @@
     "lint": "eslint . --ext .ts,.tsx",
     "typecheck": "tsc --noEmit",
     "test": "TZ=America/Los_Angeles jest",
-    "test:soak": "MOODLY_SOAK_RUN=1 TZ=America/Los_Angeles node --expose-gc ./node_modules/jest/bin/jest.js --runTestsByPath src/qa/soak/soak.test.ts --runInBand --testTimeout=2147483647",
+    "test:soak": "KAIRO_SOAK_RUN=1 TZ=America/Los_Angeles node --expose-gc ./node_modules/jest/bin/jest.js --runTestsByPath src/qa/soak/soak.test.ts --runInBand --testTimeout=2147483647",
     "test:storage-stress": "TZ=America/Los_Angeles jest --runTestsByPath src/data/storage/moodStorage.test.ts src/data/storage/dayTodosStorage.test.ts src/data/storage/tasksStorage.test.ts src/data/storage/goalsStorage.test.ts src/data/persistence/persistence.test.ts src/data/persistence/sqlite/moodEntriesSqlite.test.ts src/data/persistence/sqlite/habitsGoalsSqlite.test.ts src/data/repositories/userDataExportRepository.test.ts src/qa/entriesScaleHarness.test.ts",
     "doctor": "npx expo-doctor",
     "export:ios-check": "npx expo export -p ios --output-dir .tmp-expo-export -c",

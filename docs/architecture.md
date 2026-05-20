@@ -1,10 +1,10 @@
-## Moodly architecture (10‑minute onboarding)
+## Kairo architecture (10‑minute onboarding)
 
 **Quick links:** [AGENTS](./AGENTS.md) · [CONTRIBUTING](./CONTRIBUTING.md) · [Project tree](./PROJECT_STRUCTURE.md) · [Design system](./DESIGN_SYSTEM.md) · [Components](./COMPONENTS.md) · [Onboarding](./ENGINEERING_HANDOFF.md) · [Data contract](../src/data/DATA_CONTRACT.md) · [Testing](./TESTING.md) · [App Store](./APP_STORE_READINESS.md) · [Web roadmap](./WEB_DEPLOYMENT_CHUNKS.md) · [Performance](./PERFORMANCE.md)
 
 This is the **canonical** architecture doc (everything in **`docs/`**; see [documentation index](./README.md)).
 
-**Product + emotional UX constitution:** [`AGENTS.md`](./AGENTS.md) — what Moodly is and is not, **the emotional timeline as the primary artifact**, **product hierarchy** (mood map → reflection → continuity → context → insights), Today hierarchy, Goals/Reminders philosophy, fluidity standards, and agent non-negotiables. This file stays focused on **code structure, state ownership, and import boundaries**.
+**Product + emotional UX constitution:** [`AGENTS.md`](./AGENTS.md) — what Kairo is and is not, **the emotional timeline as the primary artifact**, **product hierarchy** (mood map → reflection → continuity → context → insights), Today hierarchy, Goals/Reminders philosophy, fluidity standards, and agent non-negotiables. This file stays focused on **code structure, state ownership, and import boundaries**.
 
 ### Canonical source by concern
 
@@ -59,7 +59,7 @@ There is **no global client store** (no Redux Toolkit / Zustand). State is compo
 - **Day extensions (Today / Journal / Calendar)**:
   - `src/extensions/` — `DayScopeContext` (current `dateKey`), `dayExtensionRegistry`, memo **`dayExtensionSlots`** (`HabitsExtensionSlot`, `GoalsExtensionSlot`, `TodoExtensionSlot`).
   - `src/components/todayExtensions/` — `TodayExtensionsPanel`, **`TodayTodoExtension`**, **`TodayGoalsExtension`**, settings rows.
-  - **Reminders** full screen: `src/features/reminders/screens/TodoScreen.tsx` (stack route **`Todo`**); hot storage: **`tasksStorage.ts`** day shards `moodly.tasks.day.<YYYY-MM-DD>` + **`moodly.tasks`** metadata; hook **`useDayTodos`**; façade **`dayTodosStorage.ts`**; UI **`TodoTaskRow`**, **`TodoReminderPicker`**.
+  - **Reminders** full screen: `src/features/reminders/screens/TodoScreen.tsx` (stack route **`Todo`**); hot storage: **`tasksStorage.ts`** day shards `kairo.tasks.day.<YYYY-MM-DD>` + **`kairo.tasks`** metadata; hook **`useDayTodos`**; façade **`dayTodosStorage.ts`**; UI **`TodoTaskRow`**, **`TodoReminderPicker`**.
 - **Storage + contract**:
   - Public API: `src/storage/index.ts` (→ `src/data/repositories`)
   - Contract: `src/data/DATA_CONTRACT.md`

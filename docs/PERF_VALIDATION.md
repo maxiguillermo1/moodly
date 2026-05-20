@@ -1,4 +1,4 @@
-## Moodly perf-change validation checklist
+## Kairo perf-change validation checklist
 
 Use this checklist after any performance-only change (including library swaps).
 

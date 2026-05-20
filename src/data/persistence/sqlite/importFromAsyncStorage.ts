@@ -1,5 +1,5 @@
 /**
- * @fileoverview Parse legacy AsyncStorage moodly.entries for SQLite import.
+ * @fileoverview Parse legacy AsyncStorage kairo.entries for SQLite import.
  * @module data/persistence/sqlite/importFromAsyncStorage
  */
 

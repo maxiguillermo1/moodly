@@ -1,4 +1,4 @@
-## Moodly performance baseline (dev-only probes)
+## Kairo performance baseline (dev-only probes)
 
 This document is **generated/filled** by running the app in **DEV** and capturing the structured PERF logs emitted by `src/perf/*`.
 

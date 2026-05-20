@@ -5,7 +5,7 @@
 
 import type { MoodEntriesRecord, MoodEntry, MoodGrade } from '../../../types';
 import { isValidISODateKey, VALID_MOOD_SET } from '../../model/entry';
-import type { MoodlySqliteDatabase } from './databaseTypes';
+import type { KairoSqliteDatabase } from './databaseTypes';
 
 type MoodEntryRow = {
   date: string;
@@ -28,12 +28,12 @@ function rowToEntry(row: MoodEntryRow): MoodEntry | null {
   };
 }
 
-export async function countMoodEntries(db: MoodlySqliteDatabase): Promise<number> {
+export async function countMoodEntries(db: KairoSqliteDatabase): Promise<number> {
   const row = await db.getFirstAsync<{ cnt: number }>('SELECT COUNT(*) as cnt FROM mood_entries');
   return row?.cnt ?? 0;
 }
 
-export async function loadAllMoodEntriesFromSqlite(db: MoodlySqliteDatabase): Promise<MoodEntriesRecord> {
+export async function loadAllMoodEntriesFromSqlite(db: KairoSqliteDatabase): Promise<MoodEntriesRecord> {
   const rows = await db.getAllAsync<MoodEntryRow>('SELECT * FROM mood_entries');
   const out: MoodEntriesRecord = {};
   for (const row of rows) {
@@ -43,7 +43,7 @@ export async function loadAllMoodEntriesFromSqlite(db: MoodlySqliteDatabase): Pr
   return out;
 }
 
-export async function upsertMoodEntrySqlite(db: MoodlySqliteDatabase, entry: MoodEntry): Promise<void> {
+export async function upsertMoodEntrySqlite(db: KairoSqliteDatabase, entry: MoodEntry): Promise<void> {
   await db.runAsync(
     `INSERT OR REPLACE INTO mood_entries (date, mood, note, created_at_ms, updated_at_ms)
      VALUES (?, ?, ?, ?, ?)`,
@@ -55,16 +55,16 @@ export async function upsertMoodEntrySqlite(db: MoodlySqliteDatabase, entry: Moo
   );
 }
 
-export async function deleteMoodEntrySqlite(db: MoodlySqliteDatabase, date: string): Promise<void> {
+export async function deleteMoodEntrySqlite(db: KairoSqliteDatabase, date: string): Promise<void> {
   await db.runAsync('DELETE FROM mood_entries WHERE date = ?', date);
 }
 
-export async function clearMoodEntriesSqlite(db: MoodlySqliteDatabase): Promise<void> {
+export async function clearMoodEntriesSqlite(db: KairoSqliteDatabase): Promise<void> {
   await db.runAsync('DELETE FROM mood_entries');
 }
 
 export async function importMoodEntriesToSqlite(
-  db: MoodlySqliteDatabase,
+  db: KairoSqliteDatabase,
   record: MoodEntriesRecord
 ): Promise<number> {
   let imported = 0;

@@ -6,7 +6,7 @@
 import { storage } from '../../data/storage/asyncStorage';
 import type { SyncOperation, SyncOperationInput } from './types';
 
-const OUTBOX_KEY = 'moodly.sync.outbox';
+const OUTBOX_KEY = 'kairo.sync.outbox';
 
 let memoryOutbox: SyncOperation[] | null = null;
 let loadPromise: Promise<SyncOperation[]> | null = null;

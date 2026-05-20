@@ -15,7 +15,7 @@ import type { GoalsRecord } from '../../types/goals.types';
 import type { TasksRecord } from '../../types/todo.types';
 import type { DayTodoItem } from '../../types/todo.types';
 
-export const moodlyCloudPullApplier: CloudPullApplier = {
+export const kairoCloudPullApplier: CloudPullApplier = {
   getLocalMoodEntries: getAllEntries,
   applyMoodEntries: setAllEntries,
   applyHabitSelections: async (selections) => {
@@ -35,7 +35,7 @@ export const moodlyCloudPullApplier: CloudPullApplier = {
   applyInsightsTiming: replaceInsightsReflectionTimingForSync,
 };
 
-export async function registerMoodlyCloudPullApplier(): Promise<void> {
+export async function registerKairoCloudPullApplier(): Promise<void> {
   const { registerCloudPullApplier } = await import('../../cloud/sync/syncEngine');
-  registerCloudPullApplier(moodlyCloudPullApplier);
+  registerCloudPullApplier(kairoCloudPullApplier);
 }

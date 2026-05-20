@@ -167,7 +167,7 @@ export default function SettingsScreen() {
                 Alert.alert('Done', 'Your data was imported.');
               } catch {
                 logger.warn('settings.import.failed');
-                Alert.alert('Import failed', 'The file could not be imported. Check that it is a valid Moodly export.');
+                Alert.alert('Import failed', 'The file could not be imported. Check that it is a valid Kairo export.');
               }
             })();
           },
@@ -499,7 +499,7 @@ export default function SettingsScreen() {
 
         <GroupedSection
           header="Data"
-          footer="Export creates a JSON backup on this device. Import restores from a Moodly export file. Clear All Data permanently deletes mood, habit, goal, and reminder data."
+          footer="Export creates a JSON backup on this device. Import restores from a Kairo export file. Clear All Data permanently deletes mood, habit, goal, and reminder data."
         >
           <GroupedRow
             symbol={{ name: 'share-outline', wellColor: s.blue }}
@@ -514,7 +514,7 @@ export default function SettingsScreen() {
             label="Import Data"
             onPress={handleImportData}
             accessibilityLabel="Import data"
-            accessibilityHint="Restores mood and extension data from a Moodly export file"
+            accessibilityHint="Restores mood and extension data from a Kairo export file"
           />
           <GroupedRow
             symbol={{ name: 'trash-outline', wellColor: s.red }}

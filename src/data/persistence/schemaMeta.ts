@@ -17,9 +17,15 @@ function isSchemaVersionField(n: unknown): n is number {
   return typeof n === 'number' && Number.isFinite(n) && n === Math.floor(n) && n >= 1;
 }
 
+/** Legacy schema meta key (pre–Kairo rename). */
+const LEGACY_SCHEMA_META_STORAGE_KEY = 'moodly.schemaMeta';
+
 export async function readSchemaMeta(store: KeyValueStore): Promise<SchemaMeta | null> {
   try {
-    const raw = await store.getItem(SCHEMA_META_STORAGE_KEY);
+    let raw = await store.getItem(SCHEMA_META_STORAGE_KEY);
+    if (!raw) {
+      raw = await store.getItem(LEGACY_SCHEMA_META_STORAGE_KEY);
+    }
     if (!raw) return null;
     const parsed = JSON.parse(raw) as unknown;
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;

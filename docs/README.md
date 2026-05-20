@@ -1,4 +1,4 @@
-# Moodly documentation
+# Kairo documentation
 
 Developer guides live in **`docs/`**. The repo root keeps **`README.md`** and **`LICENSE`** for discoverability; config and entry files (`app.json`, `package.json`, `App.tsx`, …) stay at the root for Expo and tooling.
 
@@ -8,7 +8,7 @@ Developer guides live in **`docs/`**. The repo root keeps **`README.md`** and **
 |-----|---------|
 | [AGENTS.md](./AGENTS.md) | **Master guide:** **emotional timeline (year mood map) as core product**, hierarchy vs habits/goals/reminders, **product maturity & versioning**, UX/iOS fluidity, data philosophy, agent profiles, tab bar rules |
 | [FEATURES.md](./FEATURES.md) | Feature map: pillars, extensions, code pointers |
-| [`.cursor/rules/`](../.cursor/rules/) | Cursor **`.mdc`** rules specialized for Moodly (mirrors AGENTS; globs for storage vs UI) |
+| [`.cursor/rules/`](../.cursor/rules/) | Cursor **`.mdc`** rules specialized for Kairo (mirrors AGENTS; globs for storage vs UI) |
 | [ZERO_COMPROMISE.md](./ZERO_COMPROMISE.md) | Canonical quality bar and PR blockers |
 | [CONTRIBUTING.md](./CONTRIBUTING.md) | PR workflow and quality gates |
 | [ENGINEERING_HANDOFF.md](./ENGINEERING_HANDOFF.md) | Short onboarding |
@@ -32,7 +32,7 @@ Developer guides live in **`docs/`**. The repo root keeps **`README.md`** and **
 | [SECURITY_CHECKLIST.md](./SECURITY_CHECKLIST.md) | Privacy and logging |
 | [RISK_REGISTER.md](./RISK_REGISTER.md) | Known release/platform risks and triggers |
 | [ROADMAP.md](./ROADMAP.md) | Conservative roadmap for release, data ownership, sync/cloud, and AI |
-| [CHANGELOG.md](./CHANGELOG.md) | **Versioning & maturity** (Moodly v0.6, roadmap to v1.0) + product-facing release notes |
+| [CHANGELOG.md](./CHANGELOG.md) | **Versioning & maturity** (Kairo v0.6, roadmap to v1.0) + product-facing release notes |
 | [DEPLOYMENT.md](./DEPLOYMENT.md) | **EAS builds**, signing, env vars, store submit commands |
 | [PRIVACY.md](./PRIVACY.md) / [TERMS.md](./TERMS.md) | Local-first policy text for store listings |
 

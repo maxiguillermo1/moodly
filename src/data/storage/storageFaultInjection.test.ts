@@ -6,12 +6,12 @@ import {
 describe('storageFaultInjection (deterministic)', () => {
   beforeEach(() => {
     __resetAsyncStorageFaultInjectionForTests();
-    (globalThis as any).__MOODLY_CHAOS__ = undefined;
-    (globalThis as any).__MOODLY_STORAGE_FAULTS__ = undefined;
+    (globalThis as any).__KAIRO_CHAOS__ = undefined;
+    (globalThis as any).__KAIRO_STORAGE_FAULTS__ = undefined;
   });
 
   it('failNext deterministically fails the next N calls', async () => {
-    (globalThis as any).__MOODLY_STORAGE_FAULTS__ = { enabled: true, seed: 1, failNext: { setItem: 2 } };
+    (globalThis as any).__KAIRO_STORAGE_FAULTS__ = { enabled: true, seed: 1, failNext: { setItem: 2 } };
 
     await expect(beforeAsyncStorageFaultInjection('setItem', 'k')).rejects.toThrow(
       '[storageFaultInjection] injected setItem failure'
@@ -25,7 +25,7 @@ describe('storageFaultInjection (deterministic)', () => {
   it('same seed produces the same probabilistic failure pattern', async () => {
     const run = async () => {
       __resetAsyncStorageFaultInjectionForTests();
-      (globalThis as any).__MOODLY_STORAGE_FAULTS__ = {
+      (globalThis as any).__KAIRO_STORAGE_FAULTS__ = {
         enabled: true,
         seed: 123,
         pFail: 0.4,

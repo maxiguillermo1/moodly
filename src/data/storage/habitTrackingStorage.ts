@@ -2,7 +2,7 @@
  * @fileoverview Which catalog habits appear as chips on Today (separate from per-day completion).
  * @module data/storage/habitTrackingStorage
  *
- * Key: `moodly.trackedHabits`
+ * Key: `kairo.trackedHabits`
  * Value: `HabitId[]` — unique, catalog order preserved; empty means no Today chips.
  */
 
@@ -12,7 +12,7 @@ import { assertLocalPersistenceWritable, ensureLocalPersistenceReady } from '../
 import { notifyTrackedHabitsChanged } from '../sync/syncBridge';
 import { storage } from './asyncStorage';
 
-const STORAGE_KEY = 'moodly.trackedHabits';
+const STORAGE_KEY = 'kairo.trackedHabits';
 const CORRUPT_PREFIX = `${STORAGE_KEY}.corrupt.`;
 
 const DEFAULT_TRACKED: HabitId[] = [...HABIT_IDS];

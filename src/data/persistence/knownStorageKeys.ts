@@ -1,5 +1,5 @@
 /**
- * @fileoverview Canonical AsyncStorage keys for Moodly user data (migration backup + export).
+ * @fileoverview Canonical AsyncStorage keys for Kairo user data (migration backup + export).
  * @module data/persistence/knownStorageKeys
  *
  * Keep aligned with `src/data/DATA_CONTRACT.md`. Do not import UI or repositories.
@@ -9,28 +9,28 @@ import type { KeyValueStore } from './keyValueStore';
 import { SCHEMA_META_STORAGE_KEY } from './schemaConstants';
 
 /** Primary keys always included in migration snapshots and export (raw values). */
-export const MOODLY_PRIMARY_SNAPSHOT_KEYS: readonly string[] = [
+export const KAIRO_PRIMARY_SNAPSHOT_KEYS: readonly string[] = [
   SCHEMA_META_STORAGE_KEY,
-  'moodly.entries',
-  'moodly.settings',
-  'moodly.habitSelections',
-  'moodly.trackedHabits',
-  'moodly.goals',
-  'moodly.tasks',
-  'moodly.tasks.dayIndex',
-  'moodly.dayTodos',
-  'moodly.insights.reflectionTiming',
-  'moodly.demoSeeded',
-  'moodly.demoSeedVersion',
-  'moodly.entries.backend',
-  'moodly.habitSelections.backend',
-  'moodly.goals.backend',
+  'kairo.entries',
+  'kairo.settings',
+  'kairo.habitSelections',
+  'kairo.trackedHabits',
+  'kairo.goals',
+  'kairo.tasks',
+  'kairo.tasks.dayIndex',
+  'kairo.dayTodos',
+  'kairo.insights.reflectionTiming',
+  'kairo.demoSeeded',
+  'kairo.demoSeedVersion',
+  'kairo.entries.backend',
+  'kairo.habitSelections.backend',
+  'kairo.goals.backend',
 ] as const;
 
-const DAY_SHARD_PREFIX = 'moodly.tasks.day.';
+const DAY_SHARD_PREFIX = 'kairo.tasks.day.';
 
 /** Keys matching live reminder day shards. */
-export function isMoodlyTasksDayShardKey(key: string): boolean {
+export function isKairoTasksDayShardKey(key: string): boolean {
   return key.startsWith(DAY_SHARD_PREFIX) && key.length > DAY_SHARD_PREFIX.length;
 }
 
@@ -39,13 +39,13 @@ type StoreForSnapshot = Pick<KeyValueStore, 'getItem' | 'multiGet'> & {
 };
 
 /**
- * Full key list for a migration-time snapshot: primaries + `moodly.tasks.day.*` from
- * `moodly.tasks.dayIndex` and any extra shard keys discovered via {@link KeyValueStore.getAllKeys}.
+ * Full key list for a migration-time snapshot: primaries + `kairo.tasks.day.*` from
+ * `kairo.tasks.dayIndex` and any extra shard keys discovered via {@link KeyValueStore.getAllKeys}.
  */
 export async function collectKeysForMigrationSnapshot(store: StoreForSnapshot): Promise<string[]> {
-  const set = new Set<string>(MOODLY_PRIMARY_SNAPSHOT_KEYS);
+  const set = new Set<string>(KAIRO_PRIMARY_SNAPSHOT_KEYS);
 
-  const indexRaw = await store.getItem('moodly.tasks.dayIndex');
+  const indexRaw = await store.getItem('kairo.tasks.dayIndex');
   if (typeof indexRaw === 'string' && indexRaw.length > 0) {
     try {
       const parsed = JSON.parse(indexRaw) as unknown;
@@ -63,7 +63,7 @@ export async function collectKeysForMigrationSnapshot(store: StoreForSnapshot): 
     try {
       const all = await store.getAllKeys();
       for (const k of all) {
-        if (typeof k === 'string' && isMoodlyTasksDayShardKey(k)) set.add(k);
+        if (typeof k === 'string' && isKairoTasksDayShardKey(k)) set.add(k);
       }
     } catch {
       /* optional */
@@ -74,4 +74,4 @@ export async function collectKeysForMigrationSnapshot(store: StoreForSnapshot): 
 }
 
 /** Prefix for one migration backup blob (`setItem` is atomic per key). */
-export const MIGRATION_BACKUP_KEY_PREFIX = 'moodly.migrationBackup.' as const;
+export const MIGRATION_BACKUP_KEY_PREFIX = 'kairo.migrationBackup.' as const;

@@ -5,16 +5,16 @@
 
 import type { GoalsRecord } from '../../../types';
 import type { KeyValueStore } from '../keyValueStore';
-import { ensureMoodlySqliteReady } from './database';
-import type { MoodlySqliteDatabase } from './databaseTypes';
+import { ensureKairoSqliteReady } from './database';
+import type { KairoSqliteDatabase } from './databaseTypes';
 import { countGoalsSqlite, importGoalsRecordToSqlite } from './goalsStore';
 import { readSqliteMeta, writeSqliteMeta } from './sqliteMeta';
 import { SQL_META_GOALS_BACKEND, SQL_META_GOALS_IMPORTED } from './schemaConstants';
 
 export type GoalsBackendKind = 'async' | 'sqlite';
 
-const GOALS_STORAGE_KEY = 'moodly.goals';
-const BACKEND_FLAG_KEY = 'moodly.goals.backend';
+const GOALS_STORAGE_KEY = 'kairo.goals';
+const BACKEND_FLAG_KEY = 'kairo.goals.backend';
 
 let resolvedBackend: GoalsBackendKind | null = null;
 
@@ -30,7 +30,7 @@ export async function resolveGoalsBackend(store: KeyValueStore): Promise<GoalsBa
     return 'sqlite';
   }
   try {
-    const db = await ensureMoodlySqliteReady();
+    const db = await ensureKairoSqliteReady();
     if ((await readSqliteMeta(db, SQL_META_GOALS_BACKEND)) === 'sqlite') {
       await store.setItem(BACKEND_FLAG_KEY, 'sqlite');
       resolvedBackend = 'sqlite';
@@ -54,9 +54,9 @@ function parseGoalsForImport(raw: string | null): GoalsRecord | null {
 }
 
 export async function ensureGoalsImportedFromAsyncStorage(store: KeyValueStore): Promise<void> {
-  let db: MoodlySqliteDatabase;
+  let db: KairoSqliteDatabase;
   try {
-    db = await ensureMoodlySqliteReady();
+    db = await ensureKairoSqliteReady();
   } catch {
     return;
   }
@@ -88,7 +88,7 @@ export async function ensureGoalsImportedFromAsyncStorage(store: KeyValueStore):
   resolvedBackend = 'sqlite';
 }
 
-export async function resetGoalsSqliteImportState(db: MoodlySqliteDatabase): Promise<void> {
+export async function resetGoalsSqliteImportState(db: KairoSqliteDatabase): Promise<void> {
   await db.runAsync('DELETE FROM goal_progress');
   await db.runAsync('DELETE FROM goals');
   await writeSqliteMeta(db, SQL_META_GOALS_IMPORTED, '0');

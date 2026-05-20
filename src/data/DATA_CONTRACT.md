@@ -1,49 +1,49 @@
-# Moodly Data Contract (Local Persistence + Analytics-Ready)
+# Kairo Data Contract (Local Persistence + Analytics-Ready)
 
 **Data safety & recovery:** see [`docs/DATA_SAFETY.md`](../../docs/DATA_SAFETY.md) and [`docs/ARCHITECTURE_STATE.md`](../../docs/ARCHITECTURE_STATE.md).
 
-This document defines the **canonical data contract** for Moodly.
+This document defines the **canonical data contract** for Kairo.
 It is written as engineering rules for downstream analytics/ML and future export jobs.
 
-**App release train:** **0.6.0** (Moodly **v0.6**) — see [`docs/CHANGELOG.md`](../../docs/CHANGELOG.md) § Versioning. **Per-key `v` / `version` fields** in JSON blobs (for example habit envelope **`v: 3`**, goals record **`version`**) are **persistence revisions**, independent of app semver.
+**App release train:** **0.6.0** (Kairo **v0.6**) — see [`docs/CHANGELOG.md`](../../docs/CHANGELOG.md) § Versioning. **Per-key `v` / `version` fields** in JSON blobs (for example habit envelope **`v: 3`**, goals record **`version`**) are **persistence revisions**, independent of app semver.
 
 ## Persisted storage keys
 
-- **`moodly.schemaMeta`**: JSON object: `SchemaMeta`
+- **`kairo.schemaMeta`**: JSON object: `SchemaMeta`
   - `schemaVersion` (integer ≥ 1): local **forward migration** rail; see `src/data/persistence/` and `docs/DATA_ARCHITECTURE.md`.
   - `migratedAt` (optional unix ms): last successful migration stamp.
-  - If unreadable, Moodly quarantines the raw value to `moodly.schemaMeta.corrupt.<timestamp>` and treats disk as **pre-schema** until migrations rebuild meta.
-- **`moodly.migrationBackup.<from>_to_<to>.<timestamp>`**: JSON envelope `kind: moodly.migrationBackup.v1` with a **`snapshot`** map of raw AsyncStorage values captured **immediately before** applying the migration step `from` → `to`. Used for recovery forensics; not read during normal app operation.
-- **`moodly.entries`**: JSON object map: `{ [date: "YYYY-MM-DD"]: MoodEntry }` — **legacy import source** after SQLite migration (see below). New writes go to SQLite when `moodly.entries.backend` is `sqlite`.
-- **`moodly.entries.backend`**: `"sqlite"` | absent — set after one-shot import from legacy `moodly.entries` into the local SQLite `mood_entries` table. Test override: `MOODLY_ENTRIES_BACKEND=async|sqlite`.
-- **`moodly.settings`**: JSON object: `AppSettings`
-- **`moodly.habitSelections`**: versioned JSON envelope **`{ v: 3, selections: { [date: "YYYY-MM-DD"]: HabitId[] }, toggleTotals: {} }`** — **legacy import source** after SQLite migration. New writes go to SQLite when `moodly.habitSelections.backend` is `sqlite`.
-- **`moodly.habitSelections.backend`**: `"sqlite"` | absent — set after one-shot import from legacy `moodly.habitSelections` into `habit_selections`.
+  - If unreadable, Kairo quarantines the raw value to `kairo.schemaMeta.corrupt.<timestamp>` and treats disk as **pre-schema** until migrations rebuild meta.
+- **`kairo.migrationBackup.<from>_to_<to>.<timestamp>`**: JSON envelope `kind: kairo.migrationBackup.v1` with a **`snapshot`** map of raw AsyncStorage values captured **immediately before** applying the migration step `from` → `to`. Used for recovery forensics; not read during normal app operation.
+- **`kairo.entries`**: JSON object map: `{ [date: "YYYY-MM-DD"]: MoodEntry }` — **legacy import source** after SQLite migration (see below). New writes go to SQLite when `kairo.entries.backend` is `sqlite`.
+- **`kairo.entries.backend`**: `"sqlite"` | absent — set after one-shot import from legacy `kairo.entries` into the local SQLite `mood_entries` table. Test override: `KAIRO_ENTRIES_BACKEND=async|sqlite`.
+- **`kairo.settings`**: JSON object: `AppSettings`
+- **`kairo.habitSelections`**: versioned JSON envelope **`{ v: 3, selections: { [date: "YYYY-MM-DD"]: HabitId[] }, toggleTotals: {} }`** — **legacy import source** after SQLite migration. New writes go to SQLite when `kairo.habitSelections.backend` is `sqlite`.
+- **`kairo.habitSelections.backend`**: `"sqlite"` | absent — set after one-shot import from legacy `kairo.habitSelections` into `habit_selections`.
   - **`selections`** is the **only** source of truth for which habits are “on” for each local calendar day. Keys must pass `isValidISODateKey`; each array is **deduplicated** and stored in **stable catalog order** (`HABIT_IDS`).
   - **`toggleTotals`** is **deprecated** (compatibility only). It is always **`{}`** on read/write and must **never** be used for UI counts or analytics. **Marked-day totals** on the Habits screen are **derived** from `selections` only (count distinct dates per habit). Today/journal habit **extensions intentionally do not** load or display those counts.
   - Legacy **`v: 2`** payloads (with `onCounts`) and unknown future **`v`** values with a recoverable `selections` object forward-migrate to canonical **`v: 3`** on read when persistence is writable.
 - **Goals engine rules** (unchanged): **`goalsById[*].history`** is the **source of truth** for progress; `progress.currentValue` is **derived** on read/write via `canonicalizeGoalModel` (`src/lib/goals/goalMath.ts`). Same local calendar day keeps **one** history row (replace semantics; latest `createdAt` wins when merging duplicates). See `docs/AGENTS.md` § Goals and `docs/GOALS_ENGINE.md`.
-- **`moodly.trackedHabits`**: JSON array of `HabitId` — which habits are tracked in the UI strip (see `habitTrackingStorage`).
-- **`moodly.tasks`**: versioned JSON object: `TasksRecord` — normalized local task/reminder metadata, recurrence templates/history, lists/tags, and migration marker.
-- **`moodly.tasks.day.<YYYY-MM-DD>`**: JSON array: `DayTodoItem[]` — hot per-day **Reminders** shard used by Today/Todo day loads and one-day mutations.
-- **`moodly.tasks.dayIndex`**: JSON array: `YYYY-MM-DD[]` — index of day shards for aggregate/debug reads.
-- **`moodly.dayTodos`**: legacy JSON object map: `{ [date: "YYYY-MM-DD"]: DayTodoItem[] }`. On first task-store read, valid rows migrate into the task metadata record and day shards once. The legacy key is kept only as a migration source / corrupt quarantine target.
-- **`moodly.goals`**: versioned JSON object: `GoalsRecord` (**on-disk payload `version` 2** today — independent of app semver **0.6.0**) — **legacy import source** after SQLite migration. New writes go to SQLite when `moodly.goals.backend` is `sqlite`.
-- **`moodly.goals.backend`**: `"sqlite"` | absent — set after one-shot import from legacy `moodly.goals` into `goals` + `goal_progress`.
-- **`moodly.insights.reflectionTiming`**: JSON `{ schemaVersion: 1, topicLastSurfacedAtMs: Record<string, number> }` — **presentation cooldown bookkeeping only** (not computed insight payloads). See `docs/INSIGHTS.md`.
-- **`moodly.demoSeeded` / `moodly.demoSeedVersion`**: dev/demo metadata only; production user data does not depend on these keys.
+- **`kairo.trackedHabits`**: JSON array of `HabitId` — which habits are tracked in the UI strip (see `habitTrackingStorage`).
+- **`kairo.tasks`**: versioned JSON object: `TasksRecord` — normalized local task/reminder metadata, recurrence templates/history, lists/tags, and migration marker.
+- **`kairo.tasks.day.<YYYY-MM-DD>`**: JSON array: `DayTodoItem[]` — hot per-day **Reminders** shard used by Today/Todo day loads and one-day mutations.
+- **`kairo.tasks.dayIndex`**: JSON array: `YYYY-MM-DD[]` — index of day shards for aggregate/debug reads.
+- **`kairo.dayTodos`**: legacy JSON object map: `{ [date: "YYYY-MM-DD"]: DayTodoItem[] }`. On first task-store read, valid rows migrate into the task metadata record and day shards once. The legacy key is kept only as a migration source / corrupt quarantine target.
+- **`kairo.goals`**: versioned JSON object: `GoalsRecord` (**on-disk payload `version` 2** today — independent of app semver **0.6.0**) — **legacy import source** after SQLite migration. New writes go to SQLite when `kairo.goals.backend` is `sqlite`.
+- **`kairo.goals.backend`**: `"sqlite"` | absent — set after one-shot import from legacy `kairo.goals` into `goals` + `goal_progress`.
+- **`kairo.insights.reflectionTiming`**: JSON `{ schemaVersion: 1, topicLastSurfacedAtMs: Record<string, number> }` — **presentation cooldown bookkeeping only** (not computed insight payloads). See `docs/INSIGHTS.md`.
+- **`kairo.demoSeeded` / `kairo.demoSeedVersion`**: dev/demo metadata only; production user data does not depend on these keys.
 
 ### Corruption quarantine (automatic)
 
-If a stored value cannot be parsed/validated, Moodly will:
+If a stored value cannot be parsed/validated, Kairo will:
 
-- Copy the raw value to: `moodly.<key>.corrupt.<timestamp>`
+- Copy the raw value to: `kairo.<key>.corrupt.<timestamp>`
 - Reset the primary key to a safe default (`{}` for map stores; default settings/tracked habits where applicable)
 - Continue running without crashing
 
 ### User export / import (Settings)
 
-Settings → **Export My Data** / **Import Data** uses the in-code envelope **`moodly.localExport.v1`** (`src/data/persistence/localExport/moodlyLocalExport.ts`): `formatRevision`, `exportedAtMs`, `schemaMetaRaw`, and `kv` (raw `moodly.*` strings). Export merges SQLite snapshots for mood entries, habit selections, and goals into `kv`. Import restores AsyncStorage then re-imports SQLite domains. Repository: `userDataExportRepository`.
+Settings → **Export My Data** / **Import Data** uses the in-code envelope **`kairo.localExport.v1`** (`src/data/persistence/localExport/kairoLocalExport.ts`): `formatRevision`, `exportedAtMs`, `schemaMetaRaw`, and `kv` (raw `kairo.*` strings). Export merges SQLite snapshots for mood entries, habit selections, and goals into `kv`. Import restores AsyncStorage then re-imports SQLite domains. Repository: `userDataExportRepository`.
 
 ### Persistence invariants (required)
 
@@ -54,11 +54,11 @@ Settings → **Export My Data** / **Import Data** uses the in-code envelope **`m
 
 ### SQLite (local relational store — v0.7 foundation)
 
-File: **`moodly.db`** (`expo-sqlite`, WAL mode). Schema rail: `PRAGMA user_version` via `src/data/persistence/sqlite/` (`CURRENT_SQL_SCHEMA_VERSION` = **3**).
+File: **`kairo.db`** (`expo-sqlite`, WAL mode). Schema rail: `PRAGMA user_version` via `src/data/persistence/sqlite/` (`CURRENT_SQL_SCHEMA_VERSION` = **3**).
 
 | Table | Columns | Notes |
 |-------|---------|--------|
-| `moodly_meta` | `key`, `value` | Import markers (`entries_imported_from_async_v1`, `habits_imported_from_async_v1`, `goals_imported_from_async_v1`, backend flags). |
+| `kairo_meta` | `key`, `value` | Import markers (`entries_imported_from_async_v1`, `habits_imported_from_async_v1`, `goals_imported_from_async_v1`, backend flags). |
 | `mood_entries` | `date`, `mood`, `note`, `created_at_ms`, `updated_at_ms` | Primary key `date` (`YYYY-MM-DD`). Indexed by `updated_at_ms` and `substr(date,1,7)`. |
 | `habit_selections` | `date`, `habit_id` | Composite PK `(date, habit_id)`. Index on `date`. |
 | `goals` | `id`, `payload_json`, `updated_at_ms` | Goal metadata without embedded history. |
@@ -70,7 +70,7 @@ File: **`moodly.db`** (`expo-sqlite`, WAL mode). Schema rail: `PRAGMA user_versi
 
 ### Calendar loading API (no extra keys)
 
-- **`fetchMoodCalendarSnapshot()`** (`src/data/storage/calendarSnapshot.ts`) reads **`moodly.entries`** (via **`getCalendarEntriesByMonthIndexSnapshot()`** — stable month-map references, no full-record clone on the calendar hot path) and **`moodly.settings`** in one parallel pass. Overlapping inflight reads are **coalesced** (rapid tab switches). Used by **`CalendarScreen`** and **`CalendarView`**. Does **not** introduce new persisted keys.
+- **`fetchMoodCalendarSnapshot()`** (`src/data/storage/calendarSnapshot.ts`) reads **`kairo.entries`** (via **`getCalendarEntriesByMonthIndexSnapshot()`** — stable month-map references, no full-record clone on the calendar hot path) and **`kairo.settings`** in one parallel pass. Overlapping inflight reads are **coalesced** (rapid tab switches). Used by **`CalendarScreen`** and **`CalendarView`**. Does **not** introduce new persisted keys.
 
 ### Mood / journal read APIs (copy semantics)
 
@@ -120,11 +120,11 @@ interface AppSettings {
   appearance: AppearancePreference
   calendarMoodStyle: CalendarMoodStyle
   moodGradeColorStyle: MoodGradeColorStyle
-  /** When true, Today shows habit chips (see `moodly.habitSelections`). */
+  /** When true, Today shows habit chips (see `kairo.habitSelections`). */
   habitsEnabled: boolean
-  /** When true, Today shows the Goals preview backed by `moodly.goals`. */
+  /** When true, Today shows the Goals preview backed by `kairo.goals`. */
   todayGoalsEnabled: boolean
-  /** When true, Today shows the **Reminders** extension with per-day task projections (`moodly.tasks`). */
+  /** When true, Today shows the **Reminders** extension with per-day task projections (`kairo.tasks`). */
   todayTodoEnabled: boolean
   /** Order of extension slots on Today (permutation of `habits` | `goals` | `todo`). */
   todayExtensionsOrder: ('habits' | 'goals' | 'todo')[]
@@ -134,14 +134,14 @@ interface AppSettings {
 - **`appearance`**: drives **`AppThemeProvider`** resolution with the OS scheme when `system`.
 - **`calendarMoodStyle`**: full-color day fill vs dot under the day number in **`MonthGrid`**.
 - **`moodGradeColorStyle`**: **`solid`** uses **`mood`** only; **`gradient`** uses **`mood`**, **`moodGradientMid`**, and **`moodBloomAccent`** (**`#FFB7E5`** at 100%) per grade on a **135°** (`TL→BR`) `LinearGradient` — see `moodGradeBloom.ts` (meaning/order of grades unchanged).
-- **`habitsEnabled`**: when true, Today shows habit chips; selections persist per day under **`moodly.habitSelections`**. Source of truth: `src/types/settings.types.ts` + `src/lib/constants/habitsCatalog.ts` (habit ids).
-- **`todayGoalsEnabled`**: when true, Today shows compact active-goal previews from **`moodly.goals`**.
-- **`todayTodoEnabled`**: when true, Today shows **Reminders** with day-filtered tasks from **`moodly.tasks`**.
+- **`habitsEnabled`**: when true, Today shows habit chips; selections persist per day under **`kairo.habitSelections`**. Source of truth: `src/types/settings.types.ts` + `src/lib/constants/habitsCatalog.ts` (habit ids).
+- **`todayGoalsEnabled`**: when true, Today shows compact active-goal previews from **`kairo.goals`**.
+- **`todayTodoEnabled`**: when true, Today shows **Reminders** with day-filtered tasks from **`kairo.tasks`**.
 - **`todayExtensionsOrder`**: visual stack order for visible Today extension slots; enabling a toggle moves that slot to the bottom.
 
 ### `DayTodoItem`
 
-Compatibility projection for a day-scoped reminder row. New day-scoped writes persist to `moodly.tasks.day.<YYYY-MM-DD>` shards; `DayTodoItem` remains the UI-facing shape for Today/Calendar/Todo day flows.
+Compatibility projection for a day-scoped reminder row. New day-scoped writes persist to `kairo.tasks.day.<YYYY-MM-DD>` shards; `DayTodoItem` remains the UI-facing shape for Today/Calendar/Todo day flows.
 
 ```ts
 interface DayTodoItem {

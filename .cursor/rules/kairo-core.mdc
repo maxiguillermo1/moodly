@@ -1,12 +1,12 @@
 ---
-description: Moodly core invariants — storage, dates, logging, no surprise UX
+description: Kairo core invariants — storage, dates, logging, no surprise UX
 alwaysApply: true
 ---
 
-# Moodly — core
+# Kairo — core
 
-- **Product north star:** Moodly is a **visual emotional timeline** (yearly mood color map first); habits, goals, reminders, and insights are **supporting context** — see **`docs/AGENTS.md`** § Moodly identity.
-- **Product maturity:** **Moodly v0.6** (pre-1.0 refinement); versioning model in **`docs/CHANGELOG.md`** § Versioning and **`docs/AGENTS.md`** § Product maturity & versioning.
+- **Product north star:** Kairo is a **visual emotional timeline** (yearly mood color map first); habits, goals, reminders, and insights are **supporting context** — see **`docs/AGENTS.md`** § Kairo identity.
+- **Product maturity:** **Kairo v0.6** (pre-1.0 refinement); versioning model in **`docs/CHANGELOG.md`** § Versioning and **`docs/AGENTS.md`** § Product maturity & versioning.
 - **UI → `src/storage` only** for persistence. Never `AsyncStorage` or `src/data/storage/*` from screens, components, hooks, navigation, theme, extensions, or `src/bootstrap/` (ESLint enforces this).
 - **Calendar day keys** are local **`YYYY-MM-DD`**. Never `toISOString().slice(...)` for day identity.
 - **Logging**: no `console.*` in UI layers. Use **`logger`** from **`src/security`**, metadata only — never journal text, full entries, or settings blobs.

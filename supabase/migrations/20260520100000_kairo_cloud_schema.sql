@@ -1,4 +1,4 @@
--- Moodly cloud schema — Supabase Postgres + RLS
+-- Kairo cloud schema — Supabase Postgres + RLS
 -- Apply via Supabase CLI: supabase db push
 -- See docs/SUPABASE.md for setup.
 

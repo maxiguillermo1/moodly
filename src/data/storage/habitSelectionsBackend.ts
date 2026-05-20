@@ -4,7 +4,7 @@
  */
 
 import { getDefaultLocalKeyValueStore } from '../persistence/localStore';
-import { ensureMoodlySqliteReady } from '../persistence/sqlite/database';
+import { ensureKairoSqliteReady } from '../persistence/sqlite/database';
 import {
   clearHabitSelectionsSqlite,
   loadHabitSelectionsFromSqlite,
@@ -14,7 +14,7 @@ import { resolveHabitSelectionsBackend } from '../persistence/sqlite/habitsStora
 import { storage } from './asyncStorage';
 import type { HabitSelectionsRecord } from './habitSelectionsStorage';
 
-export const HABIT_SELECTIONS_STORAGE_KEY = 'moodly.habitSelections';
+export const HABIT_SELECTIONS_STORAGE_KEY = 'kairo.habitSelections';
 
 async function usesSqlite(): Promise<boolean> {
   const store = getDefaultLocalKeyValueStore();
@@ -23,7 +23,7 @@ async function usesSqlite(): Promise<boolean> {
 
 export async function loadHabitSelectionsJsonFromDisk(): Promise<string | null> {
   if (await usesSqlite()) {
-    const db = await ensureMoodlySqliteReady();
+    const db = await ensureKairoSqliteReady();
     const selections = await loadHabitSelectionsFromSqlite(db);
     return JSON.stringify({ v: 3, selections, toggleTotals: {} });
   }
@@ -32,7 +32,7 @@ export async function loadHabitSelectionsJsonFromDisk(): Promise<string | null> 
 
 export async function persistHabitSelectionsJsonToDisk(json: string, selections: HabitSelectionsRecord): Promise<void> {
   if (await usesSqlite()) {
-    const db = await ensureMoodlySqliteReady();
+    const db = await ensureKairoSqliteReady();
     await persistHabitSelectionsToSqlite(db, selections);
     return;
   }
@@ -41,7 +41,7 @@ export async function persistHabitSelectionsJsonToDisk(json: string, selections:
 
 export async function clearHabitSelectionsOnDisk(): Promise<void> {
   if (await usesSqlite()) {
-    const db = await ensureMoodlySqliteReady();
+    const db = await ensureKairoSqliteReady();
     await clearHabitSelectionsSqlite(db);
     return;
   }
@@ -51,7 +51,7 @@ export async function clearHabitSelectionsOnDisk(): Promise<void> {
 export async function quarantineRawHabitSelectionsJson(rawJson: string, backupKey: string): Promise<void> {
   await storage.setItem(backupKey, rawJson);
   if (await usesSqlite()) {
-    const db = await ensureMoodlySqliteReady();
+    const db = await ensureKairoSqliteReady();
     await clearHabitSelectionsSqlite(db);
     return;
   }

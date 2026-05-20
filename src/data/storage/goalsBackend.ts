@@ -5,7 +5,7 @@
 
 import type { GoalsRecord } from '../../types';
 import { getDefaultLocalKeyValueStore } from '../persistence/localStore';
-import { ensureMoodlySqliteReady } from '../persistence/sqlite/database';
+import { ensureKairoSqliteReady } from '../persistence/sqlite/database';
 import {
   clearGoalsSqlite,
   loadGoalsRecordFromSqlite,
@@ -14,7 +14,7 @@ import {
 import { resolveGoalsBackend } from '../persistence/sqlite/goalsStorageBackend';
 import { storage } from './asyncStorage';
 
-export const GOALS_STORAGE_KEY = 'moodly.goals';
+export const GOALS_STORAGE_KEY = 'kairo.goals';
 
 async function usesSqlite(): Promise<boolean> {
   const store = getDefaultLocalKeyValueStore();
@@ -23,7 +23,7 @@ async function usesSqlite(): Promise<boolean> {
 
 export async function loadGoalsJsonFromDisk(): Promise<string | null> {
   if (await usesSqlite()) {
-    const db = await ensureMoodlySqliteReady();
+    const db = await ensureKairoSqliteReady();
     const record = await loadGoalsRecordFromSqlite(db);
     return JSON.stringify(record);
   }
@@ -32,7 +32,7 @@ export async function loadGoalsJsonFromDisk(): Promise<string | null> {
 
 export async function persistGoalsRecordToDisk(record: GoalsRecord): Promise<void> {
   if (await usesSqlite()) {
-    const db = await ensureMoodlySqliteReady();
+    const db = await ensureKairoSqliteReady();
     await persistGoalsRecordToSqlite(db, record);
     return;
   }
@@ -41,7 +41,7 @@ export async function persistGoalsRecordToDisk(record: GoalsRecord): Promise<voi
 
 export async function clearGoalsOnDisk(): Promise<void> {
   if (await usesSqlite()) {
-    const db = await ensureMoodlySqliteReady();
+    const db = await ensureKairoSqliteReady();
     await clearGoalsSqlite(db);
     return;
   }
@@ -51,7 +51,7 @@ export async function clearGoalsOnDisk(): Promise<void> {
 export async function quarantineRawGoalsJson(rawJson: string, backupKey: string, fallbackJson: string): Promise<void> {
   await storage.setItem(backupKey, rawJson);
   if (await usesSqlite()) {
-    const db = await ensureMoodlySqliteReady();
+    const db = await ensureKairoSqliteReady();
     await clearGoalsSqlite(db);
     return;
   }

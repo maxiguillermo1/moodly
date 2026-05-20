@@ -5,7 +5,7 @@
 
 describe('insightsRepository', () => {
   beforeEach(async () => {
-    (globalThis as any).__MOODLY_CHAOS__ = undefined;
+    (globalThis as any).__KAIRO_CHAOS__ = undefined;
     jest.resetModules();
     const mod: any = require('@react-native-async-storage/async-storage');
     await (mod?.default ?? mod).clear();

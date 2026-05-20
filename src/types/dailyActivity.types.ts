@@ -2,8 +2,8 @@
  * @fileoverview Read-only “Daily Activity” DTO — composed view over domain stores.
  * @module types/dailyActivity.types
  *
- * **Source of truth** remains: `moodly.entries`, `moodly.habitSelections`, `moodly.goals`,
- * `moodly.tasks` day shards, etc. This module defines only the **projection** shape.
+ * **Source of truth** remains: `kairo.entries`, `kairo.habitSelections`, `kairo.goals`,
+ * `kairo.tasks` day shards, etc. This module defines only the **projection** shape.
  */
 
 import type { HabitId } from './habits.types';
@@ -13,7 +13,7 @@ import type { GoalType, GoalStatus } from './goals.types';
 /** Local calendar day key (`YYYY-MM-DD`). Same contract as mood / tasks / goals history dates. */
 export type LocalDateKey = string;
 
-/** Mood facet — derived from `moodly.entries` only (no copy of long notes in metadata logs). */
+/** Mood facet — derived from `kairo.entries` only (no copy of long notes in metadata logs). */
 export type DayActivityMoodSection = {
   present: boolean;
   grade: MoodGrade | null;
@@ -34,9 +34,9 @@ export type DayActivityJournalSection = {
 };
 
 export type DayActivityHabitsSection = {
-  /** Habits marked “on” for this local day (`moodly.habitSelections`). */
+  /** Habits marked “on” for this local day (`kairo.habitSelections`). */
   selectedIds: readonly HabitId[];
-  /** Catalog ids configured for the strip (`moodly.trackedHabits`). */
+  /** Catalog ids configured for the strip (`kairo.trackedHabits`). */
   trackedIds: readonly HabitId[];
 };
 
@@ -65,7 +65,7 @@ export type DayActivityReminderItem = {
 };
 
 export type DayActivityRemindersSection = {
-  /** Day-scoped reminders from `moodly.tasks.day.<YYYY-MM-DD>` (normalized task surface). */
+  /** Day-scoped reminders from `kairo.tasks.day.<YYYY-MM-DD>` (normalized task surface). */
   items: readonly DayActivityReminderItem[];
 };
 

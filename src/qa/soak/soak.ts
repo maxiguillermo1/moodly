@@ -1,7 +1,7 @@
 /**
- * @fileoverview Opt-in long-running Moodly soak test.
+ * @fileoverview Opt-in long-running Kairo soak test.
  *
- * Runs under Jest with the AsyncStorage mock, so it exercises Moodly's real
+ * Runs under Jest with the AsyncStorage mock, so it exercises Kairo's real
  * storage/domain APIs without touching simulator/device/user data.
  */
 
@@ -23,9 +23,9 @@ const path = require('path') as typeof import('path');
 jest.setTimeout(2147483647);
 
 const REPORT_PATH = path.join(process.cwd(), 'SOAK_TEST_REPORT.md');
-const TASKS_KEY = 'moodly.tasks';
-const GOALS_KEY = 'moodly.goals';
-const ENTRIES_KEY = 'moodly.entries';
+const TASKS_KEY = 'kairo.tasks';
+const GOALS_KEY = 'kairo.goals';
+const ENTRIES_KEY = 'kairo.entries';
 const SLEEP_MS = readIntEnv('SOAK_INTERVAL_MS', 250);
 const CHECKPOINT_EVERY = Math.max(1, readIntEnv('SOAK_CHECKPOINT_EVERY', 5));
 const MAX_LOOPS = process.env.SOAK_MAX_LOOPS ? Math.max(1, readIntEnv('SOAK_MAX_LOOPS', 1)) : null;
@@ -488,7 +488,7 @@ function renderReport(state: SoakState, status: string, dataCounts: DataCounts):
   const harnessMetricRows = metricRowsFor('harness');
   const slowRows = state.slowOperations.slice(-20).map((op) => `| ${op.at} | ${op.loop} | ${op.name} | ${op.ms} |`).join('\n');
   const failureRows = state.failures.slice(-20).map((f) => `| ${f.at} | ${f.loop} | ${f.action} | ${f.message.replace(/\n/g, '<br>')} |`).join('\n');
-  return `# Moodly Soak Test Report
+  return `# Kairo Soak Test Report
 
 Status: ${status}
 
@@ -574,9 +574,9 @@ async function writeReport(state: SoakState, status: string): Promise<void> {
   fs.writeFileSync(REPORT_PATH, renderReport(state, status, dataCounts));
 }
 
-describe('Moodly long-running soak test', () => {
+describe('Kairo long-running soak test', () => {
   it('runs realistic storage/domain loops until stopped', async () => {
-    if (process.env.MOODLY_SOAK_RUN !== '1') {
+    if (process.env.KAIRO_SOAK_RUN !== '1') {
       return;
     }
     const consoleSpies =

@@ -1,8 +1,8 @@
-const STORAGE_KEY = 'moodly.trackedHabits';
+const STORAGE_KEY = 'kairo.trackedHabits';
 
 describe('habitTrackingStorage resilience', () => {
   beforeEach(async () => {
-    (globalThis as any).__MOODLY_CHAOS__ = undefined;
+    (globalThis as any).__KAIRO_CHAOS__ = undefined;
     jest.resetModules();
     const mod: any = require('@react-native-async-storage/async-storage');
     await (mod?.default ?? mod).clear();
@@ -30,7 +30,7 @@ describe('habitTrackingStorage resilience', () => {
 
   it('does not let a stale cold load overwrite a newer write cache', async () => {
     const habitTracking = require('./habitTrackingStorage') as typeof import('./habitTrackingStorage');
-    (globalThis as any).__MOODLY_CHAOS__ = {
+    (globalThis as any).__KAIRO_CHAOS__ = {
       enabled: true,
       seed: 11,
       minDelayMs: 25,

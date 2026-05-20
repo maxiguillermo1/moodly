@@ -1,4 +1,4 @@
-# Moodly — Logging & Observability Contract (Local‑First, Privacy‑Safe)
+# Kairo — Logging & Observability Contract (Local‑First, Privacy‑Safe)
 
 This app is local‑first and handles sensitive user text. **Observability must never compromise privacy.**
 
@@ -38,10 +38,10 @@ This is not debugging spam. If a log does not help future maintainers understand
 In Metro console:
 
 ```js
-globalThis.MoodlyDebug.list()
-globalThis.MoodlyDebug.runAll()
-globalThis.MoodlyDebug.run('rapidMonthTaps')
-globalThis.MoodlyDebug.setChaos({ enabled: true, seed: 1, failNext: { getItem: 1 } })
+globalThis.KairoDebug.list()
+globalThis.KairoDebug.runAll()
+globalThis.KairoDebug.run('rapidMonthTaps')
+globalThis.KairoDebug.setChaos({ enabled: true, seed: 1, failNext: { getItem: 1 } })
 ```
 
 ---
@@ -225,7 +225,7 @@ The logger enforces dev‑only guardrails (`assertNoSensitiveLogArgs`) and appli
 
 ```ts
 logger.warn('storage.entries.corrupt.detected', {
-  key: 'moodly.entries',
+  key: 'kairo.entries',
   action: 'quarantineAndReset',
 });
 ```
@@ -288,7 +288,7 @@ These are **representative shapes** (exact metadata keys vary by callsite):
 
 // Storage lifecycle
 [PERF][storage] storage.getAllEntries.getItem { phase: "cold", source: "storage", durationMs }
-[WARN][storage] storage.entries.corrupt.detected { key: "moodly.entries", action: "quarantineAndReset" }
+[WARN][storage] storage.entries.corrupt.detected { key: "kairo.entries", action: "quarantineAndReset" }
 
 // Calendar interactions
 [PERF][calendar] calendar.dayTapToModalOpen { durationMs, ... }
@@ -320,7 +320,7 @@ The storage layer supports an opt-in, deterministic fault injector used for edge
 
 ### Enable (Metro console)
 
-Set `globalThis.__MOODLY_STORAGE_FAULTS__` (preferred) or legacy `globalThis.__MOODLY_CHAOS__`:
+Set `globalThis.__KAIRO_STORAGE_FAULTS__` (preferred) or legacy `globalThis.__KAIRO_CHAOS__`:
 
 - **enabled**: boolean (required)
 - **seed**: number (recommended) deterministic RNG seed

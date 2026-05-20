@@ -10,7 +10,7 @@ import { timingStateAfterRecording } from '../../lib/insights/reflectionTiming';
 import { assertLocalPersistenceWritable, ensureLocalPersistenceReady } from '../persistence/bootstrap';
 import { storage } from './asyncStorage';
 
-const STORAGE_KEY = 'moodly.insights.reflectionTiming';
+const STORAGE_KEY = 'kairo.insights.reflectionTiming';
 
 const emptyState = (): InsightsTimingStateV1 => ({ schemaVersion: 1, topicLastSurfacedAtMs: {} });
 

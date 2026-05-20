@@ -1,5 +1,5 @@
 /**
- * @fileoverview Repository façade for `moodly.settings` + derived toggles.
+ * @fileoverview Repository façade for `kairo.settings` + derived toggles.
  * @module data/repositories/settingsRepository
  */
 

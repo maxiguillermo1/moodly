@@ -6,10 +6,10 @@
  * - Single integration point (see `asyncStorage.ts`).
  *
  * Enable (dev console / tests), preferred:
- *   globalThis.__MOODLY_STORAGE_FAULTS__ = { enabled: true, seed: 123, ... }
+ *   globalThis.__KAIRO_STORAGE_FAULTS__ = { enabled: true, seed: 123, ... }
  *
  * Legacy alias (still read):
- *   globalThis.__MOODLY_CHAOS__ = { enabled: true, seed: 123, ... }
+ *   globalThis.__KAIRO_CHAOS__ = { enabled: true, seed: 123, ... }
  *
  * IMPORTANT:
  * - Off by default.
@@ -43,7 +43,7 @@ function cfg(): FaultInjectionConfig | null {
   const isTest = typeof process !== 'undefined' && process.env?.NODE_ENV === 'test';
   if (!dev && !isTest) return null;
   const g = globalThis as any;
-  const c = (g.__MOODLY_STORAGE_FAULTS__ ?? g.__MOODLY_CHAOS__) as FaultInjectionConfig | undefined;
+  const c = (g.__KAIRO_STORAGE_FAULTS__ ?? g.__KAIRO_CHAOS__) as FaultInjectionConfig | undefined;
   if (!c || !c.enabled) return null;
   return c;
 }

@@ -5,7 +5,7 @@
 
 import type { MoodEntriesRecord } from '../../../types';
 import { getDefaultLocalKeyValueStore } from '../localStore';
-import { ensureMoodlySqliteReady } from '../sqlite/database';
+import { ensureKairoSqliteReady } from '../sqlite/database';
 import { loadHabitSelectionsFromSqlite } from '../sqlite/habitSelectionsStore';
 import { resolveHabitSelectionsBackend } from '../sqlite/habitsStorageBackend';
 import { loadGoalsRecordFromSqlite } from '../sqlite/goalsStore';
@@ -13,14 +13,14 @@ import { resolveGoalsBackend } from '../sqlite/goalsStorageBackend';
 import { loadAllMoodEntriesFromSqlite } from '../sqlite/moodEntriesStore';
 import { isMoodEntriesSqliteActive } from '../sqlite/storageBackend';
 import {
-  buildMoodlyLocalExportV1,
-  serializeMoodlyLocalExport,
-  type MoodlyLocalExportV1,
-} from './moodlyLocalExport';
+  buildKairoLocalExportV1,
+  serializeKairoLocalExport,
+  type KairoLocalExportV1,
+} from './kairoLocalExport';
 
-const ENTRIES_KEY = 'moodly.entries';
-const HABITS_KEY = 'moodly.habitSelections';
-const GOALS_KEY = 'moodly.goals';
+const ENTRIES_KEY = 'kairo.entries';
+const HABITS_KEY = 'kairo.habitSelections';
+const GOALS_KEY = 'kairo.goals';
 
 async function snapshotMoodEntriesForExportKv(): Promise<string | null> {
   const store = getDefaultLocalKeyValueStore();
@@ -28,7 +28,7 @@ async function snapshotMoodEntriesForExportKv(): Promise<string | null> {
     return store.getItem(ENTRIES_KEY);
   }
   try {
-    const db = await ensureMoodlySqliteReady();
+    const db = await ensureKairoSqliteReady();
     const record: MoodEntriesRecord = await loadAllMoodEntriesFromSqlite(db);
     return JSON.stringify(record);
   } catch {
@@ -42,7 +42,7 @@ async function snapshotHabitSelectionsForExportKv(): Promise<string | null> {
     return store.getItem(HABITS_KEY);
   }
   try {
-    const db = await ensureMoodlySqliteReady();
+    const db = await ensureKairoSqliteReady();
     const selections = await loadHabitSelectionsFromSqlite(db);
     return JSON.stringify({ v: 3, selections, toggleTotals: {} });
   } catch {
@@ -56,7 +56,7 @@ async function snapshotGoalsForExportKv(): Promise<string | null> {
     return store.getItem(GOALS_KEY);
   }
   try {
-    const db = await ensureMoodlySqliteReady();
+    const db = await ensureKairoSqliteReady();
     const record = await loadGoalsRecordFromSqlite(db);
     return JSON.stringify(record);
   } catch {
@@ -65,12 +65,12 @@ async function snapshotGoalsForExportKv(): Promise<string | null> {
 }
 
 /** Builds a portable export envelope including SQLite-backed domains in `kv`. */
-export async function buildMoodlyUserExportV1(): Promise<MoodlyLocalExportV1> {
+export async function buildKairoUserExportV1(): Promise<KairoLocalExportV1> {
   const store = getDefaultLocalKeyValueStore();
   if (typeof store.getAllKeys !== 'function') {
-    throw new Error('[buildMoodlyUserExportV1] KeyValueStore.getAllKeys is required');
+    throw new Error('[buildKairoUserExportV1] KeyValueStore.getAllKeys is required');
   }
-  const payload = await buildMoodlyLocalExportV1(store as typeof store & { getAllKeys: () => Promise<readonly string[]> });
+  const payload = await buildKairoLocalExportV1(store as typeof store & { getAllKeys: () => Promise<readonly string[]> });
   const kv = { ...payload.kv };
   const entriesJson = await snapshotMoodEntriesForExportKv();
   if (entriesJson != null) kv[ENTRIES_KEY] = entriesJson;
@@ -81,7 +81,7 @@ export async function buildMoodlyUserExportV1(): Promise<MoodlyLocalExportV1> {
   return { ...payload, kv };
 }
 
-export async function buildMoodlyUserExportJson(): Promise<string> {
-  const payload = await buildMoodlyUserExportV1();
-  return serializeMoodlyLocalExport(payload);
+export async function buildKairoUserExportJson(): Promise<string> {
+  const payload = await buildKairoUserExportV1();
+  return serializeKairoLocalExport(payload);
 }

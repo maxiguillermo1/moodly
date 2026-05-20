@@ -14,7 +14,7 @@ export const sessionRepository = {
   logSessionStoreDiagnostics: sessionStore.logSessionStoreDiagnostics,
   /** @deprecated No-op; use `rebuildFullDemoDataset` when you explicitly want synthetic data. */
   seedDemoEntriesIfEmpty: demoSeed.seedDemoEntriesIfEmpty,
-  /** Opt-in: install/refresh bundled synthetic dataset (same as `MoodlySeed.rebuild()` in dev). */
+  /** Opt-in: install/refresh bundled synthetic dataset (same as `KairoSeed.rebuild()` in dev). */
   async ensureDevFullDemoDatasetCurrent(): Promise<void> {
     const { ensureDevFullDemoDatasetCurrent } = await import('../storage/fullDemoSeed');
     return ensureDevFullDemoDatasetCurrent();

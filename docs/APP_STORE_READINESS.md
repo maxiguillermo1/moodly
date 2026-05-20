@@ -1,6 +1,6 @@
-## Moodly — App Store readiness checklist (Expo / local‑first)
+## Kairo — App Store readiness checklist (Expo / local‑first)
 
-This document defines the **minimum bar** for “App Store–ready” quality for Moodly while preserving constraints:
+This document defines the **minimum bar** for “App Store–ready” quality for Kairo while preserving constraints:
 - No new features / no removed features
 - No navigation/flow changes
 - No backend/network calls
@@ -151,7 +151,7 @@ and one current physical iPhone using a TestFlight or release-style EAS build.
 
 ## Final release blockers (external / account-owned)
 
-- Confirm `com.moodly.app` is owned and reserved in Apple Developer and App Store Connect.
+- Confirm `com.maxiguillermo.kairo` is owned and reserved in Apple Developer and App Store Connect.
 - Run `eas init` / project linking before relying on EAS submit; do not commit guessed project IDs.
 - Provide final icon/adaptive icon assets and verify App Store asset requirements.
 - Decide whether the current minimal splash asset is acceptable for public launch branding.
@@ -166,7 +166,7 @@ See [`DEPLOYMENT.md`](./DEPLOYMENT.md).
 
 Use this as the review packet unless product scope changes:
 
-| App Store field | Moodly answer |
+| App Store field | Kairo answer |
 |---|---|
 | Data collection | The app does not collect data from this app. Mood/journal/goals/reminders stay on-device. |
 | Tracking | No tracking. No ATT prompt. No third-party analytics or advertising SDK. |
@@ -175,8 +175,8 @@ Use this as the review packet unless product scope changes:
 | Encryption/export compliance | Uses only standard platform/transport encryption; `usesNonExemptEncryption` is `false`. |
 | Notifications | No OS notifications are scheduled. Reminders are in-app time cues only. |
 | Location/camera/microphone/photos/contacts | Not used; no permissions requested. |
-| Medical claims | None. Moodly is a journaling/productivity app, not medical advice or diagnosis. |
-| Review notes | “Moodly is a local-first mood journal. No login is required. To test: open Today, select a mood, add a note, save, then use Calendar/Journal/Goals/Reminders/Settings from the tab bar. All sample data is user-created; the app has no backend or tracking.” |
+| Medical claims | None. Kairo is a journaling/productivity app, not medical advice or diagnosis. |
+| Review notes | “Kairo is a local-first mood journal. No login is required. To test: open Today, select a mood, add a note, save, then use Calendar/Journal/Goals/Reminders/Settings from the tab bar. All sample data is user-created; the app has no backend or tracking.” |
 
 ## References (where the “rules” live)
 

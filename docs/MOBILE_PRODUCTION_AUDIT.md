@@ -1,4 +1,4 @@
-# Moodly — Mobile production audit (v0.6)
+# Kairo — Mobile production audit (v0.6)
 
 **Date:** 2026-05-19 (updated)  
 **Scope:** Production polish, stability, performance, security/privacy, accessibility, QA edge cases, App Store readiness, architecture — **no UI/UX redesign**.  
@@ -76,7 +76,7 @@ npm run validate          # typecheck + lint + 280 tests — PASS
 | Startup | Splash held until ready (**`SplashScreen.preventAutoHideAsync`** in **`RootApp`**). |
 | Bundle | Release export gate via **`npm run export:bundles-check`** in CI. |
 
-**Honest limits:** Mood entries remain a single **`moodly.entries`** JSON blob — fine for typical journals; very large multi-year datasets may need a future shard/SQLite strategy (product decision).
+**Honest limits:** Mood entries remain a single **`kairo.entries`** JSON blob — fine for typical journals; very large multi-year datasets may need a future shard/SQLite strategy (product decision).
 
 ---
 
@@ -151,7 +151,7 @@ npm run validate          # typecheck + lint + 280 tests — PASS
 | **P0 (store)** | Host HTTPS privacy/terms URLs if required beyond in-app **`PRIVACY.md`** / **`TERMS.md`**. |
 | **P1** | Physical-device TestFlight / Play internal testing per **`RELEASE_CHECKLIST.md`**. |
 | **P1** | Full VoiceOver pass on Settings extensions and Goals/Reminders deep screens. |
-| **P2** | Monolithic **`moodly.entries`** at 10k+ entries — monitor; plan sharding if users hit limits. |
+| **P2** | Monolithic **`kairo.entries`** at 10k+ entries — monitor; plan sharding if users hit limits. |
 | ~~**P2**~~ | ~~Extract Calendar hooks~~ — **done:** snapshot, timeline scroll, entry-edit modal/hook; month row render remains in screen. |
 | **P2** | Flaky test history: **`useTodayHabitStripModel`** — re-run if CI timeouts appear. |
 | **Product** | No OS notification reminders (in-app only) — document in store listing. |
@@ -200,10 +200,10 @@ npm run validate          # typecheck + lint + 280 tests — PASS
 |---------|--------|
 | **Pre-submit** | Final icons, EAS project id, hosted legal URLs, physical-device QA matrix. |
 | **v0.7** | Export/import UX, on-device backup semantics, insights surfaces (repository already exists). |
-| **Scale** | Shard or migrate **`moodly.entries`** if profiling shows pressure at 5k+ entries. |
+| **Scale** | Shard or migrate **`kairo.entries`** if profiling shows pressure at 5k+ entries. |
 | **Maintainability** | Optional: extract **`renderMonthItem`** from **`CalendarScreen`** (~475 LOC). |
 | **Optional** | SQLite behind same repository façades; multi-device sync only post-v1.0. |
 
 ---
 
-*Moodly v0.6 — local-first emotional timeline. This audit is a point-in-time snapshot; re-run gates after material changes.*
+*Kairo v0.6 — local-first emotional timeline. This audit is a point-in-time snapshot; re-run gates after material changes.*

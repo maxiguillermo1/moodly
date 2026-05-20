@@ -4,20 +4,20 @@
  */
 
 import { logger } from '../../../../lib/security/logger';
-import type { MoodlySqliteDatabase } from '../databaseTypes';
+import type { KairoSqliteDatabase } from '../databaseTypes';
 import { CURRENT_SQL_SCHEMA_VERSION } from '../schemaConstants';
 import { SQL_MIGRATIONS } from './registry';
 
-export async function readSqlUserVersion(db: MoodlySqliteDatabase): Promise<number> {
+export async function readSqlUserVersion(db: KairoSqliteDatabase): Promise<number> {
   const row = await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
   return row?.user_version ?? 0;
 }
 
-async function writeSqlUserVersion(db: MoodlySqliteDatabase, version: number): Promise<void> {
+async function writeSqlUserVersion(db: KairoSqliteDatabase, version: number): Promise<void> {
   await db.execAsync(`PRAGMA user_version = ${version}`);
 }
 
-export async function runSqlMigrations(db: MoodlySqliteDatabase): Promise<void> {
+export async function runSqlMigrations(db: KairoSqliteDatabase): Promise<void> {
   if (typeof __DEV__ !== 'undefined' && __DEV__ && SQL_MIGRATIONS.length !== CURRENT_SQL_SCHEMA_VERSION) {
     logger.error('persistence.sqlite.migrations.registryMismatch', {
       migrations: SQL_MIGRATIONS.length,

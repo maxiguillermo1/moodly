@@ -109,7 +109,7 @@ export type Task = {
   updatedAt: number;
   completedAt: number | null;
   archivedAt: number | null;
-  /** Compatibility marker for rows migrated from `moodly.dayTodos`. */
+  /** Compatibility marker for rows migrated from `kairo.dayTodos`. */
   source: 'dayTodo' | 'task';
 };
 

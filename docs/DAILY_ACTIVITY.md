@@ -10,7 +10,7 @@
 
 | Layer | Role |
 |--------|------|
-| `moodly.entries`, `moodly.habitSelections`, `moodly.goals`, `moodly.tasks` + day shards, `moodly.trackedHabits` | **Source of truth** — persisted, validated in `*Storage.ts` |
+| `kairo.entries`, `kairo.habitSelections`, `kairo.goals`, `kairo.tasks` + day shards, `kairo.trackedHabits` | **Source of truth** — persisted, validated in `*Storage.ts` |
 | `dailyActivityRepository` (`src/data/repositories/dailyActivityRepository.ts`) | **Derived read model** — composes `DayActivity` for a key or range; never mutates stores |
 | `DayActivity` DTO (`src/types/dailyActivity.types.ts`) | **UI-ready snapshot** — small sections (`mood`, `journal`, `habits`, `goals`, `reminders`, `calendar`, `summary`, `metadata`) |
 
@@ -62,4 +62,4 @@ See `src/data/repositories/dailyActivityRepository.test.ts` — empty facets, si
 
 ## Future extensions
 
-New per-day facets should add a **persisted** envelope under `moodly.*`, validate in storage, expose read/write through a **domain repository**, then **extend** `DayActivity` and `buildDayActivityCore` / range batch path without duplicating summary math in screens.
+New per-day facets should add a **persisted** envelope under `kairo.*`, validate in storage, expose read/write through a **domain repository**, then **extend** `DayActivity` and `buildDayActivityCore` / range batch path without duplicating summary math in screens.
