@@ -32,10 +32,11 @@ import {
   getSettings,
   getMoodStats,
   importUserDataFromJson,
+  pickJsonImport,
   setCalendarMoodStyle,
+  shareJsonExport,
 } from '@/storage';
 import { MOOD_GRADES, getMoodLabel, openExternalUrl } from '@/utils';
-import { pickJsonImport, shareJsonExport } from '@/lib/userData/userDataTransfer';
 import { logger } from '@/security';
 import { LEGAL_URLS } from '@/constants';
 import { formatReleaseVersionLine } from '@/config/releaseMetadata';

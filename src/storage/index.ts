@@ -10,4 +10,5 @@
  */
 
 export * from '../data/repositories';
+export * from './userDataTransfer';
 

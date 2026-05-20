@@ -146,7 +146,7 @@ export function createInMemoryMoodlyDatabase(): MoodlySqliteDatabase {
       const selectPartial = normalized.match(/^SELECT (.+) FROM\s+(\w+)(?:\s+ORDER BY\s+(.+))?$/i);
       if (selectPartial && !/^SELECT \*/i.test(normalized)) {
         const tableName = selectPartial[2]!;
-        let rows = [...ensureTable(tableName)];
+        const rows = [...ensureTable(tableName)];
         if (selectPartial[3]) {
           const desc = /DESC/i.test(selectPartial[3]!);
           const col = selectPartial[3]!.split(/\s+/)[0]!;

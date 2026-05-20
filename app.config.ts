@@ -32,6 +32,8 @@ const config: ExpoConfig = {
   plugins: [
     'expo-sqlite',
     'expo-apple-authentication',
+    'expo-secure-store',
+    'expo-web-browser',
     [
       'expo-splash-screen',
       {

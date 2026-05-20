@@ -1,12 +1,12 @@
 /**
  * @fileoverview Settings export/import file helpers (share sheet + document picker).
- * @module lib/userData/userDataTransfer
+ * @module storage/userDataTransfer
  */
 
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
-import { formatDateToISO } from './date';
+import { formatDateToISO } from '../lib/utils/date';
 
 export async function shareJsonExport(json: string, filenamePrefix = 'moodly-export'): Promise<void> {
   const filename = `${filenamePrefix}-${formatDateToISO(new Date())}.json`;
