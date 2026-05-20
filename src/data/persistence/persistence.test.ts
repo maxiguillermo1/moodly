@@ -88,15 +88,30 @@ describe('local persistence bootstrap', () => {
       failNextByKey: { getItem: { [SCHEMA_META_STORAGE_KEY]: 1 } },
     };
 
-    await expect(ensureLocalPersistenceReady()).rejects.toBeTruthy();
-    expect(await AsyncStorage.getItem(SCHEMA_META_STORAGE_KEY)).toBeNull();
+    await expect(ensureLocalPersistenceReady()).resolves.toBeUndefined();
 
     (globalThis as any).__MOODLY_CHAOS__ = undefined;
-    await ensureLocalPersistenceReady();
     errorSpy.mockRestore();
     warnSpy.mockRestore();
     const raw = await AsyncStorage.getItem(SCHEMA_META_STORAGE_KEY);
     expect(JSON.parse(raw!).schemaVersion).toBe(CURRENT_SCHEMA_VERSION);
+  });
+
+  it('rejects when bootstrap storage stays unavailable after retries', async () => {
+    const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    (globalThis as any).__MOODLY_CHAOS__ = {
+      enabled: true,
+      failOps: ['getItem'],
+      pFail: 1,
+    };
+
+    await expect(ensureLocalPersistenceReady()).rejects.toBeTruthy();
+    resetPersistenceBootstrapForTests();
+
+    (globalThis as any).__MOODLY_CHAOS__ = undefined;
+    errorSpy.mockRestore();
+    warnSpy.mockRestore();
   });
 
   it('blocks entry writes while disk schema is newer than the app', async () => {

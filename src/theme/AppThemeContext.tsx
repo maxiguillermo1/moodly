@@ -25,7 +25,7 @@ import {
   setTodayGoalsEnabled as persistTodayGoalsEnabled,
   setTodayTodoEnabled as persistTodayTodoEnabled,
   bumpTodayExtensionStackOrder as persistBumpTodayExtensionStackOrder,
-} from '../storage';
+} from '../storage/settings';
 import { ExtensionsPolicyProvider, type ExtensionsPolicy } from './ExtensionsPolicyContext';
 
 export type AppA11y = {

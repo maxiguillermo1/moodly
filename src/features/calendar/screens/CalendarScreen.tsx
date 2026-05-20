@@ -8,19 +8,10 @@ import {
   View,
   Text,
   StyleSheet,
-  Modal,
-  TextInput,
-  Alert,
   AccessibilityInfo,
-  AppState,
-  InteractionManager,
-  type LayoutChangeEvent,
-  type NativeScrollEvent,
-  type NativeSyntheticEvent,
 } from 'react-native';
-import { FlashList } from '@shopify/flash-list';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import Animated, {
   Extrapolate,
   interpolate,
@@ -28,24 +19,28 @@ import Animated, {
   useAnimatedStyle,
   useSharedValue,
 } from 'react-native-reanimated';
-import { CalendarMoodStyle, MoodEntry, MoodGrade } from '@/types';
-import { CapsuleButton, MonthGrid, MoodEntryFields, SheetGrabber, WeekdayRow } from '@/components';
+import { MoodEntry } from '@/types';
+import { CalendarTimelineMonth, CapsuleButton } from '@/components';
 import { useAppTheme, getCalendarTextLimits, getMonthTimelineSpacing, spacing, typography } from '@/theme';
-import { createEntry, getAllEntriesWithMonthIndex, getEntry, getLastAllEntriesSource, getSettings, upsertEntry } from '@/storage';
-import { buildMonthWindow, MonthItem, monthKey as monthKey2, formatDateToISO, formatDateForDisplay, isLatestRequest, nextRequestId } from '@/utils';
+import { getLastAllEntriesSource } from '@/storage/entries';
+import {
+  MONTH_NAMES_EN_LONG,
+  MonthItem,
+  monthKey as monthKey2,
+  formatDateToISO,
+} from '@/utils';
 import { logger } from '@/security';
 import { PerfProfiler, usePerfScreen, perfProbe } from '@/perf';
-import { useScrollDrivenTabBarVisibility, useShowTabBarOnScreenBlur } from '@/hooks';
+import {
+  useScrollDrivenTabBarVisibility,
+  useShowTabBarOnScreenBlur,
+  useMoodCalendarSnapshotLoad,
+  useCalendarMonthTimelineScroll,
+  useCalendarEntryEdit,
+} from '@/hooks';
 import { useTodayKey } from '@/hooks/useTodayKey';
 import { haptics } from '@/system/haptics';
-import { interactionQueue } from '@/system/interactionQueue';
-import { Touchable } from '@/ui/Touchable';
-import { buildFullGridMetrics } from '@/components/calendar/fullGridLayout';
-
-const MONTHS = [
-  'January', 'February', 'March', 'April', 'May', 'June',
-  'July', 'August', 'September', 'October', 'November', 'December'
-];
+import { CalendarEditModal } from '../components/CalendarEditModal';
 
 const EMPTY_MONTH_ENTRIES: Record<string, MoodEntry> = Object.freeze({});
 
@@ -55,10 +50,6 @@ const EMPTY_MONTH_ENTRIES: Record<string, MoodEntry> = Object.freeze({});
 // Phase 8: eliminate periodic window-shift freezes.
 // Instead of keeping a tiny bounded window that must be shifted (and recentered) every ~WINDOW_EXTEND months,
 // use a large mostly-static window. This removes the "every ~7 months" hitch pattern without changing UI.
-const WINDOW_CAP = 1201; // ~100 years of months (plenty for real use; still cheap as data array)
-const WINDOW_EXTEND = 120; // only relevant if user scrolls to extreme ends (10y)
-const WINDOW_NEAR_EDGE = 8; // threshold (items) considered "near edge" for extension (rare with large window)
-
 export default function CalendarScreen() {
   usePerfScreen('CalendarScreen', { listIds: ['list.calendarMonthTimeline'] });
 
@@ -70,12 +61,6 @@ export default function CalendarScreen() {
 
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
-  const isMountedRef = useRef(true);
-  useEffect(() => {
-    return () => {
-      isMountedRef.current = false;
-    };
-  }, []);
 
   /**
    * Single source of truth for initial "anchor month" (computed once per mount).
@@ -107,21 +92,8 @@ export default function CalendarScreen() {
   }
 
   const [currentDate] = useState(() => initialAnchorDateRef.current as Date);
-  const [entriesByMonthKey, setEntriesByMonthKey] = useState<Record<string, Record<string, MoodEntry>>>({});
-  // Performance-only revision counter to invalidate month-level caches without hashing/scanning.
-  const entriesRevisionRef = useRef(0);
-  const [calendarMoodStyle, setCalendarMoodStyle] = useState<CalendarMoodStyle>('dot');
-  const [selectedDate, setSelectedDate] = useState<string>(() => initialSelectedDateRef.current as string);
-  const [isEditOpen, setIsEditOpen] = useState(false);
-  const noteInputRef = useRef<TextInput | null>(null);
-  const prevEditOpenRef = useRef(false);
-  const [editMood, setEditMood] = useState<MoodGrade | null>(null);
-  const [editNote, setEditNote] = useState('');
-  const [isSaving, setIsSaving] = useState(false);
-  const isSavingRef = useRef(false);
   const [reduceMotion, setReduceMotion] = useState(false);
   const rm = reduceMotion || appTheme.a11y.reduceMotion;
-  const getEntryReqIdRef = useRef(0);
   const {
     showTabBar,
     onScrollBeginDrag: tabBarOnScrollBeginDrag,
@@ -131,109 +103,84 @@ export default function CalendarScreen() {
   } = useScrollDrivenTabBarVisibility();
   useShowTabBarOnScreenBlur(showTabBar);
   const { todayKey } = useTodayKey();
-  const [visibleMonth, setVisibleMonth] = useState<{ y: number; m: number }>(() => {
-    const d = initialAnchorDateRef.current as Date;
-    return { y: d.getFullYear(), m: d.getMonth() };
+  const [calendarListEpoch, setCalendarListEpoch] = useState(0);
+  const isFocusedRef = useRef(true);
+  const deferredInteractionRef = useRef<{ cancel: () => void } | null>(null);
+
+  const {
+    visibleMonth,
+    monthsData,
+    timelineKey,
+    initialMonthIndex,
+    monthListRef,
+    viewabilityConfig,
+    onViewableItemsChanged,
+    onListLayout,
+    onScrollBeginDrag,
+    onMomentumScrollBegin,
+    onScrollEndDrag,
+    onMomentumScrollEnd,
+    AnimatedFlashList,
+    keyExtractor,
+    fullGridMetrics,
+    onCalendarCardInnerLayout,
+    overrideItemLayout,
+    clearLayoutCoalesce,
+  } = useCalendarMonthTimelineScroll({
+    currentDate,
+    reduceMotion: rm,
+    isFocusedRef,
+    deferredInteractionRef,
+    initialVisibleMonth: {
+      y: (initialAnchorDateRef.current as Date).getFullYear(),
+      m: (initialAnchorDateRef.current as Date).getMonth(),
+    },
+    windowWidth: appTheme.windowWidth,
+    fontScale: appTheme.fontScale,
+    tabBarOnScrollBeginDrag,
+    tabBarOnScrollEndDrag,
+    tabBarOnMomentumScrollBegin,
+    tabBarOnMomentumScrollEnd,
   });
 
-  const [listReady, setListReady] = useState(false);
-  const listReadyRef = useRef(false);
-  /** Bumped on each calendar focus so FlashList recycled rows refresh (selection / today rings). */
-  const [calendarListEpoch, setCalendarListEpoch] = useState(0);
-  const recenterIndexRef = useRef<number | null>(null);
+  const {
+    entriesByMonthKey,
+    setEntriesByMonthKey,
+    calendarMoodStyle,
+    entriesRevisionRef,
+    mountedRef: isMountedRef,
+  } = useMoodCalendarSnapshotLoad({
+    screen: 'CalendarScreen',
+    loadPerfEvent: 'calendar.loadData',
+    loadPerfSource: getLastAllEntriesSource,
+    todayKey,
+    focusRefs: { isFocusedRef, deferredInteractionRef },
+    onTodayKeyChangeWhileFocused: () => setCalendarListEpoch((x) => x + 1),
+    perfFlushReportTag: 'CalendarScreen.unmount',
+    onBlurExtra: clearLayoutCoalesce,
+  });
 
-  const monthListRef = useRef<any>(null);
-  const lastVisibleMonthKeyRef = useRef<string | null>(null);
-  const pendingMonthRef = useRef<{ y: number; m: number } | null>(null);
-  const isUserScrollingRef = useRef(false);
-  const pendingWindowExtendRef = useRef<null | 'start' | 'end'>(null);
-  const pendingFirstIndexRef = useRef<number | null>(null);
-
-  // Phase 7 v2 prewarm is disabled; keep only the focused ref used elsewhere.
-  const isFocusedRef = useRef(true);
-
-  // Large window around the anchor month. Avoid shifting/recentering during normal scrolling.
-  const [windowOffsets, setWindowOffsets] = useState(() => ({ start: -600, end: 600 }));
-  const lastWindowKeyRef = useRef<string>(`${windowOffsets.start}:${windowOffsets.end}`);
+  const {
+    selectedDate,
+    selectedDateRef,
+    isEditOpen,
+    editMood,
+    editNote,
+    isSaving,
+    setEditMood,
+    setEditNote,
+    closeEdit,
+    handlePressDate,
+    handleSave,
+  } = useCalendarEntryEdit({
+    initialSelectedDate: initialSelectedDateRef.current as string,
+    mountedRef: isMountedRef,
+    entriesRevisionRef,
+    setEntriesByMonthKey,
+    reduceMotion: rm,
+  });
 
   // Year grid moved to `CalendarView` for performance.
-
-  const entriesLoadCountRef = useRef(0);
-  const didFlushPerfReportRef = useRef(false);
-  // Separate request ids so `loadEntries()` and `loadSettings()` do not cancel each other.
-  const loadEntriesReqIdRef = useRef(0);
-  const loadSettingsReqIdRef = useRef(0);
-
-  const loadEntries = useCallback(async () => {
-    if (perfProbe.enabled) perfProbe.setCulpritPhase('CalendarScreen.loadEntries');
-    const reqId = (loadEntriesReqIdRef.current += 1);
-    const phase = entriesLoadCountRef.current === 0 ? 'cold' : 'warm';
-    entriesLoadCountRef.current += 1;
-    const p: any = (globalThis as any).performance;
-    const start = typeof p?.now === 'function' ? p.now() : Date.now();
-    const { byMonthKey } = await getAllEntriesWithMonthIndex();
-    if (!isMountedRef.current) return;
-    if (!isFocusedRef.current) return;
-    if (reqId !== loadEntriesReqIdRef.current) return;
-    // Avoid pointless rerenders when focus fires but data is unchanged (cache hit).
-    setEntriesByMonthKey((prev) => {
-      if (prev === (byMonthKey as any)) return prev;
-      entriesRevisionRef.current += 1;
-      return byMonthKey as any;
-    });
-    const end = typeof p?.now === 'function' ? p.now() : Date.now();
-    logger.perf('calendar.loadEntries', {
-      phase,
-      source: getLastAllEntriesSource(),
-      monthsIndexed: Object.keys(byMonthKey as any).length,
-      durationMs: Number(((end as number) - (start as number)).toFixed(1)),
-    });
-    if (perfProbe.enabled) perfProbe.setCulpritPhase(null);
-  }, []);
-
-  const loadSettings = useCallback(async () => {
-    if (perfProbe.enabled) perfProbe.setCulpritPhase('CalendarScreen.loadSettings');
-    const reqId = (loadSettingsReqIdRef.current += 1);
-    const p: any = (globalThis as any).performance;
-    const start = typeof p?.now === 'function' ? p.now() : Date.now();
-    const settings = await getSettings();
-    if (!isMountedRef.current) return;
-    if (!isFocusedRef.current) return;
-    if (reqId !== loadSettingsReqIdRef.current) return;
-    setCalendarMoodStyle((prev) => (prev === settings.calendarMoodStyle ? prev : settings.calendarMoodStyle));
-    const end = typeof p?.now === 'function' ? p.now() : Date.now();
-    logger.perf('calendar.loadSettings', {
-      phase: 'warm',
-      source: 'sessionCache',
-      durationMs: Number(((end as number) - (start as number)).toFixed(1)),
-    });
-    if (perfProbe.enabled) perfProbe.setCulpritPhase(null);
-  }, []);
-
-  useFocusEffect(
-    useCallback(() => {
-      if (perfProbe.enabled) perfProbe.setCulpritPhase('CalendarScreen.focus');
-      isFocusedRef.current = true;
-      perfProbe.enabled && perfProbe.screenSessionStart('CalendarScreen');
-      setCalendarListEpoch((x) => x + 1);
-      // New "session" for perf reporting on each focus.
-      didFlushPerfReportRef.current = false;
-      loadEntries();
-      loadSettings();
-      return () => {
-        // On blur: cancel any background prewarm work to avoid navigation freezes.
-        isFocusedRef.current = false;
-        // (Prewarm disabled.)
-
-        // Tabs/stacks often keep screens mounted; flush on focus-exit so the report is observable.
-        // Guarantee: exactly one perf.report per focus session (dev-only).
-        if (perfProbe.enabled && !didFlushPerfReportRef.current) {
-          didFlushPerfReportRef.current = true;
-          perfProbe.flushReport('CalendarScreen.unmount');
-        }
-      };
-    }, [loadEntries, loadSettings])
-  );
 
   // Dev-only mount marker (helps correlate hitches with screen lifecycle).
   useEffect(() => {
@@ -244,11 +191,6 @@ export default function CalendarScreen() {
       // NOTE: perf.report is flushed on focus-exit above to be reliable in tab navigation.
     };
   }, []);
-
-  // Keep overlay month label in sync when we change the anchor (Today / params mount).
-  useEffect(() => {
-    setVisibleMonth({ y: currentDate.getFullYear(), m: currentDate.getMonth() });
-  }, [currentDate]);
 
   // Reduce Motion support (updates rarely; safe in React state).
   useEffect(() => {
@@ -265,65 +207,9 @@ export default function CalendarScreen() {
     };
   }, []);
 
-  // Background/resume safety: if the app backgrounds mid-save, make sure the
-  // "saving" indicator remains consistent on resume. (No UX change; purely defensive.)
-  useEffect(() => {
-    const sub = AppState.addEventListener('change', (next) => {
-      if (next !== 'active') return;
-      if (!isMountedRef.current) return;
-      if (isSavingRef.current) setIsSaving(true);
-    });
-    return () => sub.remove();
-  }, []);
-
-  // Sheet polish: haptic + focus after open animation commits (no layout/styling changes).
-  useEffect(() => {
-    const prev = prevEditOpenRef.current;
-    prevEditOpenRef.current = isEditOpen;
-    if (isEditOpen && !prev) {
-      haptics.sheet();
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          noteInputRef.current?.focus();
-        });
-      });
-    } else if (!isEditOpen && prev) {
-      haptics.sheet();
-    }
-  }, [isEditOpen]);
-
-  // loadEntries/loadSettings are memoized above (useCallback) for focus effect correctness.
-
   // (No year-mode behavior here anymore.)
   const handleHapticSelect = useCallback(() => {
     haptics.select();
-  }, []);
-
-  const handlePressDate = useCallback(async (isoDate: string) => {
-    const tapStartMs = perfProbe.enabled ? perfProbe.nowMs() : 0;
-    if (perfProbe.enabled) perfProbe.setCulpritPhase('CalendarScreen.dayTap');
-    // Prevent stale async reads from overwriting newer taps.
-    // (Fast taps can race `getEntry` calls; only the latest tap wins.)
-    const reqId = nextRequestId(getEntryReqIdRef);
-    setSelectedDate(isoDate);
-    try {
-      const existing = await getEntry(isoDate);
-      if (!isLatestRequest(getEntryReqIdRef, reqId)) return;
-      setEditMood(existing?.mood ?? null);
-      setEditNote(existing?.note ?? '');
-    } catch {
-      // Defensive: if storage read fails, still allow editing (user can re-save).
-      logger.warn('calendar.getEntry.failed', { dateKey: isoDate });
-      if (!isLatestRequest(getEntryReqIdRef, reqId)) return;
-      setEditMood(null);
-      setEditNote('');
-    }
-    if (!isLatestRequest(getEntryReqIdRef, reqId)) return;
-    setIsEditOpen(true);
-    if (perfProbe.enabled) {
-      perfProbe.measureSince('calendar.dayTapToModalOpen', tapStartMs, { phase: 'warm', source: 'ui' });
-      perfProbe.setCulpritPhase(null);
-    }
   }, []);
 
   // ---------------------------------------------------------------------------
@@ -353,241 +239,6 @@ export default function CalendarScreen() {
     };
   }, [rm]);
 
-  // ----------------------------------------------------------------------------
-  // Month timeline (bounded window + FlashList)
-  // ----------------------------------------------------------------------------
-  const monthsData: MonthItem[] = useMemo(
-    () => {
-      const startMs = perfProbe.enabled ? perfProbe.nowMs() : 0;
-      if (perfProbe.enabled) perfProbe.setCulpritPhase('CalendarScreen.buildMonthWindow');
-      const data = buildMonthWindow(currentDate, windowOffsets.start, windowOffsets.end);
-      if (perfProbe.enabled) {
-        perfProbe.measureSince('calendar.monthWindow.build', startMs, {
-          phase: 'warm',
-          source: 'ui',
-          months: data.length,
-        });
-        perfProbe.setCulpritPhase(null);
-      }
-      return data;
-    },
-    [currentDate, windowOffsets.end, windowOffsets.start]
-  );
-
-  const timelineKey = useMemo(
-    () => monthKey2(currentDate.getFullYear(), currentDate.getMonth()),
-    [currentDate]
-  );
-
-  const initialMonthIndex = useMemo(() => Math.max(0, -windowOffsets.start), [windowOffsets.start]);
-
-  const commitVisibleMonth = useCallback(
-    (next: { y: number; m: number }, reason: 'scrollEnd' | 'programmatic') => {
-      setVisibleMonth((prev) => (prev.y === next.y && prev.m === next.m ? prev : next));
-      logger.perf('calendar.visibleMonth.commit', {
-        phase: 'warm',
-        source: 'ui',
-        y: next.y,
-        m: next.m,
-        reason,
-      });
-      // Phase 3: haptics only for real scroll-end commits (not programmatic jumps).
-      if (reason === 'scrollEnd' && !rm) {
-        haptics.select();
-      }
-    },
-    [rm]
-  );
-
-  // Phase 3: no throttled commits. We commit at scroll end only.
-
-  const maybeRecenterAfterWindowChange = useCallback(() => {
-    if (!listReadyRef.current) return;
-    const idx = recenterIndexRef.current;
-    if (idx == null) return;
-    recenterIndexRef.current = null;
-    // Phase 6: move recenter off the critical post-gesture frames.
-    // Behavior is identical (same index, same no-anim recenter). Only scheduling changes.
-    const task = InteractionManager.runAfterInteractions(() => {
-      if (perfProbe.enabled) perfProbe.setCulpritPhase('CalendarScreen.recenter');
-      monthListRef.current?.scrollToIndex({ index: idx, animated: false });
-      // Keep tag alive briefly to attribute any mount/layout bursts to recenter.
-      perfProbe.enabled && perfProbe.clearCulpritAfterFrames(2);
-    });
-    // If the interaction queue is cancelled (rare), avoid holding onto refs.
-    // (No-op otherwise; this is a perf-only best-effort.)
-    // NOTE: We intentionally do not store the task; it naturally completes quickly.
-    void task;
-  }, []);
-
-  useEffect(() => {
-    maybeRecenterAfterWindowChange();
-  }, [listReady, maybeRecenterAfterWindowChange, monthsData.length]);
-
-  const viewabilityConfig = useMemo(() => ({ itemVisiblePercentThreshold: 20 }), []);
-
-  const onViewableItemsChanged = useCallback(
-    ({ viewableItems }: { viewableItems: Array<{ item: MonthItem; index: number | null }> }) => {
-      const first = viewableItems.find((v) => typeof v.index === 'number' && v.index != null);
-      if (!first || first.index == null) return;
-
-      const it = first.item;
-      const k = it.key;
-      if (lastVisibleMonthKeyRef.current !== k) {
-        lastVisibleMonthKeyRef.current = k;
-        pendingMonthRef.current = { y: it.y, m: it.m };
-      }
-
-      // Phase 3: during active scroll, do NOT do any React work.
-      // We only record intent to extend the window; we apply it at scroll end.
-      const idx = first.index;
-      pendingFirstIndexRef.current = idx;
-      const len = monthsData.length;
-      if (idx <= WINDOW_NEAR_EDGE) {
-        pendingWindowExtendRef.current = 'start';
-      } else if (idx >= len - 1 - WINDOW_NEAR_EDGE) {
-        pendingWindowExtendRef.current = 'end';
-      }
-    },
-    [
-      monthsData.length,
-      // NOTE: we intentionally do NOT depend on windowOffsets here (no state updates in scroll callback).
-    ]
-  );
-
-  const AnimatedFlashList = useMemo(
-    () => Animated.createAnimatedComponent(FlashList) as any,
-    []
-  );
-
-  // Phase 5: stable month item layout estimate.
-  // Perf-only hint: helps FlashList recycle/mount predictably and reduces layout churn.
-  // Conservative estimate (a bit larger is safer than smaller; avoids blank risk).
-  const overrideItemLayout = useCallback((layout: any) => {
-    layout.size = 420;
-  }, []);
-
-  const keyExtractor = useCallback((item: MonthItem) => item.key, []);
-
-  const onListLayout = useCallback(() => {
-    listReadyRef.current = true;
-    setListReady(true);
-  }, []);
-
-  const onScrollBeginDrag = useCallback(() => {
-    tabBarOnScrollBeginDrag();
-    isUserScrollingRef.current = true;
-    interactionQueue.setUserScrolling(true);
-    interactionQueue.setMomentum(false);
-    if (perfProbe.enabled) perfProbe.setCulpritPhase('CalendarScreen.scroll');
-    perfProbe.enabled && perfProbe.breadcrumb('CalendarScreen.scrollBegin');
-  }, [tabBarOnScrollBeginDrag]);
-
-  const onMomentumScrollBegin = useCallback(() => {
-    tabBarOnMomentumScrollBegin();
-    isUserScrollingRef.current = true;
-    interactionQueue.setUserScrolling(true);
-    interactionQueue.setMomentum(true);
-    if (perfProbe.enabled) perfProbe.setCulpritPhase('CalendarScreen.scroll');
-    perfProbe.enabled && perfProbe.breadcrumb('CalendarScreen.scrollMomentumBegin');
-  }, [tabBarOnMomentumScrollBegin]);
-
-  // (Prewarm disabled; keep refs for safe cancellation on blur/unmount.)
-
-  // (Prewarm disabled.)
-
-  const flushPendingMonth = useCallback(() => {
-    isUserScrollingRef.current = false;
-    interactionQueue.setUserScrolling(false);
-    perfProbe.enabled && perfProbe.breadcrumb('CalendarScreen.scrollEnd');
-
-    const next = pendingMonthRef.current;
-    if (next && (next.y !== visibleMonth.y || next.m !== visibleMonth.m)) {
-      commitVisibleMonth(next, 'scrollEnd');
-    }
-
-    // Perf-only: disable CalendarScreen prewarm. It can create stall-class hitches and scroll-end freezes.
-    // Re-enable only if a future profile shows a net win.
-    // prewarmAround(next ?? { y: visibleMonth.y, m: visibleMonth.m });
-
-    // Phase 3: apply window expansion *only after scroll ends*.
-    const extend = pendingWindowExtendRef.current;
-    const idx = pendingFirstIndexRef.current;
-    pendingWindowExtendRef.current = null;
-    pendingFirstIndexRef.current = null;
-    if (extend && typeof idx === 'number') {
-      // Phase 6: move window extension off the critical post-gesture frames.
-      // This targets "freeze-class" hitches caused by list resizing/mount/layout bursts.
-      if (perfProbe.enabled) perfProbe.setCulpritPhase('CalendarScreen.windowExtend');
-      InteractionManager.runAfterInteractions(() => {
-        let didMutateWindow = false;
-        if (extend === 'start') {
-          const newStart = windowOffsets.start - WINDOW_EXTEND;
-          let newEnd = windowOffsets.end;
-          const newLen = newEnd - newStart + 1;
-          if (newLen > WINDOW_CAP) newEnd -= newLen - WINDOW_CAP;
-          const key2 = `${newStart}:${newEnd}`;
-          if (key2 !== lastWindowKeyRef.current) {
-            lastWindowKeyRef.current = key2;
-            recenterIndexRef.current = idx + WINDOW_EXTEND;
-            setWindowOffsets({ start: newStart, end: newEnd });
-            didMutateWindow = true;
-          }
-        } else {
-          let newStart = windowOffsets.start;
-          const newEnd = windowOffsets.end + WINDOW_EXTEND;
-          const newLen = newEnd - newStart + 1;
-          let trimmed = 0;
-          if (newLen > WINDOW_CAP) {
-            trimmed = newLen - WINDOW_CAP;
-            newStart += trimmed;
-          }
-          const key2 = `${newStart}:${newEnd}`;
-          if (key2 !== lastWindowKeyRef.current) {
-            lastWindowKeyRef.current = key2;
-            recenterIndexRef.current = idx - trimmed;
-            setWindowOffsets({ start: newStart, end: newEnd });
-            didMutateWindow = true;
-          }
-        }
-
-        if (!didMutateWindow) {
-          // Nothing changed; clear phase quickly to avoid "stuck" attribution.
-          perfProbe.enabled && perfProbe.clearCulpritAfterFrames(1);
-        }
-        // If we did mutate, keep `CalendarScreen.windowExtend` until recenter runs.
-        // `maybeRecenterAfterWindowChange` is triggered by the existing effect once monthsData changes,
-        // and it will switch the phase to `CalendarScreen.recenter` while it scrollToIndex's.
-      });
-      return;
-    }
-
-    if (perfProbe.enabled) perfProbe.setCulpritPhase(null);
-  }, [
-    commitVisibleMonth,
-    visibleMonth.m,
-    visibleMonth.y,
-    windowOffsets.end,
-    windowOffsets.start,
-  ]);
-
-  const onScrollEndDrag = useCallback(
-    (e: NativeSyntheticEvent<NativeScrollEvent>) => {
-      // Drag ended; momentum may continue.
-      isUserScrollingRef.current = false;
-      interactionQueue.setUserScrolling(false);
-      flushPendingMonth();
-      tabBarOnScrollEndDrag(e);
-    },
-    [flushPendingMonth, tabBarOnScrollEndDrag]
-  );
-
-  const onMomentumScrollEnd = useCallback(() => {
-    tabBarOnMomentumScrollEnd();
-    interactionQueue.setMomentum(false);
-    flushPendingMonth();
-  }, [flushPendingMonth, tabBarOnMomentumScrollEnd]);
-
   const calLimits = useMemo(
     () => getCalendarTextLimits(appTheme.fontScale, appTheme.windowWidth),
     [appTheme.fontScale, appTheme.windowWidth]
@@ -595,29 +246,6 @@ export default function CalendarScreen() {
   const monthPad = useMemo(
     () => getMonthTimelineSpacing(appTheme.fontScale, appTheme.windowWidth),
     [appTheme.fontScale, appTheme.windowWidth]
-  );
-
-  const [measuredCalendarInnerW, setMeasuredCalendarInnerW] = useState(0);
-  const estimatedCalendarInnerW = useMemo(
-    () =>
-      Math.max(0, appTheme.windowWidth - 2 * spacing[4] - 2 * monthPad.monthCardPadding),
-    [appTheme.windowWidth, monthPad.monthCardPadding]
-  );
-  const effectiveCalendarInnerW =
-    measuredCalendarInnerW > 0 ? measuredCalendarInnerW : estimatedCalendarInnerW;
-  const fullGridMetrics = useMemo(
-    () => buildFullGridMetrics(effectiveCalendarInnerW),
-    [effectiveCalendarInnerW]
-  );
-  const onCalendarCardInnerLayout = useCallback(
-    (e: LayoutChangeEvent) => {
-      const outer = e.nativeEvent.layout.width;
-      if (outer <= 0) return;
-      const pad = monthPad.monthCardPadding;
-      const inner = Math.max(0, outer - 2 * pad);
-      setMeasuredCalendarInnerW((prev) => (Math.abs(prev - inner) > 0.5 ? inner : prev));
-    },
-    [monthPad.monthCardPadding]
   );
 
   const monthListSurfaceStyle = useMemo(
@@ -672,101 +300,64 @@ export default function CalendarScreen() {
           borderWidth: StyleSheet.hairlineWidth,
           borderColor: sys.separator,
         },
-        modalContainer: {
-          flex: 1,
-          backgroundColor: sys.background,
-        },
-        modalHeader: {
-          flexDirection: 'row',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          paddingHorizontal: spacing[4],
-          paddingVertical: spacing[4],
-          borderBottomWidth: StyleSheet.hairlineWidth,
-          borderBottomColor: sys.separator,
-          backgroundColor: sys.secondaryBackground,
-        },
-        pressedOpacity: { opacity: 0.7 },
-        modalCancel: {
-          ...typography.body,
-          color: sys.secondaryLabel,
-        },
-        modalTitle: {
-          ...typography.headline,
-          color: sys.label,
-        },
-        modalSave: {
-          ...typography.body,
-          color: sys.blue,
-          fontWeight: '600',
-        },
-        modalContent: {
-          padding: spacing[4],
-        },
       }),
     [sys]
+  );
+
+  const timelineMonthStyles = useMemo(
+    () => ({
+      monthSection: styles.monthSection,
+      monthSectionTitle: styles.monthSectionTitle,
+      calendarCard: styles.calendarCard,
+    }),
+    [styles.monthSection, styles.monthSectionTitle, styles.calendarCard]
   );
 
   const renderMonthItem = useCallback(
     ({ item }: { item: MonthItem }) => {
       const monthEntries = entriesByMonthKey[item.key] ?? EMPTY_MONTH_ENTRIES;
-      const selectedForThisMonth = selectedDate.startsWith(item.key) ? selectedDate : undefined;
+      const sel = selectedDateRef.current;
+      const selectedForThisMonth = sel.startsWith(item.key) ? sel : undefined;
       return (
-        <View
-          style={[styles.monthSection, { paddingBottom: monthPad.monthSectionBottom }]}
-          accessibilityRole="none"
-        >
-          <Text
-            style={styles.monthSectionTitle}
-            allowFontScaling
-            maxFontSizeMultiplier={calLimits.monthSectionTitle}
-            accessibilityLabel={`${MONTHS[item.m]} ${item.y}`}
-          >
-            {MONTHS[item.m]}
-          </Text>
-          <View
-            style={[
-              styles.calendarCard,
-              { padding: monthPad.monthCardPadding },
-            ]}
-            onLayout={onCalendarCardInnerLayout}
-          >
-            <WeekdayRow variant="full" fullGridLayout={fullGridMetrics} />
-            <MonthGrid
-              year={item.y}
-              monthIndex0={item.m}
-              variant="full"
-              entries={monthEntries}
-              entriesRevision={entriesRevisionRef.current}
-              calendarMoodStyle={calendarMoodStyle}
-              todayKey={todayKey}
-              selectedDate={selectedForThisMonth}
-              onPressDate={handlePressDate}
-              reduceMotion={rm}
-              onHapticSelect={handleHapticSelect}
-              fullGridLayout={fullGridMetrics}
-              moodGradeColorStyle={moodGradeColorStyle}
-              isDark={isDark}
-            />
-          </View>
-        </View>
+        <CalendarTimelineMonth
+          item={item}
+          monthEntries={monthEntries}
+          entriesRevision={entriesRevisionRef.current}
+          selectedForThisMonth={selectedForThisMonth}
+          monthSectionTopPad={monthPad.monthSectionTop}
+          monthSectionBottomPad={monthPad.monthSectionBottom}
+          monthCardPadding={monthPad.monthCardPadding}
+          fullGridMetrics={fullGridMetrics}
+          calendarMoodStyle={calendarMoodStyle}
+          todayKey={todayKey}
+          onPressDate={handlePressDate}
+          reduceMotion={rm}
+          onHapticSelect={handleHapticSelect}
+          moodGradeColorStyle={moodGradeColorStyle}
+          isDark={isDark}
+          onCalendarCardInnerLayout={onCalendarCardInnerLayout}
+          monthSectionTitleMaxFontMult={calLimits.monthSectionTitle}
+          calendarListEpoch={calendarListEpoch}
+          styles={timelineMonthStyles}
+        />
       );
     },
     [
+      calendarListEpoch,
       calendarMoodStyle,
       calLimits.monthSectionTitle,
       entriesByMonthKey,
+      fullGridMetrics,
       handleHapticSelect,
       handlePressDate,
       isDark,
       monthPad.monthCardPadding,
       monthPad.monthSectionBottom,
+      monthPad.monthSectionTop,
       moodGradeColorStyle,
-      rm,
-      selectedDate,
-      fullGridMetrics,
       onCalendarCardInnerLayout,
-      styles,
+      rm,
+      timelineMonthStyles,
       todayKey,
     ]
   );
@@ -823,7 +414,7 @@ export default function CalendarScreen() {
             allowFontScaling
             maxFontSizeMultiplier={calLimits.monthSectionTitle}
           >
-            {MONTHS[visibleMonth.m]}
+            {MONTH_NAMES_EN_LONG[visibleMonth.m]}
           </Text>
         </Animated.View>
       </View>
@@ -866,84 +457,19 @@ export default function CalendarScreen() {
         />
       </PerfProfiler>
 
-      {/* Quick edit modal (tap a day or +) */}
-      <Modal visible={isEditOpen} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setIsEditOpen(false)}>
-        <SafeAreaView style={styles.modalContainer} edges={['top', 'bottom']}>
-          <SheetGrabber />
-          <View style={styles.modalHeader}>
-            <Touchable
-              onPress={() => setIsEditOpen(false)}
-              accessibilityRole="button"
-              accessibilityLabel="Cancel"
-              hitSlop={{ top: 10, left: 10, right: 10, bottom: 10 }}
-              style={(s: any) => [s?.pressed ? styles.pressedOpacity : null]}
-            >
-              <Text style={styles.modalCancel}>Cancel</Text>
-            </Touchable>
-            <Text style={styles.modalTitle} allowFontScaling numberOfLines={1}>
-              {formatDateForDisplay(selectedDate)}
-            </Text>
-            <Touchable
-              onPress={async () => {
-                const saveStartMs = perfProbe.enabled ? perfProbe.nowMs() : 0;
-                if (perfProbe.enabled) perfProbe.setCulpritPhase('CalendarScreen.modalSave');
-                if (!editMood) {
-                  Alert.alert('Pick a mood', 'Choose a mood before saving.');
-                  return;
-                }
-                if (isSavingRef.current) return;
-                isSavingRef.current = true;
-                isMountedRef.current && setIsSaving(true);
-                try {
-                  const next = createEntry(selectedDate, editMood, editNote);
-                  await upsertEntry(next);
-                  // Update local state without reloading everything (keeps scroll smooth).
-                  isMountedRef.current && setEntriesByMonthKey((prev) => {
-                    const mk = selectedDate.slice(0, 7);
-                    const monthMap = prev[mk] ?? {};
-                    entriesRevisionRef.current += 1;
-                    return { ...prev, [mk]: { ...monthMap, [selectedDate]: next } };
-                  });
-                  if (!rm) haptics.success();
-                  isMountedRef.current && setIsEditOpen(false);
-                  if (perfProbe.enabled) {
-                    perfProbe.measureSince('calendar.modalSave.success', saveStartMs, { phase: 'warm', source: 'ui' });
-                  }
-                } catch {
-                  if (!rm) haptics.error();
-                  logger.warn('calendar.save.failed', { dateKey: selectedDate });
-                  Alert.alert('Error', 'Failed to save. Please try again.');
-                  if (perfProbe.enabled) {
-                    perfProbe.measureSince('calendar.modalSave.failed', saveStartMs, { phase: 'warm', source: 'ui' });
-                  }
-                } finally {
-                  isSavingRef.current = false;
-                  isMountedRef.current && setIsSaving(false);
-                  if (perfProbe.enabled) perfProbe.setCulpritPhase(null);
-                }
-              }}
-              disabled={isSaving}
-              accessibilityRole="button"
-              accessibilityLabel="Save"
-              hitSlop={{ top: 10, left: 10, right: 10, bottom: 10 }}
-              style={(s: any) => [s?.pressed ? styles.pressedOpacity : null]}
-            >
-              <Text style={styles.modalSave}>{isSaving ? 'Saving…' : 'Save'}</Text>
-            </Touchable>
-          </View>
-
-          <View style={styles.modalContent}>
-            <MoodEntryFields
-              selectedMood={editMood}
-              onSelectMood={setEditMood}
-              note={editNote}
-              onChangeNote={setEditNote}
-              moodPickerCompact
-              noteInputRef={noteInputRef}
-            />
-          </View>
-        </SafeAreaView>
-      </Modal>
+      <CalendarEditModal
+        visible={isEditOpen}
+        selectedDate={selectedDate}
+        editMood={editMood}
+        editNote={editNote}
+        isSaving={isSaving}
+        setEditMood={setEditMood}
+        setEditNote={setEditNote}
+        onCancel={closeEdit}
+        onSave={() => {
+          void handleSave();
+        }}
+      />
     </SafeAreaView>
   );
 }

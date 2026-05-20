@@ -22,6 +22,9 @@ export const MOODLY_PRIMARY_SNAPSHOT_KEYS: readonly string[] = [
   'moodly.insights.reflectionTiming',
   'moodly.demoSeeded',
   'moodly.demoSeedVersion',
+  'moodly.entries.backend',
+  'moodly.habitSelections.backend',
+  'moodly.goals.backend',
 ] as const;
 
 const DAY_SHARD_PREFIX = 'moodly.tasks.day.';

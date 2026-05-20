@@ -3,7 +3,7 @@
  * @module features/today/screens/TodayScreen
  */
 
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -12,11 +12,12 @@ import {
   ScrollView,
   KeyboardAvoidingView,
   Platform,
-  InteractionManager,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
-import { useMoodEntry, useScrollDrivenTabBarVisibility, useShowTabBarOnScreenBlur } from '@/hooks';
+import { useMoodEntry } from '@/hooks/useMoodEntry';
+import { useScrollDrivenTabBarVisibility } from '@/hooks/useScrollDrivenTabBarVisibility';
+import { useShowTabBarOnScreenBlur } from '@/hooks/useShowTabBarOnScreenBlur';
 import { useTodayKey } from '@/hooks/useTodayKey';
 import {
   ScreenHeader,
@@ -123,7 +124,6 @@ export default function TodayScreen() {
   const {
     mood,
     note,
-    isSaving,
     setMood,
     setNote,
     load,
@@ -150,15 +150,19 @@ export default function TodayScreen() {
     useCallback(() => {
       clearSaveMessageTimeout();
       setSaveMessage('');
-      const task = InteractionManager.runAfterInteractions(() => {
-        void load();
-      });
+      // `useMoodEntry.load` peeks session RAM first — no InteractionManager defer on tab return.
+      void load();
       return () => {
-        task.cancel();
         clearSaveMessageTimeout();
       };
-    }, [clearSaveMessageTimeout, load])
+    }, [clearSaveMessageTimeout, load, today])
   );
+
+  useEffect(() => {
+    return () => {
+      clearSaveMessageTimeout();
+    };
+  }, [clearSaveMessageTimeout]);
 
   const handleSave = useCallback(async () => {
     if (!mood) {
@@ -179,16 +183,16 @@ export default function TodayScreen() {
           </Text>
           <Touchable
             onPress={handleSave}
-            disabled={!mood || isSaving}
+            disabled={!mood}
             accessibilityRole="button"
-            accessibilityLabel={isSaving ? 'Saving' : 'Save'}
+            accessibilityLabel="Save"
             accessibilityHint="Saves today’s mood and note"
-            accessibilityState={{ disabled: !mood || isSaving }}
+            accessibilityState={{ disabled: !mood }}
             hitSlop={{ top: 10, left: 10, right: 10, bottom: 10 }}
             style={({ pressed }) => [pressed ? styles.pressedOpacity : null]}
           >
-            <Text style={[styles.sheetSave, (!mood || isSaving) && styles.sheetSaveDisabled]} maxFontSizeMultiplier={1.3}>
-              {isSaving ? 'Saving…' : 'Save'}
+            <Text style={[styles.sheetSave, !mood && styles.sheetSaveDisabled]} maxFontSizeMultiplier={1.3}>
+              Save
             </Text>
           </Touchable>
         </View>

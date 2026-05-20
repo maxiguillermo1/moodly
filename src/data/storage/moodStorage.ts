@@ -17,9 +17,20 @@ import { MoodEntry, MoodEntriesRecord, MoodGrade } from '../../types';
 import { logger } from '../../lib/security/logger';
 import { isValidISODateKey, normalizeNote, validateEntriesRecord, VALID_MOOD_SET, MAX_NOTE_LEN } from '../model/entry';
 import { assertLocalPersistenceWritable, ensureLocalPersistenceReady } from '../persistence/bootstrap';
-import { storage } from './asyncStorage';
+import {
+  clearMoodEntriesOnDisk,
+  deleteMoodEntryRow,
+  loadMoodEntriesFromDisk,
+  moodEntriesUsesSqlite,
+  MOOD_ENTRIES_STORAGE_KEY,
+  persistMoodEntriesBlob,
+  persistMoodEntryRow,
+  quarantineRawMoodEntriesJson,
+  readRawMoodEntriesJson,
+} from './moodEntriesBackend';
+import { notifyMoodEntryDeleted, notifyMoodEntryUpserted } from '../sync/syncBridge';
 
-const STORAGE_KEY = 'moodly.entries';
+const STORAGE_KEY = MOOD_ENTRIES_STORAGE_KEY;
 const CORRUPT_PREFIX = `${STORAGE_KEY}.corrupt.`;
 
 // In-memory cache for the session (performance-only; does not change semantics).
@@ -133,15 +144,9 @@ async function quarantineCorruptValue(rawJson: string): Promise<void> {
   const ts = Date.now();
   const backupKey = `${CORRUPT_PREFIX}${ts}`;
   try {
-    // Store the raw value for forensic/debug recovery.
-    await storage.setItem(backupKey, rawJson);
+    await quarantineRawMoodEntriesJson(rawJson, backupKey);
   } catch (e) {
     logger.warn('storage.entries.corruptBackup.persistFailed', { key: STORAGE_KEY, error: e });
-  }
-  try {
-    // Reset the primary key to keep the app functional.
-    await storage.setItem(STORAGE_KEY, JSON.stringify({}));
-  } catch (e) {
     logger.error('storage.entries.corruptReset.failed', { key: STORAGE_KEY, error: e });
   }
 }
@@ -218,6 +223,18 @@ function ensureEntriesSortedDescCache(entries: MoodEntriesRecord): MoodEntry[] {
   if (entriesSortedDescCache) return entriesSortedDescCache;
   entriesSortedDescCache = Object.values(entries).sort((a, b) => b.date.localeCompare(a.date));
   return entriesSortedDescCache;
+}
+
+async function coldLoadEntriesFromPersistence(): Promise<{
+  parsed: ParseResult<MoodEntriesRecord>;
+  rawJson: string | null;
+}> {
+  if (await moodEntriesUsesSqlite()) {
+    const record = await loadMoodEntriesFromDisk();
+    return { parsed: { ok: true, value: record }, rawJson: null };
+  }
+  const rawJson = await readRawMoodEntriesJson();
+  return { parsed: safeParseEntries(rawJson), rawJson };
 }
 
 function findInsertIndexDesc(arr: MoodEntry[], date: string): number {
@@ -378,7 +395,7 @@ export async function setAllEntries(next: MoodEntriesRecord): Promise<void> {
   await withEntriesWriteLock(async () => {
     // Persist first. Only update RAM caches after the write succeeds.
     // This prevents a failed write from leaving the app in a "looks saved but isn't" state.
-    await storage.setItem(STORAGE_KEY, JSON.stringify(next));
+    await persistMoodEntriesBlob(next);
     setEntriesCache(next);
     invalidateDerivedCaches();
   });
@@ -387,6 +404,41 @@ export async function setAllEntries(next: MoodEntriesRecord): Promise<void> {
 // ============================================================================
 // CRUD Operations
 // ============================================================================
+
+/**
+ * Warm `entriesCache` without returning a defensive copy (write-lock / snapshot paths only).
+ */
+async function loadEntriesCacheIfNeeded(): Promise<MoodEntriesRecord> {
+  if (entriesCache) return entriesCache;
+  await ensureLocalPersistenceReady();
+  if (entriesLoadPromise) {
+    await entriesLoadPromise;
+    return entriesCache ?? {};
+  }
+
+  entriesLoadPromise = (async () => {
+    const { parsed, rawJson } = await logger.perfMeasure(
+      'storage.getAllEntries.getItem',
+      { phase: 'cold', source: 'storage' },
+      async () => coldLoadEntriesFromPersistence()
+    );
+    if (!parsed.ok && typeof rawJson === 'string' && rawJson.length > 0) {
+      logger.warn('storage.entries.corrupt.detected', { key: STORAGE_KEY, action: 'quarantineAndReset' });
+      await quarantineCorruptValue(rawJson);
+    }
+    setEntriesCache(parsed.value);
+    invalidateDerivedCaches();
+    lastAllEntriesSource = 'storage';
+    return parsed.value;
+  })();
+
+  try {
+    await entriesLoadPromise;
+  } finally {
+    entriesLoadPromise = null;
+  }
+  return entriesCache ?? {};
+}
 
 /**
  * Retrieve all entries as a record keyed by date
@@ -401,17 +453,14 @@ export async function getAllEntries(): Promise<MoodEntriesRecord> {
     if (entriesLoadPromise) return entriesLoadPromise;
 
     entriesLoadPromise = (async () => {
-      const json = await logger.perfMeasure(
+      const { parsed, rawJson } = await logger.perfMeasure(
         'storage.getAllEntries.getItem',
         { phase: 'cold', source: 'storage' },
-        async () => {
-          return storage.getItem(STORAGE_KEY);
-        }
+        async () => coldLoadEntriesFromPersistence()
       );
-      const parsed = safeParseEntries(json);
-      if (!parsed.ok && typeof json === 'string' && json.length > 0) {
+      if (!parsed.ok && typeof rawJson === 'string' && rawJson.length > 0) {
         logger.warn('storage.entries.corrupt.detected', { key: STORAGE_KEY, action: 'quarantineAndReset' });
-        await quarantineCorruptValue(json);
+        await quarantineCorruptValue(rawJson);
       }
       setEntriesCache(parsed.value);
       invalidateDerivedCaches();
@@ -439,7 +488,7 @@ export async function getAllEntriesWithMonthIndex(): Promise<{
   entries: MoodEntriesRecord;
   byMonthKey: EntriesByMonthKey;
 }> {
-  const entries = await getAllEntries();
+  const entries = await loadEntriesCacheIfNeeded();
   const byMonthKey = ensureEntriesByMonthCache(entries);
   return { entries: cloneEntriesRecord(entries), byMonthKey: cloneEntriesByMonth(byMonthKey) };
 }
@@ -461,6 +510,21 @@ export async function getCalendarEntriesByMonthIndexSnapshot(): Promise<EntriesB
  * Get a single entry by date
  * @param date - Date string in YYYY-MM-DD format
  */
+/**
+ * Sync read when `entriesCache` is already warm (startup warm / prior tab load).
+ * Returns `undefined` when the cache is not ready — caller should fall back to `getEntry`.
+ */
+export function peekEntryFromSessionCache(date: string): MoodEntry | null | undefined {
+  if (!isValidISODateKey(date)) {
+    return null;
+  }
+  if (!entriesCache) {
+    return undefined;
+  }
+  const row = entriesCache[date];
+  return row ? cloneEntry(row) : null;
+}
+
 export async function getEntry(date: string): Promise<MoodEntry | null> {
   if (!isValidISODateKey(date)) {
     if (typeof __DEV__ !== 'undefined' && __DEV__) {
@@ -470,7 +534,10 @@ export async function getEntry(date: string): Promise<MoodEntry | null> {
     logger.warn('storage.entries.getEntry.invalidDateKey', { dateKey: date });
     return null;
   }
-  if (entriesCache) return entriesCache[date] ? cloneEntry(entriesCache[date]!) : null;
+  const peeked = peekEntryFromSessionCache(date);
+  if (peeked !== undefined) {
+    return peeked;
+  }
   const entries = await getAllEntries();
   return entries[date] ? cloneEntry(entries[date]!) : null;
 }
@@ -492,7 +559,7 @@ export async function upsertEntry(entry: MoodEntry): Promise<void> {
       throw new Error(`[moodStorage.upsertEntry] Invalid mood grade: ${String(entry.mood)}`);
     }
     const now = Date.now();
-    const prev = await getAllEntries();
+    const prev = await loadEntriesCacheIfNeeded();
     const existing = prev[entry.date];
 
     const safeNote = normalizeNote(entry.note);
@@ -517,7 +584,7 @@ export async function upsertEntry(entry: MoodEntry): Promise<void> {
 
     // Persist first. Only update RAM caches after the write succeeds.
     assertLocalPersistenceWritable();
-    await storage.setItem(STORAGE_KEY, JSON.stringify(entries));
+    await persistMoodEntryRow(next, entries);
 
     // Update derived caches (RAM-heavy, CPU-light) *after* persistence commits.
     const mk = monthKeyFromIso(entry.date);
@@ -530,6 +597,7 @@ export async function upsertEntry(entry: MoodEntry): Promise<void> {
     onUpsertUpdateDerivedCaches(existing, next);
 
     setEntriesCache(entries);
+    notifyMoodEntryUpserted(next);
   } catch (error) {
     logger.error('storage.entries.upsert.failed', { key: STORAGE_KEY, error });
     throw error;
@@ -547,7 +615,7 @@ export async function deleteEntry(date: string): Promise<void> {
       logger.warn('storage.entries.delete.invalidDateKey', { dateKey: date });
       return;
     }
-    const prev = await getAllEntries();
+    const prev = await loadEntriesCacheIfNeeded();
     const existing = prev[date];
     if (!existing) return;
     const entries: MoodEntriesRecord = { ...prev };
@@ -555,7 +623,7 @@ export async function deleteEntry(date: string): Promise<void> {
 
     // Persist first. Only update RAM caches after the write succeeds.
     assertLocalPersistenceWritable();
-    await storage.setItem(STORAGE_KEY, JSON.stringify(entries));
+    await deleteMoodEntryRow(date, entries);
 
     if (entriesByMonthCache) {
       const mk = monthKeyFromIso(date);
@@ -576,6 +644,7 @@ export async function deleteEntry(date: string): Promise<void> {
 
     onDeleteUpdateDerivedCaches(existing, date);
     setEntriesCache(entries);
+    notifyMoodEntryDeleted(date);
   } catch (error) {
     logger.error('storage.entries.delete.failed', { key: STORAGE_KEY, error });
     throw error;
@@ -596,6 +665,16 @@ export async function getEntriesSortedDesc(): Promise<MoodEntry[]> {
 }
 
 /**
+ * Journal hot path: stable sorted-array identity until entries change (read-only).
+ * Callers must not mutate returned rows; use `getEntriesSortedDesc` when a defensive copy is required.
+ */
+export async function getJournalEntriesSortedDescSnapshot(): Promise<MoodEntry[]> {
+  const entries = await loadEntriesCacheIfNeeded();
+  lastAllEntriesSource = entriesCache ? 'sessionCache' : lastAllEntriesSource;
+  return ensureEntriesSortedDescCache(entries);
+}
+
+/**
  * Get mood distribution + totals for Settings (and internal cache warming).
  */
 export async function getMoodStats(): Promise<{ totalEntries: number; moodCounts: MoodCounts }> {
@@ -606,11 +685,19 @@ export async function getMoodStats(): Promise<{ totalEntries: number; moodCounts
 }
 
 /**
+ * Prime raw `moodly.entries` in RAM (no derived indexes). Used on app startup so Today can
+ * `getEntry` without cloning the full record; calendar/journal indexes build on demand.
+ */
+export async function primeEntriesSessionCache(): Promise<void> {
+  await loadEntriesCacheIfNeeded();
+}
+
+/**
  * Warm common RAM caches after the first paint so screens feel instant on first open.
  * Safe: does not change semantics; only precomputes derived views in-memory.
  */
 export async function warmEntriesSessionCaches(): Promise<void> {
-  const entries = await getAllEntries();
+  const entries = await loadEntriesCacheIfNeeded();
   ensureEntriesByMonthCache(entries);
   ensureEntriesSortedDescCache(entries);
   ensureMoodCountsCache(entries);
@@ -689,7 +776,7 @@ export async function clearAllEntries(): Promise<void> {
     // Persist first. Only update RAM caches after the write succeeds.
     await ensureLocalPersistenceReady();
     assertLocalPersistenceWritable();
-    await storage.removeItem(STORAGE_KEY);
+    await clearMoodEntriesOnDisk();
     setEntriesCache({});
     entriesLoadPromise = null;
     invalidateDerivedCaches();
@@ -704,6 +791,10 @@ export async function clearAllEntries(): Promise<void> {
  */
 export function resetEntriesStorageSessionStateForTests(): void {
   if (typeof process === 'undefined' || process.env.NODE_ENV !== 'test') return;
+  invalidateMoodEntriesSessionCache();
+}
+
+export function invalidateMoodEntriesSessionCache(): void {
   entriesCache = null;
   entriesLoadPromise = null;
   entriesWriteTail = Promise.resolve();

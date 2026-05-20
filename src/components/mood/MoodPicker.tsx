@@ -20,7 +20,7 @@ interface MoodPickerProps {
   compact?: boolean;
 }
 
-export function MoodPicker({
+function MoodPickerInner({
   selectedMood,
   onSelect,
   title = 'How was your day?',
@@ -121,6 +121,7 @@ export function MoodPicker({
           return (
             <Touchable
               key={mood.grade}
+              trackScrollInteraction={false}
               style={[
                 styles.segment,
                 isSelected ? styles.segmentSelected : null,
@@ -168,6 +169,7 @@ export function MoodPicker({
     return (
       <View key={mood.grade} style={styles.cell}>
         <Touchable
+          trackScrollInteraction={false}
           style={[
             styles.moodButton,
             isSelected ? styles.moodButtonSelected : null,
@@ -228,3 +230,6 @@ export function MoodPicker({
     </View>
   );
 }
+
+/** Memoized: mood taps should not rebuild the full picker when only `selectedMood` changes. */
+export const MoodPicker = React.memo(MoodPickerInner);

@@ -9,7 +9,7 @@ import type { MutableRefObject } from 'react';
 import { useCalendarDayPress } from './useCalendarDayPress';
 
 const mockGetEntry = jest.fn();
-jest.mock('../storage', () => ({
+jest.mock('../storage/entries', () => ({
   getEntry: (...a: unknown[]) => mockGetEntry(...a),
 }));
 

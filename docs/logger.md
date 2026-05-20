@@ -78,15 +78,16 @@ All logs must be emitted via the privacy‑safe `logger` (see `src/security` fac
 Example:
 
 ```ts
-logger.perf('calendar.loadEntries', {
+logger.perf('calendar.loadData', {
   phase: 'cold',
   source: 'storage',
   durationMs: 24.6,
+  monthsIndexed: 42,
 });
 ```
 
 Console output (dev):
-`[PERF][calendar] calendar.loadEntries { phase, source, durationMs }`
+`[PERF][calendar] calendar.loadData { phase, source, durationMs, monthsIndexed }`
 
 ---
 ## Log levels
@@ -185,7 +186,7 @@ Prefer **one summary log** over many micro logs.
 
 Good:
 - one `CACHE session.ready` snapshot after warmup
-- one `PERF calendar.loadEntries` per screen focus
+- one `PERF calendar.loadData` per calendar screen focus (month timeline + year view via `fetchMoodCalendarSnapshot`)
 
 Bad:
 - logging per cell/day in calendar grids

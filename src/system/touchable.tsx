@@ -19,12 +19,23 @@ type Props = React.ComponentProps<typeof Pressable> & {
   children: React.ReactNode;
   scaleTo?: number; // default ~0.985
   style?: React.ComponentProps<typeof Pressable>['style'] | StyleProp<ViewStyle>;
+  /** When false, skips global scroll/momentum subscription (high-frequency controls like mood segments). */
+  trackScrollInteraction?: boolean;
 };
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
 export function Touchable(props: Props): React.ReactElement {
-  const { scaleTo = 0.985, onPressIn, onPressOut, pressRetentionOffset, hitSlop, style, ...rest } = props;
+  const {
+    scaleTo = 0.985,
+    onPressIn,
+    onPressOut,
+    pressRetentionOffset,
+    hitSlop,
+    style,
+    trackScrollInteraction = true,
+    ...rest
+  } = props;
 
   const scale = useSharedValue(1);
 
@@ -53,11 +64,12 @@ export function Touchable(props: Props): React.ReactElement {
   }, [scale]);
 
   useEffect(() => {
+    if (!trackScrollInteraction) return;
     // Cancel pressed feedback when a scroll/momentum interaction begins.
     return interactionQueue.subscribe((s) => {
       if (s.isUserScrolling || s.isMomentum) cancelPressed();
     });
-  }, [cancelPressed]);
+  }, [cancelPressed, trackScrollInteraction]);
 
   const handlePressIn = useCallback(
     (e: any) => {

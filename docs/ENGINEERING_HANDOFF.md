@@ -2,7 +2,7 @@
 
 **Full product vision, UX rules, and agent constitution:** [`AGENTS.md`](./AGENTS.md) — read that for *what Moodly is*, Today vs extensions hierarchy, Goals/Reminders philosophy, and non-negotiables.
 
-**Moodly v0.5 (0.5.0)** — See **`docs/CHANGELOG.md`** for the maturity model, UI consolidation (**`MoodEntryFields`**), tab bar polish, **`src/constants/`** release metadata, **`npm run typecheck`**, **`export:bundles-check`** in CI, calendar **`fetchMoodCalendarSnapshot`**, **`AppErrorBoundary`**, and **`eas.json`**. Settings **Appearance** (Auto/Light/Dark + Solid/Gradient) unchanged.
+**Moodly v0.6 (0.6.0)** — See **`docs/CHANGELOG.md`** for the maturity model, UI consolidation (**`MoodEntryFields`**), tab bar polish, **`src/constants/`** release metadata, **`npm run typecheck`**, **`export:bundles-check`** in CI, calendar **`fetchMoodCalendarSnapshot`**, **`AppErrorBoundary`**, and **`eas.json`**. Settings **Appearance** (Auto/Light/Dark + Solid/Gradient) unchanged.
 
 Goal: a new engineer can ship safely in ~10 minutes.
 

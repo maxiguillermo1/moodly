@@ -7,17 +7,9 @@ import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
-import {
-  TodayScreen,
-  JournalScreen,
-  SettingsScreen,
-  HabitsScreen,
-  GoalsScreen,
-  TodoScreen,
-} from '../screens';
+import TodayScreen from '@features/today/screens/TodayScreen';
 import { FloatingTabBar } from './FloatingTabBar';
 import { TabBarAutoHideProvider } from './TabBarAutoHideContext';
-import { CalendarStack } from './CalendarStack';
 import { useAppTheme } from '../theme';
 
 import type { RootStackParamList } from './types';
@@ -53,10 +45,15 @@ function MainTabs() {
         }}
         initialRouteName="Today"
       >
-        <Tab.Screen name="Calendar" component={CalendarStack} />
+        <Tab.Screen
+          name="Calendar"
+          getComponent={() => require('./CalendarStack').CalendarStack}
+        />
         <Tab.Screen name="Today" component={TodayScreen} />
-        {/* FlashList can hitch when thawing frozen screens; keep Journal live for smoother tab return */}
-        <Tab.Screen name="Journal" component={JournalScreen} />
+        <Tab.Screen
+          name="Journal"
+          getComponent={() => require('@features/journal/screens/JournalScreen').default}
+        />
       </Tab.Navigator>
     </TabBarAutoHideProvider>
   );
@@ -77,15 +74,25 @@ export default function RootNavigator() {
       <Stack.Screen name="Main" component={MainTabs} />
       <Stack.Screen
         name="Settings"
-        component={SettingsScreen}
+        getComponent={() => require('@features/settings/screens/SettingsScreen').default}
         options={{
           presentation: 'modal',
           animation: modalAnimation,
         }}
       />
       <Stack.Screen
+        name="Account"
+        getComponent={() => require('@features/account/screens/AccountScreen').default}
+        options={{
+          presentation: 'card',
+          animation: pushAnimation,
+          gestureEnabled: true,
+          fullScreenGestureEnabled: true,
+        }}
+      />
+      <Stack.Screen
         name="Habits"
-        component={HabitsScreen}
+        getComponent={() => require('@features/habits/screens/HabitsScreen').default}
         options={{
           presentation: 'card',
           animation: pushAnimation,
@@ -97,7 +104,7 @@ export default function RootNavigator() {
       />
       <Stack.Screen
         name="Goals"
-        component={GoalsScreen}
+        getComponent={() => require('@features/goals/screens/GoalsScreen').default}
         options={{
           presentation: 'card',
           animation: pushAnimation,
@@ -108,7 +115,7 @@ export default function RootNavigator() {
       />
       <Stack.Screen
         name="Todo"
-        component={TodoScreen}
+        getComponent={() => require('@features/reminders/screens/TodoScreen').default}
         options={{
           presentation: 'card',
           animation: pushAnimation,

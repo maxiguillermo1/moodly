@@ -13,8 +13,8 @@ Moodly uses **layer-first** folders for shared code (`components/`, `hooks/`, `d
 | Feature | User surface | Canonical UI | Primary data / rules |
 |--------|----------------|----------------|----------------------|
 | **Today** | Today tab | `src/features/today/screens/TodayScreen.tsx` | `useMoodEntry`, `src/components/todayExtensions/*` |
-| **Journal** | Journal tab | `src/features/journal/screens/JournalScreen.tsx`, `JournalEditModal.tsx` | `entriesRepository` / `moodStorage` |
-| **Calendar** | Calendar tab | `src/features/calendar/screens/CalendarScreen.tsx`, `CalendarView.tsx` | `calendarSnapshotRepository`, `calendarSnapshot.ts`, `src/components/calendar/*`, `src/lib/calendar/*` |
+| **Journal** | Journal tab | `src/features/journal/screens/JournalScreen.tsx`, `JournalEditModal.tsx` | `useJournalEntriesLoad`, `src/lib/journal/*`, `getJournalEntriesSortedDescSnapshot` |
+| **Calendar** | Calendar tab | `src/features/calendar/screens/CalendarScreen.tsx`, `CalendarView.tsx` | `useMoodCalendarSnapshotLoad`, `useCalendarMonthTimelineScroll`, `useCalendarEntryEdit`, `CalendarEditModal`, `fetchMoodCalendarSnapshot`, `CalendarTimelineMonth`, `src/components/calendar/*`, `src/lib/calendar/*` |
 | **Goals** | Goals stack | `src/features/goals/screens/GoalsScreen.tsx` | `goalsRepository`, `goalsStorage`, `src/lib/goals/goalMath.ts` |
 | **Reminders** | Todo route | `src/features/reminders/screens/TodoScreen.tsx` | `tasksRepository`, `tasksStorage`, `useDayTodos` |
 | **Habits** | Habits screen | `src/features/habits/screens/HabitsScreen.tsx` | `extensionsRepository`, `habitSelectionsStorage`, `habitTrackingStorage` |
@@ -45,7 +45,7 @@ Moodly uses **layer-first** folders for shared code (`components/`, `hooks/`, `d
 | `src/data/persistence/` | Schema meta, **forward migrations** (pre-step **backup** blobs), `KeyValueStore`, **internal export** (`localExport/moodlyLocalExport.ts`) | no UI |
 | `src/lib/narrative/` | **Life timeline** narrative engines (phases, continuity, digest) | `types`, `lib/insights/*` (period + streak helpers), `lib/utils/date` |
 | `src/lib/insights/` | Deterministic reflection **engines** (week/month bundles); consumed by `insightsRepository` | `types`, `lib/constants/*`, `lib/utils/date` |
-| `src/lib/` | Pure rules (calendar math, goals math, dates, **insights**, **narrative**) | `types`, other `lib` per ESLint |
+| `src/lib/` | Pure rules (calendar math, goals math, dates, **journal** grouping, **insights**, **narrative**) | `types`, other `lib` per ESLint |
 | `src/utils/` | Barrel + small shared UI-adjacent helpers | per `utils` / ESLint |
 | `src/types/` | Shared TypeScript contracts | types only |
 | `src/security/` | Redaction + logger façade for UI | no journal blobs |

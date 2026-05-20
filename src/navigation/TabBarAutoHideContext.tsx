@@ -13,9 +13,9 @@ import {
 } from 'react-native-reanimated';
 import { useAppTheme } from '../theme';
 
-const TAB_BAR_HIDE_DURATION_MS = 155;
+const TAB_BAR_HIDE_DURATION_MS = 88;
 /** Slightly longer than hide so the bar can ease in with opacity + slide without feeling abrupt. */
-const TAB_BAR_SHOW_DURATION_MS = 240;
+const TAB_BAR_SHOW_DURATION_MS = 140;
 
 export type TabBarAutoHideContextValue = {
   tabBarHiddenProgress: SharedValue<number>;

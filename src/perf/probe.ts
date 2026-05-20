@@ -6,7 +6,7 @@
  * - Metadata-only: never log notes, entry payloads, settings payloads, or large objects.
  *
  * This module is intentionally small + reversible.
- * To revert: delete `src/perf/*` and remove the few imports in `App.tsx`, `src/app/RootApp.tsx`,
+ * To revert: delete `src/perf/*` and remove the few imports in `App.tsx`, `src/bootstrap/RootApp.tsx`,
  * and the screen-level hooks/wrappers.
  */
 
@@ -15,7 +15,10 @@ import type { NavigationState, PartialState } from '@react-navigation/native';
 
 import { logger } from '../security';
 
-const PERF_ENABLED = typeof __DEV__ !== 'undefined' && !!__DEV__;
+const PERF_ENABLED =
+  typeof __DEV__ !== 'undefined' &&
+  !!__DEV__ &&
+  process.env.EXPO_PUBLIC_MOODLY_PERF_PROBE === '1';
 
 type MarkName = string;
 type RenderId = string;

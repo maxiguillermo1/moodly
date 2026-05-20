@@ -1,6 +1,9 @@
 /**
  * @fileoverview Repository façade for mood + journal persisted rows (`moodly.entries`).
  * @module data/repositories/entriesRepository
+ *
+ * Hot paths: `getJournalEntriesSortedDescSnapshot` (Journal list), `getCalendarEntriesByMonthIndexSnapshot`
+ * (calendar month index). See `src/data/DATA_CONTRACT.md` § Mood / journal read APIs.
  */
 
 import * as entriesImpl from '../storage/moodStorage';

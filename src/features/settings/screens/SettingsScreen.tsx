@@ -4,9 +4,20 @@
  */
 
 import React, { useMemo, useState, useCallback, useRef } from 'react';
-import { ScrollView, StyleSheet, Alert, Switch, Platform, InteractionManager } from 'react-native';
+import {
+  ScrollView,
+  StyleSheet,
+  Alert,
+  Switch,
+  Platform,
+  InteractionManager,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import type { RootStackParamList } from '@/navigation/types';
+import { useAuth } from '@/hooks/useAuth';
+import { useCloudSyncStatus } from '@/hooks/useCloudSyncStatus';
 import {
   ScreenHeader,
   GroupedSection,
@@ -16,16 +27,18 @@ import {
   TodoTodaySettingsRow,
 } from '@/components';
 import {
-  clearAllEntries,
-  clearAllHabitSelections,
-  resetTrackedHabitsToDefaults,
+  clearAllUserData,
+  exportUserDataJson,
   getSettings,
   getMoodStats,
+  importUserDataFromJson,
   setCalendarMoodStyle,
 } from '@/storage';
-import { MOOD_GRADES, getMoodLabel } from '@/utils';
+import { MOOD_GRADES, getMoodLabel, openExternalUrl } from '@/utils';
+import { pickJsonImport, shareJsonExport } from '@/lib/userData/userDataTransfer';
 import { logger } from '@/security';
-import { APP_RELEASE_VERSION } from '@/constants';
+import { LEGAL_URLS } from '@/constants';
+import { formatReleaseVersionLine } from '@/config/releaseMetadata';
 import { perfProbe, usePerfScreen } from '@/perf';
 import { CalendarMoodStyle, MoodGrade, MoodGradeColorStyle } from '@/types';
 import { spacing, useAppTheme } from '@/theme';
@@ -34,6 +47,9 @@ import { formatMoodA11yLabel } from '@/system/accessibility';
 
 export default function SettingsScreen() {
   usePerfScreen('Settings');
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const { cloudEnabled, user } = useAuth();
+  const { status: syncStatus } = useCloudSyncStatus();
   const {
     system: s,
     groupedCanvas,
@@ -78,29 +94,25 @@ export default function SettingsScreen() {
   const loadStats = useCallback(async () => {
     const phase = loadStatsCountRef.current === 0 ? 'cold' : 'warm';
     loadStatsCountRef.current += 1;
-    const p: any = (globalThis as any).performance;
-    const start = typeof p?.now === 'function' ? p.now() : Date.now();
+    const start = perfProbe.nowMs();
     const { totalEntries: total, moodCounts: counts } = await getMoodStats();
     setTotalEntries(total);
     setMoodCounts(counts);
-    const end = typeof p?.now === 'function' ? p.now() : Date.now();
     logger.perf('settings.loadStats', {
       phase,
       source: 'sessionCache',
-      durationMs: Number(((end as number) - (start as number)).toFixed(1)),
+      durationMs: Number((perfProbe.nowMs() - start).toFixed(1)),
     });
   }, []);
 
   const loadTheme = useCallback(async () => {
-    const p: any = (globalThis as any).performance;
-    const start = typeof p?.now === 'function' ? p.now() : Date.now();
+    const start = perfProbe.nowMs();
     const settings = await getSettings();
     setCalendarMoodStyleState(settings.calendarMoodStyle);
-    const end = typeof p?.now === 'function' ? p.now() : Date.now();
     logger.perf('settings.loadTheme', {
       phase: 'warm',
       source: 'sessionCache',
-      durationMs: Number(((end as number) - (start as number)).toFixed(1)),
+      durationMs: Number((perfProbe.nowMs() - start).toFixed(1)),
     });
   }, []);
 
@@ -121,31 +133,74 @@ export default function SettingsScreen() {
     }, [loadStats, loadTheme])
   );
 
-  function handleClearData() {
+  const handleExportData = useCallback(() => {
+    void (async () => {
+      try {
+        haptics.select();
+        const json = await exportUserDataJson();
+        await shareJsonExport(json);
+      } catch {
+        logger.warn('settings.export.failed');
+        Alert.alert('Export failed', 'Could not create an export file. Please try again.');
+      }
+    })();
+  }, []);
+
+  const handleImportData = useCallback(() => {
+    Alert.alert(
+      'Import data',
+      'This replaces mood, habit, goal, and reminder data on this device with the selected export file. Settings appearance preferences are kept unless the file includes them.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Import',
+          style: 'destructive',
+          onPress: () => {
+            void (async () => {
+              try {
+                haptics.toggle();
+                const json = await pickJsonImport();
+                if (!json) return;
+                await importUserDataFromJson(json);
+                await loadStats();
+                Alert.alert('Done', 'Your data was imported.');
+              } catch {
+                logger.warn('settings.import.failed');
+                Alert.alert('Import failed', 'The file could not be imported. Check that it is a valid Moodly export.');
+              }
+            })();
+          },
+        },
+      ]
+    );
+  }, [loadStats]);
+
+  const handleClearData = useCallback(() => {
     Alert.alert(
       'Clear All Data',
-      'This will permanently delete all your mood entries. This action cannot be undone.',
+      'This will permanently delete all mood entries, habits, goals, and reminders on this device. This action cannot be undone.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Delete All',
           style: 'destructive',
-          onPress: async () => {
+          onPress: () => {
+            void (async () => {
               try {
-                await clearAllEntries();
-                await clearAllHabitSelections();
-                await resetTrackedHabitsToDefaults();
-                loadStats();
-              Alert.alert('Done', 'All entries have been deleted.');
-            } catch {
-              logger.warn('settings.clearAll.failed');
-              Alert.alert('Error', 'Failed to clear data. Please try again.');
-            }
+                haptics.toggle();
+                await clearAllUserData();
+                await loadStats();
+                Alert.alert('Done', 'All data has been deleted.');
+              } catch {
+                logger.warn('settings.clearAll.failed');
+                Alert.alert('Error', 'Failed to clear data. Please try again.');
+              }
+            })();
           },
         },
       ]
     );
-  }
+  }, [loadStats]);
 
   const topMood = useMemo(() => {
     if (totalEntries === 0) return null;
@@ -206,6 +261,13 @@ export default function SettingsScreen() {
 
   const darkSwitchValue = appearancePreference === 'system' ? isDark : appearancePreference === 'dark';
   const darkSwitchDisabled = appearancePreference === 'system';
+
+  const releaseVersionLine = useMemo(() => formatReleaseVersionLine(), []);
+
+  const openLegalUrl = useCallback(async (url: string, label: string) => {
+    haptics.select();
+    await openExternalUrl(url, label);
+  }, []);
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
@@ -364,7 +426,7 @@ export default function SettingsScreen() {
           <GroupedRow
             symbol={{ name: 'information-circle-outline', wellColor: s.blue }}
             label="Version"
-            value={APP_RELEASE_VERSION}
+            value={releaseVersionLine}
             showChevron={false}
             isFirst
           />
@@ -377,14 +439,90 @@ export default function SettingsScreen() {
           />
         </GroupedSection>
 
-        <GroupedSection header="Data" footer="This action cannot be undone.">
+        <GroupedSection
+          header="Account & sync"
+          footer={
+            cloudEnabled
+              ? 'Sign in to keep your journal safe across devices, reinstalls, and new phones.'
+              : 'Add Supabase env variables to enable cloud sync (see docs/SUPABASE.md).'
+          }
+        >
+          <GroupedRow
+            symbol={{ name: 'person-circle-outline', wellColor: s.blue }}
+            label="Account"
+            value={
+              cloudEnabled
+                ? user
+                  ? syncStatus === 'syncing'
+                    ? 'Syncing…'
+                    : 'Signed in'
+                  : 'Sign in'
+                : 'Not configured'
+            }
+            onPress={() => navigation.navigate('Account')}
+            accessibilityLabel="Account and cloud sync"
+            accessibilityHint="Opens account sign in and sync settings"
+            isFirst
+            isLast
+          />
+        </GroupedSection>
+
+        <GroupedSection
+          header="Privacy & support"
+          footer="Signed-in users store journal data in Supabase (encrypted in transit). Local export/import remains available for manual backups."
+        >
+          <GroupedRow
+            symbol={{ name: 'shield-checkmark-outline', wellColor: s.teal }}
+            label="Privacy Policy"
+            onPress={() => void openLegalUrl(LEGAL_URLS.privacyPolicy, 'Privacy Policy')}
+            accessibilityLabel="Privacy Policy"
+            accessibilityHint="Opens the privacy policy in your browser"
+            isFirst
+          />
+          <GroupedRow
+            symbol={{ name: 'document-text-outline', wellColor: s.indigo }}
+            label="Terms of Use"
+            onPress={() => void openLegalUrl(LEGAL_URLS.termsOfUse, 'Terms of Use')}
+            accessibilityLabel="Terms of Use"
+            accessibilityHint="Opens the terms of use in your browser"
+          />
+          <GroupedRow
+            symbol={{ name: 'mail-outline', wellColor: s.blue }}
+            label="Support"
+            onPress={() => void openLegalUrl(LEGAL_URLS.support, 'Support')}
+            accessibilityLabel="Support"
+            accessibilityHint="Opens support in your browser"
+            isLast
+          />
+        </GroupedSection>
+
+        <GroupedSection
+          header="Data"
+          footer="Export creates a JSON backup on this device. Import restores from a Moodly export file. Clear All Data permanently deletes mood, habit, goal, and reminder data."
+        >
+          <GroupedRow
+            symbol={{ name: 'share-outline', wellColor: s.blue }}
+            label="Export My Data"
+            onPress={handleExportData}
+            accessibilityLabel="Export my data"
+            accessibilityHint="Creates a JSON backup you can save or share"
+            isFirst
+          />
+          <GroupedRow
+            symbol={{ name: 'download-outline', wellColor: s.teal }}
+            label="Import Data"
+            onPress={handleImportData}
+            accessibilityLabel="Import data"
+            accessibilityHint="Restores mood and extension data from a Moodly export file"
+          />
           <GroupedRow
             symbol={{ name: 'trash-outline', wellColor: s.red }}
             label="Clear All Data"
             onPress={handleClearData}
+            accessibilityLabel="Clear all data"
+            accessibilityHint="Permanently deletes mood entries, habits, goals, and reminders on this device"
             showChevron={false}
             destructive
-            isFirst
             isLast
           />
         </GroupedSection>

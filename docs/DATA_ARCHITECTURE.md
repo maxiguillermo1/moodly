@@ -1,6 +1,6 @@
 # Moodly — local data architecture (database-ready)
 
-**Product context:** Moodly is **v0.5** (pre-1.0 refinement). Persistence uses its own **schema rail** and per-blob revision numbers; those are independent of app semver — see [`CHANGELOG.md`](./CHANGELOG.md) § Versioning and [`ARCHITECTURE_STATE.md`](./ARCHITECTURE_STATE.md).
+**Product context:** Moodly is **v0.6** (pre-1.0 refinement). Persistence uses its own **schema rail** and per-blob revision numbers; those are independent of app semver — see [`CHANGELOG.md`](./CHANGELOG.md) § Versioning and [`ARCHITECTURE_STATE.md`](./ARCHITECTURE_STATE.md).
 
 See also **[DATA_SAFETY.md](DATA_SAFETY.md)** (integrity, recovery, date keys, extensions policy) and **[ARCHITECTURE_STATE.md](ARCHITECTURE_STATE.md)** (schema snapshot).
 
@@ -20,8 +20,8 @@ Moodly is **local-only** today. This document explains how persistence is layere
 1. **UI** — React screens/hooks. Must not import `@react-native-async-storage/async-storage` directly.
 2. **Repositories** (`src/data/repositories/`) — Stable, domain-shaped APIs (`entriesRepository`, `settingsRepository`, `extensionsRepository`, …). Prefer these in new code; they delegate to the storage modules today and can delegate to a remote client tomorrow.
 3. **Storage modules** (`src/data/storage/*Storage.ts`) — Session caches, write locks, validation, and corruption quarantine per key. Still the implementation workhorses.
-4. **Persistence core** (`src/data/persistence/`) — `KeyValueStore` interface, schema metadata, forward migrations.
-5. **Adapter** — `getDefaultLocalKeyValueStore()` returns AsyncStorage typed as `KeyValueStore` (alias: `LocalStorageAdapter`). Swap this for a SQLite or HTTP client when needed.
+4. **Persistence core** (`src/data/persistence/`) — `KeyValueStore` interface, schema metadata, forward migrations, **SQLite** (`src/data/persistence/sqlite/`).
+5. **Adapter** — `getDefaultLocalKeyValueStore()` returns AsyncStorage typed as `KeyValueStore` (alias: `LocalStorageAdapter`). Mood entries additionally use **`expo-sqlite`** (`moodly.db`) via `moodEntriesBackend.ts`.
 
 Public import surface: **`src/storage`** re-exports **`src/data/repositories`** (which delegates to `src/data/storage/*` implementations today).
 
@@ -29,14 +29,14 @@ Public import surface: **`src/storage`** re-exports **`src/data/repositories`** 
 
 | Concept | Persisted key | Canonical type | Notes |
 |--------|----------------|----------------|-------|
-| Mood + journal row | `moodly.entries` | `MoodEntry` (see `types/canonicalPersisted.ts`) | One row per local day; natural key `date` (`YYYY-MM-DD`). |
+| Mood + journal row | `moodly.entries` (legacy) + SQLite `mood_entries` | `MoodEntry` (see `types/canonicalPersisted.ts`) | One row per local day; natural key `date` (`YYYY-MM-DD`). **Active backend:** SQLite after bootstrap import (`moodly.entries.backend` = `sqlite`). |
 | Settings + extension *toggles* | `moodly.settings` | `AppSettings` | Order/stack flags; not per-day values. |
-| Habit selections (values) | `moodly.habitSelections` | `{ v: 3, selections: Record<YYYY-MM-DD, HabitId[]>, toggleTotals: {} }` | **`selections`** only: per-day “on” habits (deduped, catalog order). **`toggleTotals`** is deprecated (always `{}`); Habits screen totals are **derived** from `selections`, not stored. Extensions do not show counts. See `habitSelectionsStorage`. |
+| Habit selections (values) | `moodly.habitSelections` (legacy) + SQLite `habit_selections` | `{ v: 3, selections: Record<YYYY-MM-DD, HabitId[]>, toggleTotals: {} }` | **`selections`** only: per-day “on” habits (deduped, catalog order). **Active backend:** SQLite after bootstrap import (`moodly.habitSelections.backend` = `sqlite`). |
 | Tracked habits (config) | `moodly.trackedHabits` (see `habitTrackingStorage`) | `HabitId[]` | Which habits appear in the strip. |
 | Tasks / Reminders metadata | `moodly.tasks` | `TasksRecord` | Normalized task foundation, recurrence templates, history, lists/tags, and migration marker. |
 | Day Reminder shards | `moodly.tasks.day.<YYYY-MM-DD>` + `moodly.tasks.dayIndex` | `DayTodoItem[]` | Hot day-scoped Reminder reads/writes touch only the active local-day shard. |
 | Legacy day todos | `moodly.dayTodos` | `Record<PersistedDayKey, DayTodoItem[]>` | Migration source only; valid rows migrate into task metadata and day shards once. |
-| Goals | `moodly.goals` | `GoalsRecord` | Habit/target/average/project goals with progress history. |
+| Goals | `moodly.goals` (legacy) + SQLite `goals` / `goal_progress` | `GoalsRecord` | Habit/target/average/project goals with progress history. **Active backend:** SQLite after bootstrap import (`moodly.goals.backend` = `sqlite`). |
 | Insight timing (cooldowns) | `moodly.insights.reflectionTiming` | `{ schemaVersion: 1, topicLastSurfacedAtMs: Record<string, number> }` | **Not** computed insights — only “last time topic X was shown” for anti-spam. See `insightsReflectionStateStorage` + `docs/INSIGHTS.md`. |
 | Daily Activity | *(not persisted)* | `DayActivity` (`src/types/dailyActivity.types.ts`) | **Read model only** — composed by `dailyActivityRepository` from entries, habits, goals, reminders, and local date; never written as its own blob. |
 | Schema version | `moodly.schemaMeta` | `SchemaMeta` | Drives migrations only. |
@@ -50,7 +50,7 @@ Public import surface: **`src/storage`** re-exports **`src/data/repositories`** 
 - **`toggleTotals`**: legacy field kept as **`{}`** for backward compatibility; parsers ignore non-empty legacy values for UI and rewrite to `{}` when migrating.
 - **UI split**: Today / journal **extensions** render habit chips **without** under-chip counts; the **Habits** tab list shows **“1 day” / “N days”** derived from storage as above.
 
-**Scale note** — Day Reminders are now date-sharded for the hot Today/Todo paths, while `moodly.tasks` remains the metadata/recurrence record. `moodly.goals` remains a normalized JSON payload but exposes lightweight summary selectors for list/Today rendering. Before cloud sync, imported datasets, OS notification scheduling at scale, or large completed-history views, split the remaining aggregate stores into SQLite tables or finer id/date-sharded keys.
+**Scale note** — Day Reminders are date-sharded for the hot Today/Todo paths, while `moodly.tasks` remains the metadata/recurrence record. Mood entries, habit selections, and goals now use SQLite row stores; remaining aggregate keys (settings, tasks metadata, insight cooldowns) stay on AsyncStorage until import/sync pressure warrants further normalization.
 
 ### Daily Activity (composed read model)
 
@@ -64,7 +64,7 @@ Full contract: [`DAILY_ACTIVITY.md`](./DAILY_ACTIVITY.md).
 
 | Repository | Responsibility |
 |------------|----------------|
-| `entriesRepository` | CRUD + aggregates for mood/journal rows. |
+| `entriesRepository` | CRUD + aggregates for mood/journal rows. Hot reads: **`getJournalEntriesSortedDescSnapshot`** (Journal), **`getCalendarEntriesByMonthIndexSnapshot`** (calendar index); warm writes avoid full-record clones inside the write lock. |
 | `settingsRepository` | `AppSettings` read/write and focused setters. |
 | `extensionsRepository` | Namespaced facades for habit selections, tracking, and day reminders (values). |
 | `tasksRepository` | Normalized task/reminder queries and day-scoped compatibility APIs. |
@@ -87,10 +87,18 @@ Aliases for readability (same implementation): `moodEntryRepository` / `journalE
 
 If on-disk `schemaVersion` **exceeds** the app’s `CURRENT_SCHEMA_VERSION`, migrations **no-op** (newer data from a newer app install). Missing migration steps log an error and throw in the migration runner (defect guard).
 
-## Internal full export (no UI)
+## User export / import (Settings)
+
+- **UI**: Settings → **Export My Data** / **Import Data** (`SettingsScreen.tsx`).
+- **Repository**: `userDataExportRepository` — `exportUserDataJson`, `importUserDataFromJson`.
+- **Export builder**: `buildMoodlyUserExportV1` merges SQLite snapshots for mood entries, habit selections, and goals into the `kv` map before serialization.
+- **Import restore**: `applyMoodlyLocalImportV1` writes `kv` to AsyncStorage, clears SQLite domain caches, and re-runs bootstrap import rails (`forceReimportAllSqliteFromAsyncStorage`).
+- **File helpers**: `src/lib/userData/userDataTransfer.ts` (share sheet + document picker).
+
+## Internal export envelope
 
 - **Module**: `src/data/persistence/localExport/moodlyLocalExport.ts`.
-- **Purpose**: produce a **validated JSON envelope** (`kind: moodly.localExport.v1`, `formatRevision: 1`, `exportedAtMs`, `schemaMetaRaw`, `kv`) for support, future “export my data”, or tests. Excludes `.corrupt.*` keys and `moodly.migrationBackup.*` by default.
+- **Purpose**: validated JSON envelope (`kind: moodly.localExport.v1`, `formatRevision: 1`, `exportedAtMs`, `schemaMetaRaw`, `kv`) for support, Settings export/import, and tests. Excludes `.corrupt.*` keys and `moodly.migrationBackup.*` by default.
 - **API**: `buildMoodlyLocalExportV1(store)` requires `KeyValueStore.getAllKeys`; `parseMoodlyLocalExportJson` / `validateMoodlyLocalExportPayload` validate structure without writing disk.
 - **Size cap**: `MOODLY_LOCAL_EXPORT_MAX_APPROX_BYTES` — throws if exceeded (protects memory).
 
@@ -98,12 +106,47 @@ If on-disk `schemaVersion` **exceeds** the app’s `CURRENT_SCHEMA_VERSION`, mig
 
 Invalid JSON or invalid shapes are handled by **quarantine + safe defaults** (see `src/data/DATA_CONTRACT.md`). Storage layers must not throw into UI on parse failure; they log and continue.
 
-## Future: local → database migration
+## SQLite mood entries (implemented)
 
-1. Implement `KeyValueStore` (or a richer `LocalStorageAdapter`) backed by SQLite/replica.
+Mood/journal rows are normalized in **`moodly.db`** (`expo-sqlite`):
+
+- **Module rail**: `src/data/persistence/sqlite/` — connection singleton, `SQL_MIGRATIONS`, `CURRENT_SQL_SCHEMA_VERSION`.
+- **Table**: `mood_entries(date PRIMARY KEY, mood, note, created_at_ms, updated_at_ms)` + indexes on `updated_at_ms` and year-month prefix.
+- **Bootstrap** (`ensureLocalPersistenceReady`): AsyncStorage JSON migrations → open SQLite → SQL migrations → **import** legacy `moodly.entries` once → set `moodly.entries.backend` = `sqlite`.
+- **Storage module**: `moodStorage.ts` unchanged at the repository/façade boundary; persists via `moodEntriesBackend.ts` (row upserts, not full JSON blob rewrites).
+- **Session caches** (`entriesByMonthCache`, journal sorted cache, year index) unchanged — still protect calendar/journal hot paths.
+
+Scale harness: `src/qa/entriesScaleHarness.ts` + `entriesScaleHarness.test.ts` (1k / 5k / 10k synthetic tiers). Run via `npm run test:storage-stress`. Physical-device profiling procedure: [`PERFORMANCE_BENCHMARKS.md`](./PERFORMANCE_BENCHMARKS.md).
+
+## SQLite habit selections (implemented)
+
+- **Tables**: `habit_selections(date, habit_id)` composite primary key; index on `date`.
+- **Bootstrap**: `ensureHabitSelectionsImportedFromAsyncStorage` after SQL migrations (idempotent).
+- **Storage module**: `habitSelectionsStorage.ts` via `habitSelectionsBackend.ts` (row upserts, not full JSON blob rewrites on hot paths).
+
+## SQLite goals (implemented)
+
+- **Tables**: `goals(id, payload_json, updated_at_ms)` + `goal_progress(goal_id, date, value, note, created_at_ms)`.
+- **Bootstrap**: `ensureGoalsImportedFromAsyncStorage` after SQL migrations (idempotent).
+- **Storage module**: `goalsStorage.ts` via `goalsBackend.ts` (goal row + progress rows).
+
+## Future: remaining domains → cloud
+
+1. Reminders day shards / tasks metadata may move to SQLite when import/sync pressure appears.
 2. Keep **repository method signatures** stable; swap internals to SQL/HTTP.
-3. Optional one-shot **import job**: read legacy AsyncStorage keys, write normalized tables, bump `schemaVersion`.
-4. Prefer **surrogate UUIDs** in the DB while keeping `date` or `client_local_id` for idempotency; the app already uses stable natural keys for entries.
+3. **Cloud sync (implemented):** Supabase Auth + Postgres — see [`SUPABASE.md`](./SUPABASE.md).
+4. Prefer **surrogate UUIDs** in remote DB while keeping `date` or `client_local_id` for idempotency.
+
+## Supabase cloud sync (implemented)
+
+When `EXPO_PUBLIC_SUPABASE_URL` and `EXPO_PUBLIC_SUPABASE_ANON_KEY` are set:
+
+- **Auth:** Apple, Google, email/password (`AccountScreen`, `AuthProvider`).
+- **Cloud truth:** Postgres tables with RLS (`supabase/migrations/`).
+- **Local cache:** existing SQLite + AsyncStorage unchanged for UI hot paths.
+- **Sync:** outbox push + pull merge (`src/cloud/sync/`, `src/data/sync/syncBridge.ts`).
+
+Full setup: [`SUPABASE.md`](./SUPABASE.md).
 
 ## Adding a new extension (values vs config)
 

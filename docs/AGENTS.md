@@ -55,7 +55,7 @@ Moodly uses a **deliberate pre-1.0** product line so the repository stays honest
 
 | Phase | What it means |
 |-------|----------------|
-| **v0.x** | **Foundation + refinement:** architecture still evolving where needed, systems stabilizing, UI/UX polish and **local-first** reliability hardening, navigation and scroll performance treated as product quality, accessibility and data safety deepened. **Current:** **v0.6** (semver **0.6.0** in `package.json` / `app.json` / `APP_RELEASE_VERSION`). |
+| **v0.x** | **Foundation + refinement:** architecture still evolving where needed, systems stabilizing, UI/UX polish and **local-first** reliability hardening, navigation and scroll performance treated as product quality, accessibility and data safety deepened. **Current:** **v0.6** (semver **0.6.0** in `package.json` / `app.config.ts` / `APP_RELEASE_VERSION`). |
 | **v1.x** | **Stable public platform:** long-term compatibility posture, export/import stability, documented recovery, cloud or sync only with explicit consent and architecture review, interaction systems considered “settled.” |
 | **v2.x+** | **Platform / ecosystem expansion:** optional AI-assisted insights, richer analytics, multi-device coordination, extensibility — **only after** v1 establishes trust and data ownership clarity. |
 
@@ -254,7 +254,7 @@ Moodly should feel **responsive and tactile** — interaction quality is part of
 
 - **Scrolling**: calendar month timeline, journal lists, and Today scroll are **hot paths** — avoid synchronous heavy work in scroll handlers; prefer patterns already used (`FlashList`, deferred work, refs). See [`perf-calendar.md`](./perf-calendar.md) and [`PERFORMANCE.md`](./PERFORMANCE.md).
 - **Navigation / tab focus**: schedule **storage-backed** refetches from **`useFocusEffect`** with **`InteractionManager.runAfterInteractions`** on primary surfaces (Today, Journal, calendar stack, Settings, Habits, Goals) so transitions stay fluid; **`useDayTodos`** already defers when the screen is focused. Do not move work *into* scroll handlers to compensate.
-- **Tactile timing**: pair **immediate** light haptics (e.g. calendar **day tap** before async I/O) with **deferred** heavy work so taps feel responsive without blocking transitions — see `useCalendarDayPress` + [`PERFORMANCE_NOTES.md`](./PERFORMANCE_NOTES.md).
+- **Tactile timing**: pair **immediate** light haptics (e.g. calendar **day tap** before async I/O) with **deferred** heavy work so taps feel responsive without blocking transitions — see **`useCalendarDayPress`** (shared hook) and [`PERFORMANCE_NOTES.md`](./PERFORMANCE_NOTES.md). Calendar focus loads use **`fetchMoodCalendarSnapshot`** deferred via **`InteractionManager.runAfterInteractions`** (month + year views).
 - **Animations**: respect **`a11y.reduceMotion`**; prefer system-consistent timing; avoid gratuitous bouncy motion on data-heavy screens.
 - **Keyboard**: use **`KeyboardAvoidingView`** patterns established on screens with text entry (Today, Todo, Goals, Journal).
 - **Lists**: **`@shopify/flash-list`** where adopted; journal uses a constant toggle for rollback — do not rip out without measuring.
@@ -393,7 +393,7 @@ npm run typecheck && npm run lint && npm test
 
 | Mode | Focus | Must run / read |
 |------|--------|-----------------|
-| iOS release | `app.json`, `eas.json`, privacy, export | [`APP_STORE_READINESS.md`](./APP_STORE_READINESS.md), `npm run validate:ios-release` |
+| iOS release | `app.config.ts`, `eas.json`, privacy, export | [`DEPLOYMENT.md`](./DEPLOYMENT.md), [`APP_STORE_READINESS.md`](./APP_STORE_READINESS.md), [`MOBILE_PRODUCTION_AUDIT.md`](./MOBILE_PRODUCTION_AUDIT.md), `npm run validate:ios-release` |
 | Storage / data | Migrations, shards, locks, quarantine | `DATA_CONTRACT`, `DATA_ARCHITECTURE`, `npm run test:storage-stress` |
 | Performance | Timeline, lists, storage hot loops, soak | [`PERFORMANCE_BENCHMARKS.md`](./PERFORMANCE_BENCHMARKS.md), [`PERF_RESULTS.md`](./PERF_RESULTS.md), `SOAK_TEST_REPORT.md` |
 | UI / a11y | Tokens, motion, keyboard, VoiceOver | [`DESIGN_SYSTEM.md`](./DESIGN_SYSTEM.md), [`ACCESSIBILITY.md`](./ACCESSIBILITY.md) |

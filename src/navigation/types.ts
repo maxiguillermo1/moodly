@@ -6,6 +6,7 @@
 export type RootStackParamList = {
   Main: undefined;
   Settings: undefined;
+  Account: undefined;
   Habits: undefined;
   Goals: { date?: string } | undefined;
   Todo: { date?: string } | undefined;

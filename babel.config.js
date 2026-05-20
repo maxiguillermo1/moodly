@@ -1,21 +1,17 @@
-const path = require('path');
-
 module.exports = function (api) {
-  api.cache(true);
-  const src = path.resolve(__dirname, 'src');
+  api.cache.using(() => process.env.BABEL_ENV ?? process.env.NODE_ENV ?? 'development');
   return {
     presets: ['babel-preset-expo'],
     plugins: [
       [
         'babel-plugin-module-resolver',
         {
-          root: [src],
+          // Relative aliases (not absolute paths) so Metro cache stays valid if the repo moves.
           alias: {
-            '@': src,
-            '@features': path.join(src, 'features'),
-            '@repositories': path.join(src, 'data', 'repositories'),
-            // Shared layers remain under `src/`; `@shared/foo` maps to `src/foo`.
-            '@shared': src,
+            '@': './src',
+            '@features': './src/features',
+            '@repositories': './src/data/repositories',
+            '@shared': './src',
           },
           extensions: ['.ios.js', '.android.js', '.js', '.jsx', '.json', '.tsx', '.ts'],
         },

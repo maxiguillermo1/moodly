@@ -6,6 +6,7 @@
 import { AppSettings, CalendarMoodStyle, MoodGradeColorStyle, type TodayExtensionStackId } from '../../types';
 import { logger } from '../../lib/security/logger';
 import { assertLocalPersistenceWritable, ensureLocalPersistenceReady } from '../persistence/bootstrap';
+import { notifySettingsChanged } from '../sync/syncBridge';
 import { storage } from './asyncStorage';
 
 const SETTINGS_KEY = 'moodly.settings';
@@ -254,6 +255,7 @@ async function persistSettingsUnlocked(next: AppSettings): Promise<void> {
     const safeNext = cloneSettings(next);
     await storage.setItem(SETTINGS_KEY, JSON.stringify(safeNext));
     settingsCache = safeNext;
+    notifySettingsChanged(safeNext);
   } catch (error) {
     logger.error('storage.settings.set.failed', { key: SETTINGS_KEY, error });
     throw error;
@@ -323,6 +325,10 @@ export async function bumpTodayExtensionStackOrder(id: TodayExtensionStackId): P
  */
 export function resetSettingsStorageSessionStateForTests(): void {
   if (typeof process === 'undefined' || process.env.NODE_ENV !== 'test') return;
+  invalidateSettingsSessionCache();
+}
+
+export function invalidateSettingsSessionCache(): void {
   settingsCache = null;
   settingsLoadPromise = null;
   settingsWriteTail = Promise.resolve();

@@ -29,7 +29,13 @@ import { HABIT_IDS, isHabitId } from '../../lib/constants/habitsCatalog';
 import { logger } from '../../lib/security/logger';
 import { isValidISODateKey } from '../model/entry';
 import { assertLocalPersistenceWritable, ensureLocalPersistenceReady } from '../persistence/bootstrap';
-import { storage } from './asyncStorage';
+import {
+  clearHabitSelectionsOnDisk,
+  loadHabitSelectionsJsonFromDisk,
+  persistHabitSelectionsJsonToDisk,
+  quarantineRawHabitSelectionsJson,
+} from './habitSelectionsBackend';
+import { notifyHabitSelectionsChanged } from '../sync/syncBridge';
 
 const STORAGE_KEY = 'moodly.habitSelections';
 const STORAGE_VERSION = 3;
@@ -50,8 +56,6 @@ type HabitPersistBundle = {
   /** Deprecated; always `{}` on read/write. */
   toggleTotals: HabitMarkedDayCountsRecord;
 };
-
-const EMPTY_BUNDLE: HabitPersistBundle = Object.freeze({ selections: {}, toggleTotals: {} });
 
 let cache: HabitPersistBundle | null = null;
 let loadPromise: Promise<HabitPersistBundle> | null = null;
@@ -219,20 +223,16 @@ function cloneTrustedBundle(bundle: HabitPersistBundle): HabitPersistBundle {
 async function quarantineCorruptValue(rawJson: string): Promise<void> {
   const ts = Date.now();
   try {
-    await storage.setItem(`${CORRUPT_PREFIX}${ts}`, rawJson);
+    await quarantineRawHabitSelectionsJson(rawJson, `${CORRUPT_PREFIX}${ts}`);
   } catch (e) {
     logger.warn('storage.habitSelections.corruptBackup.persistFailed', { error: e });
-  }
-  try {
-    await storage.setItem(STORAGE_KEY, serializeCanonicalSelections(EMPTY_BUNDLE.selections));
-  } catch (e) {
     logger.error('storage.habitSelections.corruptReset.failed', { error: e });
   }
 }
 
 async function readFromDisk(): Promise<HabitPersistBundle> {
   await ensureLocalPersistenceReady();
-  const json = await storage.getItem(STORAGE_KEY);
+  const json = await loadHabitSelectionsJsonFromDisk();
   const parsed = safeParse(json);
   if (parsed.corrupt && typeof json === 'string' && json.length > 0) {
     logger.warn('storage.habitSelections.corrupt.detected', { action: 'quarantineAndReset' });
@@ -244,7 +244,7 @@ async function readFromDisk(): Promise<HabitPersistBundle> {
     try {
       await ensureLocalPersistenceReady();
       assertLocalPersistenceWritable();
-      await storage.setItem(STORAGE_KEY, serializeCanonicalSelections(bundle.selections));
+      await persistHabitSelectionsJsonToDisk(serializeCanonicalSelections(bundle.selections), bundle.selections);
     } catch (e) {
       logger.warn('storage.habitSelections.migrateToV3Disk.failed', { error: e });
     }
@@ -283,10 +283,11 @@ async function persistBundle(next: HabitPersistBundle): Promise<void> {
   await ensureLocalPersistenceReady();
   assertLocalPersistenceWritable();
   const safe = sanitizeBundle(next);
-  await storage.setItem(STORAGE_KEY, serializeCanonicalSelections(safe.selections));
+  await persistHabitSelectionsJsonToDisk(serializeCanonicalSelections(safe.selections), safe.selections);
   cacheGeneration += 1;
   loadPromise = null;
   cache = safe;
+  notifyHabitSelectionsChanged(safe.selections);
 }
 
 export async function getHabitSelectionsForDate(date: string): Promise<HabitId[]> {
@@ -369,7 +370,7 @@ export async function clearAllHabitSelections(): Promise<void> {
     try {
       await ensureLocalPersistenceReady();
       assertLocalPersistenceWritable();
-      await storage.setItem(STORAGE_KEY, serializeCanonicalSelections(EMPTY_BUNDLE.selections));
+      await clearHabitSelectionsOnDisk();
       cacheGeneration += 1;
       loadPromise = null;
       cache = { selections: {}, toggleTotals: {} };
@@ -387,7 +388,7 @@ export async function setAllHabitSelectionsRecord(next: HabitSelectionsRecord): 
       const safeSelections = parseSelectionsRoot(next);
       await ensureLocalPersistenceReady();
       assertLocalPersistenceWritable();
-      await storage.setItem(STORAGE_KEY, serializeCanonicalSelections(safeSelections));
+      await persistHabitSelectionsJsonToDisk(serializeCanonicalSelections(safeSelections), safeSelections);
       cacheGeneration += 1;
       loadPromise = null;
       cache = { selections: safeSelections, toggleTotals: {} };
@@ -420,6 +421,10 @@ export async function getHabitSelectionsRecordSnapshot(): Promise<HabitSelection
 
 /** Clears in-memory session state for unit tests (`jest.resetModules` alternative when only this store must reset). */
 export function resetHabitSelectionsStorageSessionStateForTests(): void {
+  invalidateHabitSelectionsSessionCache();
+}
+
+export function invalidateHabitSelectionsSessionCache(): void {
   cache = null;
   loadPromise = null;
   cacheGeneration = 0;

@@ -4,7 +4,7 @@
  */
 
 import { useCallback, type MutableRefObject } from 'react';
-import { getEntry } from '../storage';
+import { getEntry } from '../storage/entries';
 import { formatDateForDisplay, isLatestRequest, nextRequestId, isValidLocalCalendarDayKey } from '../utils';
 import { logger } from '../security';
 import { perfProbe } from '../perf';

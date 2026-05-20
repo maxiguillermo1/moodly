@@ -195,10 +195,8 @@ const TabCell = React.memo(function TabCell({
     });
     if (!isFocused && !event.defaultPrevented) {
       perfProbe.onMainTabPress(routeName);
+      haptics.tab();
       navigation.navigate(routeName as never);
-      queueMicrotask(() => {
-        haptics.tab();
-      });
     }
   }, [isFocused, navigation, routeKey, routeName]);
 

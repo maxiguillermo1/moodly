@@ -8,12 +8,12 @@
  */
 
 import { logger } from '../../lib/security/logger';
-import { warmEntriesSessionCaches, getEntriesSessionCacheDiagnostics } from './moodStorage';
+import { primeEntriesSessionCache, getEntriesSessionCacheDiagnostics } from './moodStorage';
 import { getSettings } from './settingsStorage';
 
 export async function warmSessionStore(): Promise<void> {
-  // Parallel warmup (AsyncStorage is still the durability source of truth).
-  await Promise.all([warmEntriesSessionCaches(), getSettings()]);
+  // Light warm: raw entries + settings only. Derived calendar/journal indexes build when those tabs open.
+  await Promise.all([primeEntriesSessionCache(), getSettings()]);
 }
 
 export function logSessionStoreDiagnostics(opts?: { totalMs?: number }): void {

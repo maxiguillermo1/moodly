@@ -1,5 +1,6 @@
 # Expo
 .expo/
+.metro-cache/
 dist/
 web-build/
 .tmp-expo-export/

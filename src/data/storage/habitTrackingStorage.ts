@@ -9,6 +9,7 @@
 import { HABIT_IDS, isHabitId, type HabitId } from '../../lib/constants/habitsCatalog';
 import { logger } from '../../lib/security/logger';
 import { assertLocalPersistenceWritable, ensureLocalPersistenceReady } from '../persistence/bootstrap';
+import { notifyTrackedHabitsChanged } from '../sync/syncBridge';
 import { storage } from './asyncStorage';
 
 const STORAGE_KEY = 'moodly.trackedHabits';
@@ -121,6 +122,7 @@ async function persistTracked(next: HabitId[]): Promise<void> {
   cacheGeneration += 1;
   loadPromise = null;
   cache = [...next];
+  notifyTrackedHabitsChanged(next);
 }
 
 export async function setTrackedHabitIds(ids: HabitId[]): Promise<void> {

@@ -62,6 +62,12 @@ async function persist(next: InsightsTimingStateV1): Promise<void> {
   await storage.setItem(STORAGE_KEY, JSON.stringify(next));
 }
 
+export async function replaceInsightsReflectionTimingForSync(payload: Record<string, unknown>): Promise<void> {
+  await ensureLocalPersistenceReady();
+  const parsed = safeParse(JSON.stringify(payload));
+  await persist(parsed);
+}
+
 export const insightsReflectionStateStorage = {
   async getTimingState(): Promise<InsightsTimingStateV1> {
     return load();

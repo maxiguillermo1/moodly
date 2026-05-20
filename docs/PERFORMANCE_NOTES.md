@@ -13,6 +13,8 @@ Living document for **measurable, behavior-preserving** optimizations. Pair with
 
 - **`RootApp`**: `GestureHandlerRootView` uses a **module-level `StyleSheet`** for `flex: 1` instead of an inline object each render (tiny alloc reduction on every root re-render).
 - **Cold path** was already deferred: demo seed + session cache warm run inside **`InteractionManager.runAfterInteractions`** (does not block first paint).
+- **Expo dev load (2026-05):** `warmSessionStore` imports from **`src/storage/warm`** (not the full `storage` barrel) so Metro does not eagerly pull **`fullDemoSeed`** (~850 LOC). **`sessionRepository`** lazy-imports dev seed. **`RootNavigator`** uses **`getComponent`** for Calendar/Journal + stack modals so only **Today** is in the first phone bundle. **`metro.config.js`** blocklists `*.test.*` and `src/qa/` from the app graph; uses project-local **`.metro-cache/`** + **`cacheVersion`** keyed to repo path (run **`npm run start:clear`** after moving the folder). Babel aliases stay **relative** (no absolute `path.resolve` in transforms).
+- **QR → first paint (2026-05):** Theme uses **`storage/settings`**, Today uses **`storage/entries`** (not `storage/index`). **`primeAppStorage()`** runs migrations + **`primeEntriesSessionCache`** in one coalesced promise at root mount; Calendar/Journal tab modules preload after warm. **`peekEntryFromSessionCache`** + **`useMoodEntry`** sync-hydrate Today; **save is optimistic** (success UI immediately, disk async). Dev hitch RAF is **opt-in** (`EXPO_PUBLIC_MOODLY_PERF_PROBE=1`). Floating tab bar skips stacked **blur in dev iOS Simulator**; tab hide/show timings shortened; habit strip loads after interactions.
 
 ### Today tab
 
@@ -25,13 +27,13 @@ Living document for **measurable, behavior-preserving** optimizations. Pair with
 
 ### Calendar month timeline
 
-- **`CalendarScreen`**: **Selection haptic** — `useCalendarDayPress` calls **`haptics.select()`** synchronously on a valid day tap **before** `getEntry`, so the tap feels instant while AsyncStorage loads (cooldown + momentum rules in `haptics.ts` still apply). Dev-only **`perfProbe.breadcrumb('calendar.dayTap')`** improves hitch attribution.
+- **`useCalendarDayPress`** (`src/hooks/useCalendarDayPress.ts`): shared hook — **`haptics.select()`** before **`getEntry`**, latest-tap-wins, **`calendar.dayTap`** breadcrumb. **`CalendarScreen`** uses an **inline** day handler with the same latest-tap-wins guards and **`CalendarScreen.dayTap`** culprit phase (hook optional for future consolidation).
 - **`Touchable`** (global): Release spring tuned for **slightly snappier settle** (higher damping/stiffness, lower mass) — still UI-thread only; **no layout** change.
 - **`CalendarScreen`**: **Selection state** (`selectedDate`) is mirrored into **`selectedDateRef`**; **`renderMonthItem`** reads the ref for `selectedForThisMonth` so the **callback identity does not change on every day tap**. **`extraData`** still includes `selectedDate`, so FlashList recycles visible rows correctly when selection changes (unchanged contract).
 
 ### Journal
 
-- No change in this pass: list already uses **FlashList**, memoized row factory, **`extraData`** for theme-dependent rows, and **`getEntriesSortedDesc`** (session cache / sorted cache in storage).
+- List uses **FlashList**, memoized row factory, and **`extraData`** for theme-dependent rows. Focus reload uses **`getJournalEntriesSortedDescSnapshot()`** (stable sorted-array identity on cache hits); **`getEntriesSortedDesc()`** remains for callers that need defensive copies.
 
 ## 2026-05 — Main tab + Today extension reconciliation
 
@@ -49,6 +51,15 @@ npm run lint && npm run typecheck && npm test && npm run export:bundles-check
 ```
 
 On device, smoke: cold launch → Calendar scroll → day tap → Today save → Journal scroll with a large history.
+
+## 2026-05 — Journal grouping refactor
+
+- **`src/lib/journal/`**: section builders, solo filters, and **`scanJournalEntryPresence`** extracted from **`JournalScreen`**. Bucketing is **O(n)** on pre-sorted entries (no per-build **`O(n log n)`** re-sort). Header taps use the **O(n)** presence scan instead of rebuilding sections. Solo filter taps apply **O(sections)** filters on memoized base sections.
+
+## 2026-05 — Storage + calendar timeline pass
+
+- **`moodStorage`**: `upsertEntry` / `deleteEntry` read the warm session cache via `loadEntriesCacheIfNeeded()` instead of cloning the full record on every write. **`getJournalEntriesSortedDescSnapshot()`** returns stable sorted-array identity for Journal focus reloads (defensive **`getEntriesSortedDesc`** unchanged).
+- **`CalendarScreen`**: aligned with **`fetchMoodCalendarSnapshot`** (parallel coalesced read, same as year view). **`CalendarTimelineMonth`** memo row wired in production. Card-width **`onLayout`** coalesced (rAF + scroll guard + flush on scroll end). FlashList **`overrideItemLayout`** uses per-month height math. Deferred recenter/window-extend work is **cancelled on blur**; **`calendarListEpoch`** bumps only when local today changes across blur (or while focused at midnight).
 
 ## 2026-05 — Production readiness pass
 

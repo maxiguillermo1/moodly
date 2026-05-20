@@ -4,9 +4,10 @@
  */
 
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { MoodGrade } from '../types';
-import { getEntry, upsertEntry, createEntry } from '../storage';
-import { getToday } from '../utils';
+import type { MoodEntry, MoodGrade } from '../types';
+import { getEntry, peekEntryFromSessionCache, upsertEntry, createEntry } from '../storage/entries';
+import { primeAppStorage } from '../storage/prime';
+import { getToday, isLatestRequest, nextRequestId } from '../utils';
 import { logger } from '../security';
 
 interface UseMoodEntryOptions {
@@ -22,8 +23,6 @@ interface UseMoodEntryReturn {
   note: string;
   /** Whether an existing entry was loaded */
   isExisting: boolean;
-  /** Saving state */
-  isSaving: boolean;
   /** Set the mood grade */
   setMood: (mood: MoodGrade) => void;
   /** Set the note text */
@@ -34,6 +33,20 @@ interface UseMoodEntryReturn {
   save: () => Promise<boolean>;
   /** Reset to initial state */
   reset: () => void;
+}
+
+function applyEntrySnapshot(
+  entry: MoodEntry | null,
+  setMood: (v: MoodGrade | null | ((p: MoodGrade | null) => MoodGrade | null)) => void,
+  setNote: (v: string | ((p: string) => string)) => void,
+  setIsExisting: (v: boolean | ((p: boolean) => boolean)) => void
+): void {
+  const nextMood = entry?.mood ?? null;
+  const nextNote = entry?.note ?? '';
+  const nextExisting = !!entry;
+  setMood((prev) => (prev === nextMood ? prev : nextMood));
+  setNote((prev) => (prev === nextNote ? prev : nextNote));
+  setIsExisting((prev) => (prev === nextExisting ? prev : nextExisting));
 }
 
 /**
@@ -50,6 +63,9 @@ export function useMoodEntry(options: UseMoodEntryOptions = {}): UseMoodEntryRet
   const loadReqIdRef = useRef(0);
   const saveReqIdRef = useRef(0);
 
+  const [mood, setMood] = useState<MoodGrade | null>(null);
+  const [note, setNote] = useState('');
+  const [isExisting, setIsExisting] = useState(false);
   useEffect(() => {
     mountedRef.current = true;
     return () => {
@@ -57,26 +73,26 @@ export function useMoodEntry(options: UseMoodEntryOptions = {}): UseMoodEntryRet
     };
   }, []);
 
-  const [mood, setMood] = useState<MoodGrade | null>(null);
-  const [note, setNote] = useState('');
-  const [isExisting, setIsExisting] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
+  useEffect(() => {
+    nextRequestId(loadReqIdRef);
+    const peeked = peekEntryFromSessionCache(date);
+    if (peeked !== undefined) {
+      applyEntrySnapshot(peeked, setMood, setNote, setIsExisting);
+    }
+  }, [date]);
 
   const load = useCallback(async () => {
-    const reqId = ++loadReqIdRef.current;
+    const reqId = nextRequestId(loadReqIdRef);
     try {
-      const entry = await getEntry(date);
-      if (!mountedRef.current || reqId !== loadReqIdRef.current) return;
-      const nextMood = entry?.mood ?? null;
-      const nextNote = entry?.note ?? '';
-      const nextExisting = !!entry;
-      // Avoid focus/refetch churn when values are unchanged (Today tab stays mounted under tabs).
-      setMood((prev) => (prev === nextMood ? prev : nextMood));
-      setNote((prev) => (prev === nextNote ? prev : nextNote));
-      setIsExisting((prev) => (prev === nextExisting ? prev : nextExisting));
+      let peeked = peekEntryFromSessionCache(date);
+      if (peeked === undefined) {
+        await primeAppStorage();
+        peeked = peekEntryFromSessionCache(date);
+      }
+      const entry = peeked !== undefined ? peeked : await getEntry(date);
+      if (!mountedRef.current || !isLatestRequest(loadReqIdRef, reqId)) return;
+      applyEntrySnapshot(entry, setMood, setNote, setIsExisting);
     } catch {
-      // Defensive: storage issues should never crash the UI.
-      // Keep prior state if possible; otherwise reset to safe defaults.
       logger.warn('today.loadEntry.failed', { dateKey: date });
     }
   }, [date]);
@@ -84,23 +100,24 @@ export function useMoodEntry(options: UseMoodEntryOptions = {}): UseMoodEntryRet
   const save = useCallback(async (): Promise<boolean> => {
     if (!mood) return false;
 
-    const reqId = ++saveReqIdRef.current;
-    setIsSaving(true);
-    try {
-      const entry = createEntry(date, mood, note);
-      await upsertEntry(entry);
-      if (!mountedRef.current || reqId !== saveReqIdRef.current) return true;
-      setIsExisting(true);
-      onSaveSuccessRef.current?.();
-      return true;
-    } catch (error) {
-      if (mountedRef.current && reqId === saveReqIdRef.current) {
-        onSaveErrorRef.current?.(error as Error);
-      }
-      return false;
-    } finally {
-      if (mountedRef.current && reqId === saveReqIdRef.current) setIsSaving(false);
-    }
+    const reqId = nextRequestId(saveReqIdRef);
+    const entry = createEntry(date, mood, note);
+
+    // Optimistic UI: haptics + “Saved” immediately; disk write continues async.
+    setIsExisting(true);
+    onSaveSuccessRef.current?.();
+
+    void upsertEntry(entry)
+      .then(() => {
+        if (!mountedRef.current || !isLatestRequest(saveReqIdRef, reqId)) return;
+      })
+      .catch((error) => {
+        if (mountedRef.current && isLatestRequest(saveReqIdRef, reqId)) {
+          onSaveErrorRef.current?.(error as Error);
+        }
+      });
+
+    return true;
   }, [date, mood, note]);
 
   const reset = useCallback(() => {
@@ -113,7 +130,6 @@ export function useMoodEntry(options: UseMoodEntryOptions = {}): UseMoodEntryRet
     mood,
     note,
     isExisting,
-    isSaving,
     setMood,
     setNote,
     load,

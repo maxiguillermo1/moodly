@@ -4,7 +4,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert } from 'react-native';
+import { Alert, InteractionManager } from 'react-native';
 import { useIsFocused } from '@react-navigation/native';
 
 import type { HabitDefinition, HabitId } from '../types';
@@ -91,8 +91,11 @@ export function useTodayHabitStripModel(date: string): TodayHabitStripModel {
       setTrackedReady(true);
       return;
     }
-    void loadTracked();
-    void reloadSelections();
+    const task = InteractionManager.runAfterInteractions(() => {
+      void loadTracked();
+      void reloadSelections();
+    });
+    return () => task.cancel();
   }, [isFocused, date, habitsEnabled, loadTracked, reloadSelections]);
 
   const onToggle = useCallback(

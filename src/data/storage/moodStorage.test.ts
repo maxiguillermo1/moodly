@@ -44,6 +44,18 @@ describe('moodStorage reliability edge cases', () => {
     expect(all).toEqual({});
   });
 
+  it('peekEntryFromSessionCache returns undefined before warm, then entry after prime', async () => {
+    const { peekEntryFromSessionCache, primeEntriesSessionCache, upsertEntry } =
+      require('./moodStorage') as typeof import('./moodStorage');
+    expect(peekEntryFromSessionCache('2026-02-09')).toBeUndefined();
+    await upsertEntry({ date: '2026-02-09', mood: 'B', note: 'x', createdAt: 1, updatedAt: 1 });
+    await primeEntriesSessionCache();
+    const row = peekEntryFromSessionCache('2026-02-09');
+    expect(row?.mood).toBe('B');
+    expect(row?.note).toBe('x');
+    expect(peekEntryFromSessionCache('2026-02-10')).toBeNull();
+  });
+
   it('getItem failure returns safe defaults; no crash (#9)', async () => {
     const { getAllEntries } = require('./moodStorage') as typeof import('./moodStorage');
     (globalThis as any).__MOODLY_CHAOS__ = {
@@ -209,6 +221,23 @@ describe('moodStorage reliability edge cases', () => {
     expect(stats.moodCounts.A).toBe(1);
     expect(stats.moodCounts.F).toBe(1);
     expect(stats.moodCounts.B).toBe(0);
+  });
+
+  it('keeps journal sorted snapshot references stable until entries change', async () => {
+    const { upsertEntry, getJournalEntriesSortedDescSnapshot } =
+      require('./moodStorage') as typeof import('./moodStorage');
+    await upsertEntry({ date: '2026-05-01', mood: 'A', note: '', createdAt: 1, updatedAt: 1 });
+    await upsertEntry({ date: '2026-05-02', mood: 'B', note: '', createdAt: 1, updatedAt: 1 });
+
+    const first = await getJournalEntriesSortedDescSnapshot();
+    const second = await getJournalEntriesSortedDescSnapshot();
+    expect(second).toBe(first);
+    expect(second.map((e) => e.date)).toEqual(['2026-05-02', '2026-05-01']);
+
+    await upsertEntry({ date: '2026-05-03', mood: 'C', note: '', createdAt: 1, updatedAt: 2 });
+    const third = await getJournalEntriesSortedDescSnapshot();
+    expect(third).not.toBe(first);
+    expect(third[0]?.date).toBe('2026-05-03');
   });
 
   it('keeps calendar snapshot month references stable until affected months change', async () => {

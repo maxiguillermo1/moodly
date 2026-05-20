@@ -18,7 +18,11 @@ This document describes Moodly’s calendar hot paths and the “rules of engage
 - Uses a **large mostly-static month window** (~100 years; `WINDOW_CAP = 1201`, offsets `-600..600`) to avoid periodic “window shift” freezes.
 - Only extends the window near extreme edges; extension/recenter work is deferred via `InteractionManager.runAfterInteractions`.
 - Viewability callbacks avoid React state churn during active scroll (refs only).
-- **Data load**: **`fetchMoodCalendarSnapshot`** on focus pulls **entries-by-month index + settings** in one parallel read (`calendar.loadData` perf event in dev).
+- **Data load**: **`fetchMoodCalendarSnapshot`** on focus (deferred via **`InteractionManager.runAfterInteractions`**) pulls **entries-by-month index + settings** in one parallel, coalesced read (`calendar.loadData` perf event in dev).
+- **Month rows**: **`CalendarTimelineMonth`** (`React.memo` + `timelineMonthPropsEqual`) is the production row component; **`selectedDateRef`** keeps **`renderMonthItem`** stable across day taps while **`extraData`** still carries `selectedDate` for recycled rows.
+- **Recycle epoch**: **`calendarListEpoch`** bumps only when local **today** changes across blur (`didLocalTodayChangeAcrossBlur`) or at midnight while focused — not on every tab focus.
+- **FlashList sizing**: **`overrideItemLayout`** uses **`computeMonthTimelineRowHeights`** (5- vs 6-week months) from `src/lib/calendar/timeline/flashListLayout.ts` (re-exported via **`src/utils`**).
+- **Deferred work**: window extend / recenter **`InteractionManager`** tasks are **cancelled on blur** and guarded with **`isFocusedRef`** so hidden tabs do not apply stale list mutations.
 
 #### Year pager (`CalendarView`)
 
@@ -79,7 +83,7 @@ Fields (metadata-only):
 Typical culprit phases:
 - `CalendarScreen.scroll` (finger / momentum on the month timeline)
 - `CalendarScreen.windowExtend` / `CalendarScreen.recenter` (deferred edge expansion + `scrollToIndex` realignment — still scroll-pipeline work; included in the dev-only `calendar.slowFrame` classifier alongside raw scroll)
-- `CalendarScreen.dayTap` (tap path; should **not** be tagged as scroll — set explicitly in `useCalendarDayPress`)
+- `CalendarScreen.dayTap` (tap path; should **not** be tagged as scroll — set in **`CalendarScreen`** day handler or shared **`useCalendarDayPress`** hook)
 - `CalendarScreen.modalSave`
 - `CalendarScreen.buildMonthWindow`
 - `CalendarView.scroll`
@@ -88,8 +92,7 @@ Typical culprit phases:
 #### CalendarScreen markers
 Events:
 - `calendar.screen.mount` / `calendar.screen.unmount`
-- `calendar.loadEntries` (AsyncStorage/session-cache load timing)
-- `calendar.loadSettings`
+- `calendar.loadData` (unified snapshot: month index + settings; replaces separate `calendar.loadEntries` / `calendar.loadSettings`)
 - `calendar.monthWindow.build` (month window array build timing)
 - `calendar.visibleMonth.commit` (throttled/guarded visible month commits)
 - `calendar.dayTapToModalOpen` (tap → modal visible)

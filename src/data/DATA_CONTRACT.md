@@ -5,7 +5,7 @@
 This document defines the **canonical data contract** for Moodly.
 It is written as engineering rules for downstream analytics/ML and future export jobs.
 
-**App release train:** **0.5.0** (Moodly **v0.5**) — see [`docs/CHANGELOG.md`](../../docs/CHANGELOG.md) § Versioning. **Per-key `v` / `version` fields** in JSON blobs (for example habit envelope **`v: 3`**, goals record **`version`**) are **persistence revisions**, independent of app semver.
+**App release train:** **0.6.0** (Moodly **v0.6**) — see [`docs/CHANGELOG.md`](../../docs/CHANGELOG.md) § Versioning. **Per-key `v` / `version` fields** in JSON blobs (for example habit envelope **`v: 3`**, goals record **`version`**) are **persistence revisions**, independent of app semver.
 
 ## Persisted storage keys
 
@@ -14,18 +14,22 @@ It is written as engineering rules for downstream analytics/ML and future export
   - `migratedAt` (optional unix ms): last successful migration stamp.
   - If unreadable, Moodly quarantines the raw value to `moodly.schemaMeta.corrupt.<timestamp>` and treats disk as **pre-schema** until migrations rebuild meta.
 - **`moodly.migrationBackup.<from>_to_<to>.<timestamp>`**: JSON envelope `kind: moodly.migrationBackup.v1` with a **`snapshot`** map of raw AsyncStorage values captured **immediately before** applying the migration step `from` → `to`. Used for recovery forensics; not read during normal app operation.
-- **`moodly.entries`**: JSON object map: `{ [date: "YYYY-MM-DD"]: MoodEntry }`
+- **`moodly.entries`**: JSON object map: `{ [date: "YYYY-MM-DD"]: MoodEntry }` — **legacy import source** after SQLite migration (see below). New writes go to SQLite when `moodly.entries.backend` is `sqlite`.
+- **`moodly.entries.backend`**: `"sqlite"` | absent — set after one-shot import from legacy `moodly.entries` into the local SQLite `mood_entries` table. Test override: `MOODLY_ENTRIES_BACKEND=async|sqlite`.
 - **`moodly.settings`**: JSON object: `AppSettings`
-- **`moodly.habitSelections`**: versioned JSON envelope **`{ v: 3, selections: { [date: "YYYY-MM-DD"]: HabitId[] }, toggleTotals: {} }`**.
+- **`moodly.habitSelections`**: versioned JSON envelope **`{ v: 3, selections: { [date: "YYYY-MM-DD"]: HabitId[] }, toggleTotals: {} }`** — **legacy import source** after SQLite migration. New writes go to SQLite when `moodly.habitSelections.backend` is `sqlite`.
+- **`moodly.habitSelections.backend`**: `"sqlite"` | absent — set after one-shot import from legacy `moodly.habitSelections` into `habit_selections`.
   - **`selections`** is the **only** source of truth for which habits are “on” for each local calendar day. Keys must pass `isValidISODateKey`; each array is **deduplicated** and stored in **stable catalog order** (`HABIT_IDS`).
   - **`toggleTotals`** is **deprecated** (compatibility only). It is always **`{}`** on read/write and must **never** be used for UI counts or analytics. **Marked-day totals** on the Habits screen are **derived** from `selections` only (count distinct dates per habit). Today/journal habit **extensions intentionally do not** load or display those counts.
   - Legacy **`v: 2`** payloads (with `onCounts`) and unknown future **`v`** values with a recoverable `selections` object forward-migrate to canonical **`v: 3`** on read when persistence is writable.
+- **Goals engine rules** (unchanged): **`goalsById[*].history`** is the **source of truth** for progress; `progress.currentValue` is **derived** on read/write via `canonicalizeGoalModel` (`src/lib/goals/goalMath.ts`). Same local calendar day keeps **one** history row (replace semantics; latest `createdAt` wins when merging duplicates). See `docs/AGENTS.md` § Goals and `docs/GOALS_ENGINE.md`.
 - **`moodly.trackedHabits`**: JSON array of `HabitId` — which habits are tracked in the UI strip (see `habitTrackingStorage`).
 - **`moodly.tasks`**: versioned JSON object: `TasksRecord` — normalized local task/reminder metadata, recurrence templates/history, lists/tags, and migration marker.
 - **`moodly.tasks.day.<YYYY-MM-DD>`**: JSON array: `DayTodoItem[]` — hot per-day **Reminders** shard used by Today/Todo day loads and one-day mutations.
 - **`moodly.tasks.dayIndex`**: JSON array: `YYYY-MM-DD[]` — index of day shards for aggregate/debug reads.
 - **`moodly.dayTodos`**: legacy JSON object map: `{ [date: "YYYY-MM-DD"]: DayTodoItem[] }`. On first task-store read, valid rows migrate into the task metadata record and day shards once. The legacy key is kept only as a migration source / corrupt quarantine target.
-- **`moodly.goals`**: versioned JSON object: `GoalsRecord` (**on-disk payload `version` 2** today — independent of app semver **0.5.0**) — local goal engine. **`goalsById[*].history`** is the **source of truth** for progress; `progress.currentValue` is **derived** on read/write via `canonicalizeGoalModel` (`src/lib/goals/goalMath.ts`). Same local calendar day keeps **one** history row (replace semantics; latest `createdAt` wins when merging duplicates). See `docs/AGENTS.md` § Goals and `docs/GOALS_ENGINE.md`.
+- **`moodly.goals`**: versioned JSON object: `GoalsRecord` (**on-disk payload `version` 2** today — independent of app semver **0.6.0**) — **legacy import source** after SQLite migration. New writes go to SQLite when `moodly.goals.backend` is `sqlite`.
+- **`moodly.goals.backend`**: `"sqlite"` | absent — set after one-shot import from legacy `moodly.goals` into `goals` + `goal_progress`.
 - **`moodly.insights.reflectionTiming`**: JSON `{ schemaVersion: 1, topicLastSurfacedAtMs: Record<string, number> }` — **presentation cooldown bookkeeping only** (not computed insight payloads). See `docs/INSIGHTS.md`.
 - **`moodly.demoSeeded` / `moodly.demoSeedVersion`**: dev/demo metadata only; production user data does not depend on these keys.
 
@@ -37,20 +41,49 @@ If a stored value cannot be parsed/validated, Moodly will:
 - Reset the primary key to a safe default (`{}` for map stores; default settings/tracked habits where applicable)
 - Continue running without crashing
 
-### Internal full export (no persisted key)
+### User export / import (Settings)
 
-The in-code envelope **`moodly.localExport.v1`** (`src/data/persistence/localExport/moodlyLocalExport.ts`) is a **portable JSON document** for tools/tests: `formatRevision`, `exportedAtMs`, `schemaMetaRaw`, and `kv` (raw `moodly.*` strings). It is **not** stored under a fixed AsyncStorage key by default; callers serialize to file/share when product adds UX.
+Settings → **Export My Data** / **Import Data** uses the in-code envelope **`moodly.localExport.v1`** (`src/data/persistence/localExport/moodlyLocalExport.ts`): `formatRevision`, `exportedAtMs`, `schemaMetaRaw`, and `kv` (raw `moodly.*` strings). Export merges SQLite snapshots for mood entries, habit selections, and goals into `kv`. Import restores AsyncStorage then re-imports SQLite domains. Repository: `userDataExportRepository`.
 
 ### Persistence invariants (required)
 
 - **Persist-first**: update RAM caches only after AsyncStorage writes succeed.
 - **Writes are serialized** per key (prevents lost updates under concurrent saves).
 - **UI never touches AsyncStorage** directly; UI imports persistence APIs from `src/storage`.
-- See **`docs/DATA_ARCHITECTURE.md`** for repositories, `KeyValueStore`, and the migration rail.
+- See **`docs/DATA_ARCHITECTURE.md`** for repositories, `KeyValueStore`, the migration rail, and **SQLite `mood_entries`**.
+
+### SQLite (local relational store — v0.7 foundation)
+
+File: **`moodly.db`** (`expo-sqlite`, WAL mode). Schema rail: `PRAGMA user_version` via `src/data/persistence/sqlite/` (`CURRENT_SQL_SCHEMA_VERSION` = **3**).
+
+| Table | Columns | Notes |
+|-------|---------|--------|
+| `moodly_meta` | `key`, `value` | Import markers (`entries_imported_from_async_v1`, `habits_imported_from_async_v1`, `goals_imported_from_async_v1`, backend flags). |
+| `mood_entries` | `date`, `mood`, `note`, `created_at_ms`, `updated_at_ms` | Primary key `date` (`YYYY-MM-DD`). Indexed by `updated_at_ms` and `substr(date,1,7)`. |
+| `habit_selections` | `date`, `habit_id` | Composite PK `(date, habit_id)`. Index on `date`. |
+| `goals` | `id`, `payload_json`, `updated_at_ms` | Goal metadata without embedded history. |
+| `goal_progress` | `goal_id`, `date`, `value`, `note`, `created_at_ms` | Composite PK `(goal_id, date)`. |
+
+- **Bootstrap**: `ensureLocalPersistenceReady()` runs AsyncStorage migrations, opens SQLite, applies SQL migrations, then idempotent imports for entries, habits, and goals.
+- **Hot paths**: storage modules keep session caches + write locks; SQLite backends touch rows (not full-blob rewrites).
+- **Corruption**: legacy AsyncStorage JSON quarantine unchanged; SQLite reads validate rows and drop invalid rows (metadata-only logs).
 
 ### Calendar loading API (no extra keys)
 
-- **`fetchMoodCalendarSnapshot()`** (`src/data/storage/calendarSnapshot.ts`) reads **`moodly.entries`** (via the month-grouped index from `getAllEntriesWithMonthIndex`) and **`moodly.settings`** in one parallel pass for calendar screens. It does **not** introduce new persisted keys.
+- **`fetchMoodCalendarSnapshot()`** (`src/data/storage/calendarSnapshot.ts`) reads **`moodly.entries`** (via **`getCalendarEntriesByMonthIndexSnapshot()`** — stable month-map references, no full-record clone on the calendar hot path) and **`moodly.settings`** in one parallel pass. Overlapping inflight reads are **coalesced** (rapid tab switches). Used by **`CalendarScreen`** and **`CalendarView`**. Does **not** introduce new persisted keys.
+
+### Mood / journal read APIs (copy semantics)
+
+| API | When to use | Caller may mutate? |
+|------|-------------|-------------------|
+| `getAllEntries()` | Full record export, tooling, callers that need owned objects | Yes (defensive copy) |
+| `getEntriesSortedDesc()` | Callers that need owned row copies (newest first) | Yes (each row cloned) |
+| `getJournalEntriesSortedDescSnapshot()` | **Journal** focus reload / list hot path | **No** — stable cache identity until entries change |
+| `getCalendarEntriesByMonthIndexSnapshot()` | Calendar render / `fetchMoodCalendarSnapshot` | **No** — stable month-map refs until affected months change |
+| `getAllEntriesWithMonthIndex()` | Legacy callers needing record + index with defensive copies | Yes |
+| `fetchMoodCalendarSnapshot()` | Calendar month + year screens | **No** for `byMonthKey` |
+
+**Writes:** `upsertEntry` / `deleteEntry` load the session cache via internal **`loadEntriesCacheIfNeeded()`** inside the write lock (no full-record clone on warm paths). Public read APIs above are unchanged for mutation safety.
 
 ## Persisted domain types
 

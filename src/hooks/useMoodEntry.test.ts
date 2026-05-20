@@ -8,11 +8,13 @@ import { act, renderHook, waitFor } from '@testing-library/react-native';
 import { useMoodEntry } from './useMoodEntry';
 
 const mockGetEntry = jest.fn();
+const mockPeekEntry = jest.fn();
 const mockUpsertEntry = jest.fn();
 const mockCreateEntry = jest.fn();
 
-jest.mock('../storage', () => ({
+jest.mock('../storage/entries', () => ({
   getEntry: (...a: unknown[]) => mockGetEntry(...a),
+  peekEntryFromSessionCache: (...a: unknown[]) => mockPeekEntry(...a),
   upsertEntry: (...a: unknown[]) => mockUpsertEntry(...a),
   createEntry: (...a: unknown[]) => mockCreateEntry(...a),
 }));
@@ -26,6 +28,7 @@ describe('useMoodEntry', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    mockPeekEntry.mockReturnValue(undefined);
     mockGetEntry.mockResolvedValue(null);
     mockUpsertEntry.mockResolvedValue(undefined);
     mockCreateEntry.mockImplementation((date: string, mood: string, note: string) => ({

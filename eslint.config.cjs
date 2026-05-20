@@ -56,7 +56,7 @@ module.exports = [
       'src/components/**/*.{ts,tsx,js,jsx}',
       'src/hooks/**/*.{ts,tsx,js,jsx}',
       'src/theme/**/*.{ts,tsx,js,jsx}',
-      'src/app/**/*.{ts,tsx,js,jsx}',
+      'src/bootstrap/**/*.{ts,tsx,js,jsx}',
       'src/navigation/**/*.{ts,tsx,js,jsx}',
       'src/extensions/**/*.{ts,tsx,js,jsx}',
     ],

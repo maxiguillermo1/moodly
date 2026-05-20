@@ -60,9 +60,9 @@ Document each new step in [`DATA_ARCHITECTURE.md`](./DATA_ARCHITECTURE.md) when 
 
 Before each migration step, Moodly writes **`moodly.migrationBackup.<from>_to_<to>.<timestamp>`** containing `kind: moodly.migrationBackup.v1` and a **`snapshot`** map of raw string values for primary `moodly.*` keys plus day reminder shards (see `src/data/persistence/migrations/migrationBackup.ts`). If a step fails after backup, support can inspect the latest backup; the app does **not** auto-restore (avoid re-running half-applied transforms).
 
-### Internal export envelope (no UI)
+### User export / import (Settings)
 
-`src/data/persistence/localExport/moodlyLocalExport.ts` defines **`moodly.localExport.v1`** — a validated JSON shape for a full local key snapshot (`buildMoodlyLocalExportV1`, `validateMoodlyLocalExportPayload`). Intended for future “export my data”, diagnostics, and tests — not wired to UI in this pass.
+`src/data/persistence/localExport/moodlyLocalExport.ts` defines **`moodly.localExport.v1`** — a validated JSON shape for a full local key snapshot. Settings → **Export My Data** / **Import Data** uses `userDataExportRepository` (`buildMoodlyUserExportV1`, `applyMoodlyLocalImportV1`). Export merges SQLite snapshots for mood entries, habit selections, and goals into `kv` before share; import restores AsyncStorage then re-imports SQLite domains.
 
 ## 7. Repository & UI boundary
 

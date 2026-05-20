@@ -3,10 +3,9 @@
  * @module features/goals/screens/GoalsScreen
  */
 
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
   Alert,
-  InteractionManager,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -17,26 +16,25 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useFocusEffect, useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
+import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 
 import { LiquidGlass, ScreenHeader, screenHeaderPrimaryTabPaddingX } from '@/components';
 import type { RootStackParamList } from '@/navigation/types';
 import type { Goal, GoalCategory, GoalType } from '@/types';
-import { addGoalProgress, archiveGoal, deleteGoal, getGoals, upsertGoal } from '@/storage';
+import { addGoalProgress, archiveGoal, deleteGoal, upsertGoal } from '@/storage';
 import {
   computeGoalProgress,
   formatDateForDisplay,
   getToday,
   goalLoggedDayCount,
   isValidLocalCalendarDayKey,
-  sortGoalsForDisplay,
 } from '@/utils';
+import { useGoalsFocusLoad } from '@/hooks';
 import { borderRadius, spacing, typography, useAppTheme } from '@/theme';
 import { Touchable } from '@/ui/Touchable';
-import { perfProbe, usePerfScreen } from '@/perf';
+import { usePerfScreen } from '@/perf';
 import { haptics } from '@/system/haptics';
-import { logger } from '@/security';
 
 const CONTENT_GUTTER = screenHeaderPrimaryTabPaddingX;
 const HERO_WELL = 28;
@@ -72,7 +70,6 @@ export default function GoalsScreen(): React.ReactElement {
       ? formatDateForDisplay(routeDate)
       : null;
 
-  const [goals, setGoals] = useState<Goal[]>([]);
   const [isComposerOpen, setComposerOpen] = useState(false);
   const [draftTitle, setDraftTitle] = useState('');
   const [draftType, setDraftType] = useState<GoalType>('habit');
@@ -83,31 +80,7 @@ export default function GoalsScreen(): React.ReactElement {
   const [logNote, setLogNote] = useState('');
   const [lengthGoal, setLengthGoal] = useState<Goal | null>(null);
   const [lengthDraft, setLengthDraft] = useState('');
-  const didFlushPerfReportRef = useRef(false);
-
-  const reload = useCallback(async () => {
-    try {
-      setGoals(sortGoalsForDisplay(await getGoals()));
-    } catch (error) {
-      logger.warn('goals.screen.load.failed', { error });
-    }
-  }, []);
-
-  useFocusEffect(
-    useCallback(() => {
-      if (perfProbe.enabled) didFlushPerfReportRef.current = false;
-      const task = InteractionManager.runAfterInteractions(() => {
-        void reload();
-      });
-      return () => {
-        task.cancel();
-        if (perfProbe.enabled && !didFlushPerfReportRef.current) {
-          didFlushPerfReportRef.current = true;
-          perfProbe.flushReport('GoalsScreen.blur');
-        }
-      };
-    }, [reload])
-  );
+  const { goals, reload } = useGoalsFocusLoad();
 
   const active = useMemo(() => goals.filter((goal) => goal.status === 'active'), [goals]);
   const completed = useMemo(() => goals.filter((goal) => goal.status === 'completed'), [goals]);

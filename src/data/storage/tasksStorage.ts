@@ -760,6 +760,10 @@ export async function reorderOpenTasksForDate(date: string, openIdsInOrder: stri
 
 export function resetTasksStorageSessionStateForTests(): void {
   if (typeof process === 'undefined' || process.env.NODE_ENV !== 'test') return;
+  invalidateTasksSessionCache();
+}
+
+export function invalidateTasksSessionCache(): void {
   cache = null;
   loadPromise = null;
   cacheGeneration = 0;
@@ -768,4 +772,24 @@ export function resetTasksStorageSessionStateForTests(): void {
   cachedTaskIdsByDate = null;
   dayShardCache = new Map<string, DayTodoItem[]>();
   dayIndexCache = null;
+}
+
+/** Cloud sync: read tasks metadata record snapshot. */
+export async function getTasksRecordSnapshot(): Promise<TasksRecord> {
+  return cloneRecord(await getAllTasksRecord());
+}
+
+/** Cloud sync: replace tasks metadata (during pull). */
+export async function replaceTasksRecordForSync(record: TasksRecord): Promise<void> {
+  return withWriteLock(async () => {
+    await persistRecord(cloneRecord(record));
+  });
+}
+
+/** Cloud sync: replace one day shard (during pull). */
+export async function replaceTaskDayShardForSync(date: string, items: readonly DayTodoItem[]): Promise<void> {
+  if (!isValidISODateKey(date)) return;
+  return withWriteLock(async () => {
+    await persistDayShardData(date, [...items]);
+  });
 }

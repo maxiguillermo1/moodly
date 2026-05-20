@@ -20,6 +20,13 @@ export function monthKeyFromLocalDayKey(dayKey: string): string {
   return dayKey.slice(0, 7);
 }
 
+/** Newest-first order for local `YYYY-MM-DD` / `YYYY-MM` keys (lexicographic). */
+export function compareLocalDayKeysDesc(a: string, b: string): number {
+  if (a < b) return 1;
+  if (a > b) return -1;
+  return 0;
+}
+
 /** 1-based day of month if `dayKey` belongs to `year`/`monthIndex0`, else 0. */
 export function dayOfMonthInCalendarMonth(dayKey: string, year: number, monthIndex0: number): number {
   if (!isValidLocalDayKeyFormat(dayKey)) return 0;

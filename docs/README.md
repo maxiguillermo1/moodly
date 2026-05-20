@@ -28,10 +28,13 @@ Developer guides live in **`docs/`**. The repo root keeps **`README.md`** and **
 |-----|---------|
 | [APP_STORE_READINESS.md](./APP_STORE_READINESS.md) | Native release checklist, privacy answers, review notes |
 | [RELEASE_CHECKLIST.md](./RELEASE_CHECKLIST.md) | Final release-candidate gates and manual QA matrix |
+| [MOBILE_PRODUCTION_AUDIT.md](./MOBILE_PRODUCTION_AUDIT.md) | Production polish audit: stability, perf, a11y, security, remaining gaps |
 | [SECURITY_CHECKLIST.md](./SECURITY_CHECKLIST.md) | Privacy and logging |
 | [RISK_REGISTER.md](./RISK_REGISTER.md) | Known release/platform risks and triggers |
 | [ROADMAP.md](./ROADMAP.md) | Conservative roadmap for release, data ownership, sync/cloud, and AI |
-| [CHANGELOG.md](./CHANGELOG.md) | **Versioning & maturity** (Moodly v0.5, roadmap to v1.0) + product-facing release notes |
+| [CHANGELOG.md](./CHANGELOG.md) | **Versioning & maturity** (Moodly v0.6, roadmap to v1.0) + product-facing release notes |
+| [DEPLOYMENT.md](./DEPLOYMENT.md) | **EAS builds**, signing, env vars, store submit commands |
+| [PRIVACY.md](./PRIVACY.md) / [TERMS.md](./TERMS.md) | Local-first policy text for store listings |
 
 ## Design and UI
 

@@ -1,6 +1,6 @@
 # Moodly Release Checklist
 
-**Product maturity:** Moodly is **v0.5** (intentionally pre-1.0). This checklist defines **release-candidate** quality; reaching it is a step toward **v1.0** “public-ready,” not a claim that the product line is finished ecosystem software. See [`CHANGELOG.md`](./CHANGELOG.md) § Versioning.
+**Product maturity:** Moodly is **v0.6** (intentionally pre-1.0). This checklist defines **release-candidate** quality; reaching it is a step toward **v1.0** “public-ready,” not a claim that the product line is finished ecosystem software. See [`CHANGELOG.md`](./CHANGELOG.md) § Versioning.
 
 **Pre-1.0 production simulation:** Treat physical-device QA as if the build were going to **tens of thousands** of installs: long sessions, rapid tab and sheet churn, **large local histories** (journal scroll, calendar year/month), Reminder-heavy days, and **background during saves**. Pair dev-only **`perf.report`** / **`perf.longTask`** (when supported) with the manual matrix below. Engineering assumptions for storage concurrency and read-model batching are documented in [`STABILITY_NOTES.md`](./STABILITY_NOTES.md) and [`PERFORMANCE_NOTES.md`](./PERFORMANCE_NOTES.md).
 
@@ -40,7 +40,7 @@ by itself only when iterating on persistence changes.
 ## App Store Blockers To Resolve Outside Code
 
 - Confirm Apple Developer ownership of `com.moodly.app`.
-- Link the Expo/EAS project and fill `extra.eas.projectId` only after `eas init`.
+- Link the Expo/EAS project and fill `extra.eas.projectId` in `app.config.ts` only after `eas init` (see [`DEPLOYMENT.md`](./DEPLOYMENT.md)).
 - Provide final 1024×1024 App Store icon, in-app icon, and adaptive icon assets; current placeholder splash is not a launch-quality App Store icon.
 - Decide whether the intentionally minimal splash asset remains acceptable for launch branding.
 - Prepare App Store screenshots, support URL, privacy answers, age rating, copyright, review notes,

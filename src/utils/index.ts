@@ -14,11 +14,13 @@ export * from '../lib/utils/frameCoalescer';
 export * from '../lib/utils/lruMap';
 export * from '../lib/utils/afterNextFrame';
 export * from '../lib/utils/serialAsyncQueue';
+export * from '../lib/utils/openExternalUrl';
 export * from '../lib/constants/moods';
 export * from '../lib/constants/habitsCatalog';
 export * from '../lib/habits/visibleOnToday';
 export * from '../lib/calendar';
 export * from '../lib/todos';
 export * from '../lib/goals';
+export * from '../lib/journal';
 export { nearestTabFromPillCenter } from '../lib/utils/nearestTabFromPill';
 

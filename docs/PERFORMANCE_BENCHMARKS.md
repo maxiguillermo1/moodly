@@ -46,6 +46,8 @@ Bundle export output:
 - Entry/settings cache reads return defensive copies, preventing caller mutation from creating long-session RAM/data desync.
 - Error recovery and Reduce Motion behavior were refined without visual redesign: Calendar stack transitions now respect Reduce Motion, and the app error boundary remounts the subtree on retry.
 - Today save-message timers and recycled-list epoch microtasks are guarded so delayed callbacks do not update unmounted screens.
+- **Calendar month timeline (2026-05)**: **`CalendarScreen`** uses **`fetchMoodCalendarSnapshot`**, memoized **`CalendarTimelineMonth`** rows, coalesced card **`onLayout`**, per-month FlashList **`overrideItemLayout`**, blur-cancelled deferred work, and conditional **`calendarListEpoch`** (today change only).
+- **Mood/journal storage (2026-05)**: warm **`upsertEntry`** / **`deleteEntry`** avoid full-record clones; Journal focus uses **`getJournalEntriesSortedDescSnapshot()`** for stable sorted-array identity on cache hits.
 
 ## Scale Targets For Manual Profiling
 
@@ -98,6 +100,33 @@ SQLite/sharding trigger points for the next phase:
 
 ## Future Recommendations
 
-- Before the next scaling phase, add a repeatable on-device stress harness for synthetic multi-year data, app relaunch loops, background/foreground cycles, and extension toggling.
+- Before the next scaling phase, add a repeatable on-device stress harness for synthetic multi-year data, app relaunch loops, background/foreground cycles, and extension toggling. **Jest baseline:** `src/qa/entriesScaleHarness.test.ts` (1k / 5k / 10k cold-load tiers; soft budgets documented below).
 - Introduce persisted key envelopes or per-key schema versions when the first real shape-changing migration appears.
-- Move to SQLite or a sharded local store before adding sync/import features that can multiply local history size.
+- Move remaining high-churn domains (habits, goals) to SQLite before adding sync/import features that can multiply local history size.
+
+### Entries scale harness (Jest baseline)
+
+| Tier | Soft cold-load budget (Jest / CI) | Notes |
+|------|-----------------------------------|--------|
+| 1k rows | ≤ 250 ms | Typical multi-year journal |
+| 5k rows | ≤ 750 ms | Audit trigger per `MOBILE_PRODUCTION_AUDIT.md` |
+| 10k rows | ≤ 1500 ms | Pre-sync/import gate |
+
+Module: `src/qa/entriesScaleHarness.ts`. Physical-device profiling still required for frame pacing — see `RELEASE_CHECKLIST.md`.
+
+### Physical device profiling procedure
+
+Run on **oldest supported iPhone** and one current model after material storage changes:
+
+1. Install a **release-style** build (TestFlight or `eas build` preview).
+2. Seed data via Settings → **Import Data** using exports from Jest tiers (1k / 5k / 10k) or in-app logging over time.
+3. Force-quit the app; relaunch and time **Today**, **Journal**, and **Calendar** first paint (stopwatch or screen recording).
+4. Record cold-load feel and any visible save delay when editing today's entry.
+
+| Device | Tier | Today cold open | Journal scroll start | Notes |
+|--------|------|-----------------|----------------------|-------|
+| *(fill on device)* | 1k | | | |
+| *(fill on device)* | 5k | | | |
+| *(fill on device)* | 10k | | | |
+
+Jest soft budgets (CI baseline only): 250 ms / 750 ms / 1500 ms — see table above in this doc.

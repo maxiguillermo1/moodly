@@ -4,12 +4,10 @@
  */
 
 import * as demoSeed from '../storage/demoSeed';
-import * as fullDemoSeed from '../storage/fullDemoSeed';
 import * as sessionStore from '../storage/sessionStore';
 
 export * from '../storage/sessionStore';
 export * from '../storage/demoSeed';
-export * from '../storage/fullDemoSeed';
 
 export const sessionRepository = {
   warmSessionStore: sessionStore.warmSessionStore,
@@ -17,8 +15,15 @@ export const sessionRepository = {
   /** @deprecated No-op; use `rebuildFullDemoDataset` when you explicitly want synthetic data. */
   seedDemoEntriesIfEmpty: demoSeed.seedDemoEntriesIfEmpty,
   /** Opt-in: install/refresh bundled synthetic dataset (same as `MoodlySeed.rebuild()` in dev). */
-  ensureDevFullDemoDatasetCurrent: fullDemoSeed.ensureDevFullDemoDatasetCurrent,
-  rebuildFullDemoDataset: fullDemoSeed.runFullDemoRebuild,
+  async ensureDevFullDemoDatasetCurrent(): Promise<void> {
+    const { ensureDevFullDemoDatasetCurrent } = await import('../storage/fullDemoSeed');
+    return ensureDevFullDemoDatasetCurrent();
+  },
+  /** Opt-in dev rebuild (lazy-loaded; keeps ~850 LOC seed out of cold Metro graph). */
+  async rebuildFullDemoDataset() {
+    const { runFullDemoRebuild } = await import('../storage/fullDemoSeed');
+    return runFullDemoRebuild();
+  },
 } as const;
 
 export type ISessionRepository = typeof sessionRepository;

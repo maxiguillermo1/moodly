@@ -9,3 +9,5 @@ export * from './monthMatrix';
 export * from './monthWindow';
 export * from './recycleEpochPolicy';
 export * from './timeline';
+export * from './applyMoodCalendarSnapshot';
+export * from './monthTimelineWindow';

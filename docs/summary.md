@@ -1,6 +1,6 @@
 # Moodly – Engineering Summary Log
 
-**Product versioning:** The shipped app line is **Moodly v0.5** (**`0.5.0`** in `package.json` / `app.json` / `APP_RELEASE_VERSION`). See [`CHANGELOG.md`](./CHANGELOG.md) § Versioning and [`AGENTS.md`](./AGENTS.md) § Product maturity & versioning.  
+**Product versioning:** The shipped app line is **Moodly v0.6** (**`0.6.0`** in `package.json` / `app.json` / `APP_RELEASE_VERSION`). See [`CHANGELOG.md`](./CHANGELOG.md) § Versioning and [`AGENTS.md`](./AGENTS.md) § Product maturity & versioning.  
 **About this file:** Dated entries below are an **engineering log**; some older internal headings use “Version 0.x” labels from earlier passes — they are **not** a second source of truth for app semver.
 
 ## Changelog Index
@@ -49,7 +49,7 @@
 
 ### Version 0.5 — Core Foundation (2026-02-03)
 
-> **Historical note:** This heading is an **internal milestone label** from February 2026. Canonical **product** versioning (**Moodly v0.5**, semver **`0.5.0`**) lives in [`CHANGELOG.md`](./CHANGELOG.md) § Versioning and [`AGENTS.md`](./AGENTS.md) § Product maturity & versioning.
+> **Historical note:** This heading is an **internal milestone label** from February 2026. **Current** product line: **Moodly v0.6** (**`0.6.0`**). Older milestones (e.g. v0.5) remain in [`CHANGELOG.md`](./CHANGELOG.md) § Versioning and [`AGENTS.md`](./AGENTS.md) § Product maturity & versioning.
 
 #### Why we did it (layman terms)
 Moodly v0.5 is a local-first app with no accounts, backend, sync, or networking. This milestone focuses on foundations: clear layer boundaries, predictable data handling, privacy-safe logging, and performance hygiene in calendar hot paths.
@@ -155,7 +155,7 @@ The next milestones (0.6, 0.7) should follow the same posture: append-only decis
 - Updated legacy perf helpers (`src/lib/utils/devPerf.ts`) to emit structured PERF logs via the logger (still dev-only).
 
 Example PERF line format (metadata-only):
-`[PERF][calendar] calendar.loadEntries { phase: 'warm', source: 'sessionCache', durationMs: 1.6 }`
+`[PERF][calendar] calendar.loadData { phase: 'warm', source: 'sessionCache', durationMs: 1.6, monthsIndexed: 24 }`
 
 #### Files touched (high signal)
 - **storage/**

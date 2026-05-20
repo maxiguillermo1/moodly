@@ -16,7 +16,7 @@
 - **Reminders day path:** `moodly.tasks.day.<YYYY-MM-DD>` + `moodly.tasks.dayIndex` — touch **one day** at a time for Today/Todo hot paths (`tasksStorage.ts`).
 - **Task metadata / recurrence:** `moodly.tasks` — bounded recurrence generation (`lastGeneratedDate`, caps in code/tests).
 - **Goals:** single `moodly.goals` record with **history tail cap** and **`getGoalSummaries` / `getTodayGoalSummaries`** for list/Today previews (`goalsStorage.ts`).
-- **Mood entries:** `moodly.entries` + calendar snapshot read path — avoid extra full scans when changing calendar load (`calendarSnapshot`, `moodStorage`).
+- **Mood entries:** `moodly.entries` + derived session caches — calendar uses **`fetchMoodCalendarSnapshot`** / **`getCalendarEntriesByMonthIndexSnapshot`**; Journal uses **`getJournalEntriesSortedDescSnapshot`**; warm **`upsertEntry`** / **`deleteEntry`** read cache in the write lock without cloning the full record (`moodStorage.ts`).
 - **UI state vs disk:** no global store; focus reloads + defensive copies from storage — see [`architecture.md`](./architecture.md).
 
 ## When you change something “big”

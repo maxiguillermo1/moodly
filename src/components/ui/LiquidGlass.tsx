@@ -6,7 +6,7 @@
  */
 
 import React, { useMemo } from 'react';
-import { View, StyleSheet, ViewStyle, StyleProp } from 'react-native';
+import { View, StyleSheet, ViewStyle, StyleProp, Platform } from 'react-native';
 import { useAppTheme, sizing } from '../../theme';
 
 let BlurViewAny: any = null;
@@ -91,7 +91,14 @@ export const LiquidGlass = React.memo(function LiquidGlass({
     [radius, shadowStyle]
   );
 
-  const showBlur = !!BlurViewAny && !a11y.reduceTransparency && blurIntensity > 0;
+  // Simulator dev builds: skip stacked blur on the floating tab bar (major scroll/tap win).
+  const skipProminentBlurInDev =
+    typeof __DEV__ !== 'undefined' &&
+    __DEV__ &&
+    prominent &&
+    Platform.OS === 'ios';
+  const showBlur =
+    !!BlurViewAny && !a11y.reduceTransparency && blurIntensity > 0 && !skipProminentBlurInDev;
 
   const fillBackground = useMemo(() => {
     const m = tokens.background.match(/rgba?\(([^)]+)\)/);

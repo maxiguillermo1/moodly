@@ -4,3 +4,4 @@
  */
 
 export { APP_RELEASE_VERSION } from './app';
+export { LEGAL_URLS } from './legal';

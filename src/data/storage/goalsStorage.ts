@@ -9,6 +9,12 @@ import { getToday } from '../../lib/utils/date';
 import { logger } from '../../lib/security/logger';
 import { isValidISODateKey, normalizeNote } from '../model/entry';
 import { assertLocalPersistenceWritable, ensureLocalPersistenceReady } from '../persistence/bootstrap';
+import {
+  loadGoalsJsonFromDisk,
+  persistGoalsRecordToDisk,
+  quarantineRawGoalsJson,
+} from './goalsBackend';
+import { notifyGoalsChanged } from '../sync/syncBridge';
 import { storage } from './asyncStorage';
 
 const STORAGE_KEY = 'moodly.goals';
@@ -258,20 +264,16 @@ async function backupPreMigrationSnapshot(rawJson: string): Promise<void> {
 
 async function quarantineCorruptValue(rawJson: string): Promise<void> {
   try {
-    await storage.setItem(`${CORRUPT_PREFIX}${Date.now()}`, rawJson);
+    await quarantineRawGoalsJson(rawJson, `${CORRUPT_PREFIX}${Date.now()}`, JSON.stringify(DEFAULT_RECORD));
   } catch (error) {
     logger.warn('storage.goals.corruptBackup.persistFailed', { error });
-  }
-  try {
-    await storage.setItem(STORAGE_KEY, JSON.stringify(DEFAULT_RECORD));
-  } catch (error) {
     logger.error('storage.goals.corruptReset.failed', { error });
   }
 }
 
 async function readFromDisk(): Promise<GoalsRecord> {
   await ensureLocalPersistenceReady();
-  const json = await storage.getItem(STORAGE_KEY);
+  const json = await loadGoalsJsonFromDisk();
   const parsed = parseRecord(json);
   if (parsed.corrupt && typeof json === 'string' && json.length > 0) {
     logger.warn('storage.goals.corrupt.detected', { action: 'quarantineAndReset' });
@@ -329,12 +331,13 @@ async function persistGoalsRecordCore(record: GoalsRecord): Promise<void> {
   await ensureLocalPersistenceReady();
   assertLocalPersistenceWritable();
   const safeNext = cloneRecord({ ...record, version: GOALS_RECORD_VERSION });
-  await storage.setItem(STORAGE_KEY, JSON.stringify(safeNext));
+  await persistGoalsRecordToDisk(safeNext);
   cacheGeneration += 1;
   loadPromise = null;
   summaryCacheRecord = null;
   summaryCache = null;
   cache = safeNext;
+  notifyGoalsChanged(safeNext);
 }
 
 async function persistRecord(record: GoalsRecord): Promise<void> {
@@ -491,6 +494,10 @@ export async function deleteGoal(goalId: string): Promise<void> {
 
 export function resetGoalsStorageSessionStateForTests(): void {
   if (typeof process === 'undefined' || process.env.NODE_ENV !== 'test') return;
+  invalidateGoalsSessionCache();
+}
+
+export function invalidateGoalsSessionCache(): void {
   cache = null;
   loadPromise = null;
   cacheGeneration = 0;

@@ -139,9 +139,12 @@ const key = toLocalDayKey(new Date());
 #### Calendar month timeline (`CalendarScreen`)
 
 - Uses a **large mostly‑static month window** (about 100 years) to avoid periodic “window shift” freezes.
-- **`fetchMoodCalendarSnapshot`** on focus loads **indexed entries + settings** in parallel (one storage round-trip pattern).
-- Calendar snapshots use stable month-map references until entries actually change, so focus reloads do not invalidate visible months by reference alone.
-- Avoid state updates during scroll; use refs + deferred work (`InteractionManager`) for non‑urgent operations.
+- **`fetchMoodCalendarSnapshot`** on focus (deferred via **`InteractionManager`**) loads **indexed entries + settings** in one parallel, coalesced read (`getCalendarEntriesByMonthIndexSnapshot` + settings).
+- Month rows render via memoized **`CalendarTimelineMonth`**; **`selectedDateRef`** stabilizes **`renderMonthItem`** across day taps.
+- Card-width **`onLayout`** is coalesced (rAF, scroll guard, flush on scroll end); FlashList **`overrideItemLayout`** uses per-month height math (`computeMonthTimelineRowHeights`).
+- **`calendarListEpoch`** bumps only when local today changes (blur/midnight), not every focus.
+- Deferred window extend / recenter work is **cancelled on blur** (`isFocusedRef` + task cancel).
+- Avoid state updates during scroll; use refs + deferred work for non‑urgent operations. Details: [`perf-calendar.md`](./perf-calendar.md).
 
 ### State Infrastructure Trigger Points
 

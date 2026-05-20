@@ -18,6 +18,8 @@ export * from './goalsRepository';
 export * from './dailyActivityRepository';
 export * from './insightsRepository';
 export * from './narrativeRepository';
+export * from './userDataRepository';
+export * from './userDataExportRepository';
 
 export {
   ensureLocalPersistenceReady,

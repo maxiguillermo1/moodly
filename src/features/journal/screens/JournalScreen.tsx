@@ -3,7 +3,7 @@
  * @module features/journal/screens/JournalScreen
  */
 
-import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react';
+import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -12,27 +12,36 @@ import {
   Alert,
   SectionList,
   ActivityIndicator,
-  InteractionManager,
   type SectionListRenderItemInfo,
 } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useFocusEffect } from '@react-navigation/native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { MoodEntry, MoodGrade } from '@/types';
 import { ScreenHeader, screenHeaderPrimaryTabPaddingX } from '@/components';
-import { getEntriesSortedDesc, upsertEntry, deleteEntry } from '@/storage';
+import { upsertEntry, deleteEntry } from '@/storage';
 import {
-  monthKeyFromLocalDayKey,
-  monthNameLongEn,
-  MOOD_GRADES,
-  MOOD_CONFIG,
   formatDateForDisplay,
   isValidLocalCalendarDayKey,
-  parseISODate,
+  monthNameLongEn,
+  buildMonthSections,
+  buildWeekdaySections,
+  buildMoodSections,
+  applySoloMonthFilter,
+  applySoloWeekdayFilter,
+  applySoloMoodFilter,
+  a11yAnnouncementForViewMode,
+  scanJournalEntryPresence,
+  nextMoodSoloFromHeaderTap,
+  nextWeekdaySoloFromHeaderTap,
+  nextMonthSoloFromHeaderTap,
+  JOURNAL_WEEKDAY_SECTION_NAMES,
+  type JournalViewMode,
+  type JournalListSection,
 } from '@/utils';
 import { logger } from '@/security';
-import { PerfProfiler, perfProbe, usePerfScreen } from '@/perf';
+import { PerfProfiler, usePerfScreen } from '@/perf';
+import { useJournalEntriesLoad } from '@/hooks';
 import { useAppTheme, spacing, borderRadius, typography } from '@/theme';
 import { JournalEntryRow } from '../components/JournalEntryRow';
 import { JournalEditModal } from './JournalEditModal';
@@ -40,22 +49,6 @@ import { Touchable } from '@/ui/Touchable';
 import { haptics } from '@/system/haptics';
 import { useScrollDrivenTabBarVisibility, useShowTabBarOnScreenBlur } from '@/hooks';
 import { announceForAccessibility, formatMoodA11yLabel } from '@/system/accessibility';
-
-type JournalViewMode = 'newest' | 'oldest' | 'byMonth' | 'byDay' | 'byMood';
-
-type JournalListSection = {
-  key: string;
-  title: string;
-  subtitle: string;
-  kind: 'month' | 'day' | 'mood';
-  isFirst: boolean;
-  moodGrade?: MoodGrade;
-  /** `YYYY-MM` local month key when {@link JournalListSection.kind} is `'month'`. */
-  monthKey?: string;
-  /** Monday = 0 … Sunday = 6 when {@link JournalListSection.kind} is `'day'` (weekday grouping). */
-  weekdayIndex0?: number;
-  data: MoodEntry[];
-};
 
 const JOURNAL_VIEW_OPTIONS: { mode: JournalViewMode; label: string }[] = [
   { mode: 'newest', label: 'Newest first' },
@@ -74,157 +67,6 @@ const JOURNAL_VIEW_OPTIONS: { mode: JournalViewMode; label: string }[] = [
  * - Set to `'flatlist'` if you need to compare baselines or hit a FlashList edge case.
  */
 const JOURNAL_LIST_IMPL: 'flatlist' | 'flashlist' = 'flashlist';
-
-function entriesSameForJournal(prev: readonly MoodEntry[], next: readonly MoodEntry[]): boolean {
-  if (prev.length !== next.length) return false;
-  for (let i = 0; i < prev.length; i += 1) {
-    const a = prev[i];
-    const b = next[i];
-    if (!a || !b) return false;
-    if (a.date !== b.date || a.updatedAt !== b.updatedAt || a.mood !== b.mood || a.note !== b.note) return false;
-  }
-  return true;
-}
-
-function compareDayKeysDesc(a: string, b: string): number {
-  if (a < b) return 1;
-  if (a > b) return -1;
-  return 0;
-}
-
-function sortEntriesByDateDesc(items: readonly MoodEntry[]): MoodEntry[] {
-  return [...items].sort((x, y) => compareDayKeysDesc(x.date, y.date));
-}
-
-/** Monday = 0 … Sunday = 6 (ISO-style week starting Monday). */
-const WEEKDAY_SECTION_ORDER = [0, 1, 2, 3, 4, 5, 6] as const;
-
-const WEEKDAY_SECTION_NAMES = [
-  'Monday',
-  'Tuesday',
-  'Wednesday',
-  'Thursday',
-  'Friday',
-  'Saturday',
-  'Sunday',
-] as const;
-
-const WEEKDAY_SECTION_PLURAL = [
-  'Mondays',
-  'Tuesdays',
-  'Wednesdays',
-  'Thursdays',
-  'Fridays',
-  'Saturdays',
-  'Sundays',
-] as const;
-
-function mondayFirstWeekdayIndex0FromDayKey(dayKey: string): number | null {
-  const d = parseISODate(dayKey);
-  if (Number.isNaN(d.getTime())) return null;
-  const sun0 = d.getDay();
-  return (sun0 + 6) % 7;
-}
-
-function buildWeekdaySections(entries: readonly MoodEntry[]): JournalListSection[] {
-  const sorted = sortEntriesByDateDesc(entries);
-  const buckets: MoodEntry[][] = [[], [], [], [], [], [], []];
-  for (const e of sorted) {
-    const b = mondayFirstWeekdayIndex0FromDayKey(e.date);
-    if (b === null) continue;
-    buckets[b]!.push(e);
-  }
-  const out: JournalListSection[] = [];
-  for (const w of WEEKDAY_SECTION_ORDER) {
-    const data = buckets[w];
-    if (!data || data.length === 0) continue;
-    const name = WEEKDAY_SECTION_NAMES[w];
-    const n = data.length;
-    out.push({
-      key: `weekday-${w}`,
-      title: name.toUpperCase(),
-      subtitle: `${n} ${n === 1 ? 'entry' : 'entries'} · ${WEEKDAY_SECTION_PLURAL[w]}`,
-      kind: 'day' as const,
-      isFirst: out.length === 0,
-      weekdayIndex0: w,
-      data,
-    });
-  }
-  return out;
-}
-
-function buildMonthSections(entries: readonly MoodEntry[]): JournalListSection[] {
-  const sorted = sortEntriesByDateDesc(entries);
-  const map = new Map<string, MoodEntry[]>();
-  for (const e of sorted) {
-    const mk = monthKeyFromLocalDayKey(e.date);
-    const arr = map.get(mk);
-    if (arr) arr.push(e);
-    else map.set(mk, [e]);
-  }
-  const keys = [...map.keys()].sort(compareDayKeysDesc);
-  return keys.map((monthKey, i) => {
-    const data = map.get(monthKey)!;
-    const monthNum = parseInt(monthKey.slice(5, 7), 10);
-    const yearNum = parseInt(monthKey.slice(0, 4), 10);
-    const monthIx = monthNum >= 1 && monthNum <= 12 ? monthNum - 1 : 0;
-    const title = `${monthNameLongEn(monthIx)} ${yearNum}`.toUpperCase();
-    const n = data.length;
-    const subtitle = `${n} ${n === 1 ? 'entry' : 'entries'}`;
-    return {
-      key: `month-${monthKey}`,
-      title,
-      subtitle,
-      kind: 'month' as const,
-      isFirst: i === 0,
-      monthKey,
-      data,
-    };
-  });
-}
-
-function buildMoodSections(entries: readonly MoodEntry[]): JournalListSection[] {
-  const sorted = sortEntriesByDateDesc(entries);
-  const map = new Map<MoodGrade, MoodEntry[]>();
-  for (const g of MOOD_GRADES) map.set(g, []);
-  for (const e of sorted) {
-    const bucket = map.get(e.mood);
-    if (bucket) bucket.push(e);
-  }
-  const out: JournalListSection[] = [];
-  for (const g of MOOD_GRADES) {
-    const data = map.get(g)!;
-    if (data.length === 0) continue;
-    const n = data.length;
-    out.push({
-      key: `mood-${g}`,
-      title: String(g).toUpperCase(),
-      subtitle: `${n} ${n === 1 ? 'entry' : 'entries'} · ${MOOD_CONFIG[g].label}`,
-      kind: 'mood',
-      isFirst: out.length === 0,
-      moodGrade: g,
-      data,
-    });
-  }
-  return out;
-}
-
-function a11yAnnouncementForViewMode(mode: JournalViewMode): string {
-  switch (mode) {
-    case 'newest':
-      return 'Journal sorted newest first';
-    case 'oldest':
-      return 'Journal sorted oldest first';
-    case 'byMonth':
-      return 'Journal grouped by month';
-    case 'byDay':
-      return 'Journal grouped by weekday';
-    case 'byMood':
-      return 'Journal grouped by mood, showing A plus first';
-    default:
-      return 'Journal view updated';
-  }
-}
 
 export default function JournalScreen() {
   usePerfScreen('Journal', { listIds: ['list.journal'] });
@@ -393,7 +235,6 @@ export default function JournalScreen() {
     [s.background]
   );
 
-  const [entriesDesc, setEntriesDesc] = useState<MoodEntry[]>([]);
   const [viewMode, setViewMode] = useState<JournalViewMode>('newest');
   const [sortMenuOpen, setSortMenuOpen] = useState(false);
   /** By mood: `null` = all grades visible (after long press); otherwise only that grade (sort opens on A+). */
@@ -405,65 +246,8 @@ export default function JournalScreen() {
   const [editingEntry, setEditingEntry] = useState<MoodEntry | null>(null);
   const [editMood, setEditMood] = useState<MoodGrade | null>(null);
   const [editNote, setEditNote] = useState('');
-  const [journalLoadCompleted, setJournalLoadCompleted] = useState(false);
-
-  const loadCountRef = useRef(0);
-  const mountedRef = useRef(true);
-  const focusedRef = useRef(false);
-  const reloadReqIdRef = useRef(0);
-  const didFlushPerfReportRef = useRef(false);
-
-  useEffect(() => {
-    return () => {
-      mountedRef.current = false;
-    };
-  }, []);
-
-  const reloadJournalEntries = useCallback(async () => {
-    const reqId = ++reloadReqIdRef.current;
-    const phase = loadCountRef.current === 0 ? 'cold' : 'warm';
-    loadCountRef.current += 1;
-    const p: any = (globalThis as any).performance;
-    const start = typeof p?.now === 'function' ? p.now() : Date.now();
-    try {
-      const sorted = await getEntriesSortedDesc();
-      // Do not gate on `focusedRef`: tab transitions / strict mode can flip focus while this
-      // async read is in flight; `reqId` already drops stale completions after blur/unmount.
-      if (!mountedRef.current || reqId !== reloadReqIdRef.current) return;
-      setEntriesDesc((prev) => (entriesSameForJournal(prev, sorted) ? prev : sorted));
-      const end = typeof p?.now === 'function' ? p.now() : Date.now();
-      logger.perf('journal.loadEntries', {
-        phase,
-        source: 'sessionCache',
-        durationMs: Number(((end as number) - (start as number)).toFixed(1)),
-      });
-    } finally {
-      if (mountedRef.current && reqId === reloadReqIdRef.current) {
-        setJournalLoadCompleted(true);
-      }
-    }
-  }, []);
-
-  useFocusEffect(
-    useCallback(() => {
-      focusedRef.current = true;
-      if (perfProbe.enabled) didFlushPerfReportRef.current = false;
-      const task = InteractionManager.runAfterInteractions(() => {
-        void reloadJournalEntries();
-      });
-      return () => {
-        task.cancel();
-        focusedRef.current = false;
-        reloadReqIdRef.current += 1;
-        if (perfProbe.enabled && !didFlushPerfReportRef.current) {
-          didFlushPerfReportRef.current = true;
-          queueMicrotask(() => {
-            perfProbe.flushReport('JournalScreen.blur');
-          });
-        }
-      };
-    }, [reloadJournalEntries])
-  );
+  const { entriesDesc, journalLoadCompleted, mountedRef, focusedRef, reload: reloadJournalEntries } =
+    useJournalEntriesLoad();
 
   const flatEntries = useMemo(() => {
     if (viewMode === 'oldest') {
@@ -476,89 +260,59 @@ export default function JournalScreen() {
     return entriesDesc;
   }, [entriesDesc, viewMode]);
 
+  const journalEntryPresence = useMemo(() => scanJournalEntryPresence(entriesDesc), [entriesDesc]);
+
+  const monthSectionsBase = useMemo(
+    () => (viewMode === 'byMonth' ? buildMonthSections(entriesDesc) : []),
+    [entriesDesc, viewMode]
+  );
+  const weekdaySectionsBase = useMemo(
+    () => (viewMode === 'byDay' ? buildWeekdaySections(entriesDesc) : []),
+    [entriesDesc, viewMode]
+  );
+  const moodSectionsBase = useMemo(
+    () => (viewMode === 'byMood' ? buildMoodSections(entriesDesc) : []),
+    [entriesDesc, viewMode]
+  );
+
   const journalSectionsForList = useMemo((): JournalListSection[] => {
     switch (viewMode) {
-      case 'byMonth': {
-        const base = buildMonthSections(entriesDesc);
-        if (byMonthSoloKey === null) return base;
-        const sub = base.filter((s) => s.monthKey === byMonthSoloKey);
-        if (sub.length === 0) return base;
-        return sub.map((s, i) => ({ ...s, isFirst: i === 0 }));
-      }
-      case 'byDay': {
-        const base = buildWeekdaySections(entriesDesc);
-        if (byDaySoloWeekday === null) return base;
-        const sub = base.filter((s) => s.weekdayIndex0 === byDaySoloWeekday);
-        if (sub.length === 0) return base;
-        return sub.map((s, i) => ({ ...s, isFirst: i === 0 }));
-      }
-      case 'byMood': {
-        const base = buildMoodSections(entriesDesc);
-        if (byMoodSoloGrade === null) return base;
-        const sub = base.filter((s) => s.moodGrade === byMoodSoloGrade);
-        if (sub.length > 0) return sub.map((s, i) => ({ ...s, isFirst: i === 0 }));
-        const g = byMoodSoloGrade;
-        return [
-          {
-            key: `mood-${g}-empty`,
-            title: String(g).toUpperCase(),
-            subtitle: `0 entries · ${MOOD_CONFIG[g].label}`,
-            kind: 'mood' as const,
-            isFirst: true,
-            moodGrade: g,
-            data: [] as MoodEntry[],
-          },
-        ];
-      }
+      case 'byMonth':
+        return applySoloMonthFilter(monthSectionsBase, byMonthSoloKey);
+      case 'byDay':
+        return applySoloWeekdayFilter(weekdaySectionsBase, byDaySoloWeekday);
+      case 'byMood':
+        return applySoloMoodFilter(moodSectionsBase, byMoodSoloGrade);
       default:
         return [];
     }
-  }, [byDaySoloWeekday, byMonthSoloKey, byMoodSoloGrade, entriesDesc, viewMode]);
+  }, [
+    byDaySoloWeekday,
+    byMonthSoloKey,
+    byMoodSoloGrade,
+    monthSectionsBase,
+    moodSectionsBase,
+    viewMode,
+    weekdaySectionsBase,
+  ]);
 
   useEffect(() => {
     if (viewMode !== 'byMonth' || byMonthSoloKey === null) return;
-    const stillHas = entriesDesc.some((e) => monthKeyFromLocalDayKey(e.date) === byMonthSoloKey);
-    if (!stillHas) setByMonthSoloKey(null);
-  }, [byMonthSoloKey, entriesDesc, viewMode]);
+    if (!journalEntryPresence.monthKeysSet.has(byMonthSoloKey)) setByMonthSoloKey(null);
+  }, [byMonthSoloKey, journalEntryPresence.monthKeysSet, viewMode]);
 
   useEffect(() => {
     if (viewMode !== 'byDay' || byDaySoloWeekday === null) return;
-    const stillHas = entriesDesc.some((e) => mondayFirstWeekdayIndex0FromDayKey(e.date) === byDaySoloWeekday);
-    if (!stillHas) setByDaySoloWeekday(null);
-  }, [byDaySoloWeekday, entriesDesc, viewMode]);
+    if (!journalEntryPresence.weekdaySet.has(byDaySoloWeekday)) setByDaySoloWeekday(null);
+  }, [byDaySoloWeekday, journalEntryPresence.weekdaySet, viewMode]);
 
   const advanceByMoodHeaderTap = useCallback(
     (fromGrade: MoodGrade) => {
-      const moodSections = buildMoodSections(entriesDesc);
-      const gradesWithData = MOOD_GRADES.filter((g) =>
-        moodSections.some((s) => s.moodGrade === g && s.data.length > 0)
-      );
-      if (gradesWithData.length === 0) return;
+      const { moodsWithEntries } = journalEntryPresence;
+      if (moodsWithEntries.length === 0) return;
 
       haptics.select();
-
-      if (byMoodSoloGrade === null) {
-        setByMoodSoloGrade('A+');
-        announceForAccessibility(`Showing only mood ${formatMoodA11yLabel('A+')}`);
-        return;
-      }
-
-      let next: MoodGrade | null;
-      if (gradesWithData.length === 1) {
-        next = null;
-      } else {
-        const start = MOOD_GRADES.indexOf(fromGrade);
-        let found: MoodGrade | null = null;
-        for (let step = 1; step <= MOOD_GRADES.length; step += 1) {
-          const g = MOOD_GRADES[(start + step) % MOOD_GRADES.length]!;
-          if (gradesWithData.includes(g)) {
-            found = g;
-            break;
-          }
-        }
-        next = found ?? gradesWithData[0]!;
-      }
-
+      const next = nextMoodSoloFromHeaderTap(fromGrade, byMoodSoloGrade, moodsWithEntries);
       setByMoodSoloGrade(next);
       if (next === null) {
         announceForAccessibility('Showing all mood groups');
@@ -566,7 +320,7 @@ export default function JournalScreen() {
         announceForAccessibility(`Showing only mood ${formatMoodA11yLabel(next)}`);
       }
     },
-    [byMoodSoloGrade, entriesDesc]
+    [byMoodSoloGrade, journalEntryPresence]
   );
 
   const moodSectionHeaderA11yHint = byMoodSoloGrade === null
@@ -582,39 +336,19 @@ export default function JournalScreen() {
 
   const advanceByWeekdayHeaderTap = useCallback(
     (fromW: number) => {
-      const daySections = buildWeekdaySections(entriesDesc);
-      const weekdaysWithData = WEEKDAY_SECTION_ORDER.filter((w) =>
-        daySections.some((s) => s.weekdayIndex0 === w && s.data.length > 0)
-      );
-      if (weekdaysWithData.length === 0) return;
+      const { weekdaysWithEntries } = journalEntryPresence;
+      if (weekdaysWithEntries.length === 0) return;
 
       haptics.select();
-
-      let next: number | null;
-      if (weekdaysWithData.length === 1) {
-        next = byDaySoloWeekday === null ? weekdaysWithData[0]! : null;
-      } else {
-        const start = WEEKDAY_SECTION_ORDER.indexOf(fromW as (typeof WEEKDAY_SECTION_ORDER)[number]);
-        const startSafe = start < 0 ? 0 : start;
-        let found: number | null = null;
-        for (let step = 1; step <= WEEKDAY_SECTION_ORDER.length; step += 1) {
-          const w = WEEKDAY_SECTION_ORDER[(startSafe + step) % WEEKDAY_SECTION_ORDER.length]!;
-          if (weekdaysWithData.includes(w)) {
-            found = w;
-            break;
-          }
-        }
-        next = found ?? weekdaysWithData[0]!;
-      }
-
+      const next = nextWeekdaySoloFromHeaderTap(fromW, byDaySoloWeekday, weekdaysWithEntries);
       setByDaySoloWeekday(next);
       if (next === null) {
         announceForAccessibility('Showing all weekday groups');
       } else {
-        announceForAccessibility(`Showing only ${WEEKDAY_SECTION_NAMES[next]}`);
+        announceForAccessibility(`Showing only ${JOURNAL_WEEKDAY_SECTION_NAMES[next]}`);
       }
     },
-    [byDaySoloWeekday, entriesDesc]
+    [byDaySoloWeekday, journalEntryPresence]
   );
 
   const clearByDaySolo = useCallback(() => {
@@ -626,38 +360,23 @@ export default function JournalScreen() {
 
   const advanceByMonthHeaderTap = useCallback(
     (fromMonthKey: string) => {
-      const monthSections = buildMonthSections(entriesDesc);
-      const ordered = monthSections.filter((s) => s.data.length > 0 && s.monthKey).map((s) => s.monthKey!);
-      if (ordered.length === 0) return;
+      const { monthKeysWithEntries } = journalEntryPresence;
+      if (monthKeysWithEntries.length === 0) return;
 
       haptics.select();
-
-      let next: string | null;
-      if (ordered.length === 1) {
-        next = byMonthSoloKey === null ? ordered[0]! : null;
-      } else {
-        const start = ordered.indexOf(fromMonthKey);
-        const startSafe = start < 0 ? 0 : start;
-        let found: string | null = null;
-        for (let step = 1; step <= ordered.length; step += 1) {
-          const k = ordered[(startSafe + step) % ordered.length]!;
-          if (ordered.includes(k)) {
-            found = k;
-            break;
-          }
-        }
-        next = found ?? ordered[0]!;
-      }
-
+      const next = nextMonthSoloFromHeaderTap(fromMonthKey, byMonthSoloKey, monthKeysWithEntries);
       setByMonthSoloKey(next);
       if (next === null) {
         announceForAccessibility('Showing all months');
       } else {
-        const sec = monthSections.find((s) => s.monthKey === next);
-        announceForAccessibility(sec ? `Showing only ${sec.title}` : 'Showing one month');
+        const monthNum = parseInt(next.slice(5, 7), 10);
+        const yearNum = parseInt(next.slice(0, 4), 10);
+        const monthIx = monthNum >= 1 && monthNum <= 12 ? monthNum - 1 : 0;
+        const title = `${monthNameLongEn(monthIx)} ${yearNum}`.toUpperCase();
+        announceForAccessibility(`Showing only ${title}`);
       }
     },
-    [byMonthSoloKey, entriesDesc]
+    [byMonthSoloKey, journalEntryPresence]
   );
 
   const clearByMonthSolo = useCallback(() => {
@@ -890,7 +609,7 @@ export default function JournalScreen() {
               onPress={() => advanceByWeekdayHeaderTap(w)}
               onLongPress={clearByDaySolo}
               accessibilityRole="button"
-              accessibilityLabel={WEEKDAY_SECTION_NAMES[w]}
+              accessibilityLabel={JOURNAL_WEEKDAY_SECTION_NAMES[w]}
               accessibilityHint="Tap to hide other weekdays and show the next day. Long press to show all weekdays."
             >
               <View>

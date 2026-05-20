@@ -1,5 +1,5 @@
 /**
- * @fileoverview Moodly v0.5 — Daily Mood Tracker
+ * @fileoverview Moodly v0.6 — Daily Mood Tracker
  * iOS-inspired design with floating navigation
  */
 
@@ -10,14 +10,19 @@ import 'react-native-gesture-handler';
 import { installSafeConsole } from './security';
 installSafeConsole();
 
-// Dev-only perf probes (metadata-only logs; no behavior/UI changes).
-// Production hygiene: do not even initialize probe modules in prod bundles.
-if (typeof __DEV__ !== 'undefined' && __DEV__) {
-  require('./perf').initPerfProbe();
+// Dev-only perf probes (opt-in): RAF hitch loop adds measurable JS overhead on Simulator.
+if (
+  typeof __DEV__ !== 'undefined' &&
+  __DEV__ &&
+  process.env.EXPO_PUBLIC_MOODLY_PERF_PROBE === '1'
+) {
+  queueMicrotask(() => {
+    require('./perf').initPerfProbe();
+  });
 }
 
 import React from 'react';
-import { RootApp } from './app/index';
+import { RootApp } from './bootstrap/index';
 
 export default function App() {
   return <RootApp />;

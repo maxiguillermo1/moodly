@@ -4,24 +4,21 @@
  */
 
 import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
-import { FlatList, InteractionManager, type TextStyle } from 'react-native';
+import { FlatList, type TextStyle } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 
-import { MoodEntry } from '@/types';
 import { ScreenHeader, YearOverviewPage, screenHeaderPrimaryTabPaddingX } from '@/components';
-import { fetchMoodCalendarSnapshot } from '@/storage';
 import { perfProbe } from '@/perf';
 import { logger } from '@/security';
 import { PerfProfiler, usePerfScreen } from '@/perf';
 import { spacing, typography, useAppTheme, getCalendarTextLimits } from '@/theme';
 import { useTodayKey } from '@/hooks/useTodayKey';
 import { useCoalescedEpoch } from '@/hooks/useCoalescedEpoch';
-import { didLocalTodayChangeAcrossBlur, afterNextFrame } from '@/utils';
+import { useMoodCalendarSnapshotLoad } from '@/hooks/useMoodCalendarSnapshotLoad';
+import { afterNextFrame } from '@/utils';
 import { interactionQueue } from '@/system/interactionQueue';
 import { announceForAccessibility } from '@/system/accessibility';
-
-type CalendarMoodStyle = 'dot' | 'fill';
 
 // -----------------------------------------------------------------------------
 // Hidden decisions / tuning constants (keep stable unless intentionally revisiting UX/perf tradeoffs)
@@ -41,11 +38,9 @@ export default function CalendarView() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
-  const mountedRef = useRef(true);
   const scrollRetryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     return () => {
-      mountedRef.current = false;
       if (scrollRetryTimeoutRef.current) clearTimeout(scrollRetryTimeoutRef.current);
       scrollRetryTimeoutRef.current = null;
     };
@@ -60,26 +55,30 @@ export default function CalendarView() {
   );
 
   const [yearBase, setYearBase] = useState<number>(() => initialYearRef.current);
-  const [entriesByMonthKey, setEntriesByMonthKey] = useState<Record<string, Record<string, MoodEntry>>>({});
-  const entriesRevisionRef = useRef(0);
-  const [calendarMoodStyle, setCalendarMoodStyle] = useState<CalendarMoodStyle>('dot');
   const { todayKey } = useTodayKey();
   /** Coalesced bump so FlashList refreshes recycled mini-month rows only when data/today/theme actually move. */
   const [yearListEpoch, scheduleYearRecycleBump] = useCoalescedEpoch();
-  const todayKeyWhenBlurredRef = useRef<string | null>(null);
-  const todayKeyRef = useRef(todayKey);
-  todayKeyRef.current = todayKey;
-  const prevTodayKeyForMidnightEpochRef = useRef(todayKey);
+  const {
+    entriesByMonthKey,
+    calendarMoodStyle,
+    entriesRevisionRef,
+    isFocusedRef,
+    mountedRef,
+  } = useMoodCalendarSnapshotLoad({
+    screen: 'CalendarView',
+    loadPerfEvent: 'calendar.yearView.load',
+    todayKey,
+    onTodayKeyChangeWhileFocused: scheduleYearRecycleBump,
+    onSnapshotMutated: scheduleYearRecycleBump,
+    perfFlushReportTag: 'CalendarView.blur',
+    perfFlushViaMicrotask: true,
+  });
 
   const yearPagerRef = useRef<any>(null);
   const [pagerReady, setPagerReady] = useState(false);
   /** Last route param year we aligned the pager to (avoid re-scroll on every focus when unchanged). */
   const appliedRouteYearRef = useRef<number | undefined>(undefined);
   const momentumStartMsRef = useRef<number | null>(null);
-  const didFlushPerfReportRef = useRef(false);
-  const isFocusedRef = useRef(true);
-  const loadReqIdRef = useRef(0);
-
   useEffect(() => {
     if (!perfProbe.enabled) return;
     logger.perf('calendar.yearView.mount', { phase: 'warm', source: 'ui', screen: 'CalendarView' });
@@ -100,73 +99,6 @@ export default function CalendarView() {
   );
 
   const calLimits = useMemo(() => getCalendarTextLimits(fontScale, windowWidth), [fontScale, windowWidth]);
-
-  const load = useCallback(async () => {
-    if (perfProbe.enabled) perfProbe.setCulpritPhase('CalendarView.load');
-    const reqId = (loadReqIdRef.current += 1);
-    const p: any = (globalThis as any).performance;
-    const start = typeof p?.now === 'function' ? p.now() : Date.now();
-    const { byMonthKey, calendarMoodStyle: nextStyle } = await fetchMoodCalendarSnapshot();
-    if (!mountedRef.current) return;
-    if (!isFocusedRef.current) return;
-    if (reqId !== loadReqIdRef.current) return;
-    let dataMutated = false;
-    setEntriesByMonthKey((prev) => {
-      if (prev === (byMonthKey as any)) return prev;
-      dataMutated = true;
-      entriesRevisionRef.current += 1;
-      return byMonthKey as any;
-    });
-    setCalendarMoodStyle((prev) => {
-      if (prev === nextStyle) return prev;
-      dataMutated = true;
-      return nextStyle;
-    });
-    if (dataMutated) scheduleYearRecycleBump();
-    const end = typeof p?.now === 'function' ? p.now() : Date.now();
-    logger.perf('calendar.yearView.load', {
-      phase: 'warm',
-      source: 'sessionCache',
-      monthsIndexed: Object.keys(byMonthKey as any).length,
-      durationMs: Number(((end as number) - (start as number)).toFixed(1)),
-    });
-    if (perfProbe.enabled) perfProbe.setCulpritPhase(null);
-  }, [scheduleYearRecycleBump]);
-
-  // Flush perf.report on focus-exit (blur); `reason` is a stable tag for log pipelines (not literal unmount).
-  useFocusEffect(
-    useCallback(() => {
-      if (perfProbe.enabled) perfProbe.setCulpritPhase('CalendarView.focus');
-      isFocusedRef.current = true;
-      perfProbe.enabled && perfProbe.screenSessionStart('CalendarView');
-      didFlushPerfReportRef.current = false;
-      if (didLocalTodayChangeAcrossBlur(todayKeyWhenBlurredRef.current, todayKeyRef.current)) {
-        scheduleYearRecycleBump();
-      }
-      const task = InteractionManager.runAfterInteractions(() => {
-        void load();
-      });
-      return () => {
-        task.cancel();
-        isFocusedRef.current = false;
-        todayKeyWhenBlurredRef.current = todayKeyRef.current;
-
-        if (perfProbe.enabled && !didFlushPerfReportRef.current) {
-          didFlushPerfReportRef.current = true;
-          queueMicrotask(() => {
-            perfProbe.flushReport('CalendarView.blur');
-          });
-        }
-      };
-    }, [load, scheduleYearRecycleBump])
-  );
-
-  useEffect(() => {
-    if (!isFocusedRef.current) return;
-    if (prevTodayKeyForMidnightEpochRef.current === todayKey) return;
-    prevTodayKeyForMidnightEpochRef.current = todayKey;
-    scheduleYearRecycleBump();
-  }, [todayKey, scheduleYearRecycleBump]);
 
   const [yearsStart, setYearsStart] = useState<number>(() => initialYearRef.current - YEARS_AROUND_INITIAL);
   const years = useMemo(

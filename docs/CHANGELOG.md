@@ -34,6 +34,38 @@ Moodly is intentionally **pre-1.0**. The repository uses a calm, engineering-dri
 
 **Theme:** Local-first, deterministic **reflection** over existing stores — no cloud, no chatbot, no hidden scores. UI surfaces can adopt later via `insightsRepository` + `InsightArtifact.messageKey` / `params`.
 
+### Engineering — production polish (2026-05)
+
+- **`useCalendarDayPress`** wired on **Calendar** (haptics, invalid-day guard, a11y announce, latest-tap-wins).
+- Calendar modal: **`KeyboardAvoidingView`** + save-time **`isValidLocalCalendarDayKey`** check.
+- **`runBootstrapWithRetry`** (3×) for cold-start migration resilience.
+- **Today**: reload when local **`today`** changes while focused; save-message timeout cleared on unmount.
+- **`clearAllUserData`**: Settings **Clear All Data** now wipes moods, habits, goals, and reminders (store-aligned); **`userDataRepository`** façade.
+- **`useMoodEntry`**: invalidate in-flight loads when **`date`** changes.
+- Settings: legal link open reliability + a11y hints on privacy/support/clear-data rows.
+- **Refactor audit:** `applyMoodCalendarSnapshot`, `openExternalUrl`; unified `nextRequestId`/`isLatestRequest`; removed duplicate `MONTHS` array.
+- **Cleanup:** removed unused hooks (`useMonthsTimelineData`, calendar title/header hooks), dead barrel `index.ts` files, `expo-asset` direct dep, `perfTiming` helper (use `perfProbe.nowMs`); hardened snapshot apply + blur invalidation.
+- **`useMoodCalendarSnapshotLoad`:** shared focus-deferred calendar snapshot load for **CalendarScreen** + **CalendarView** (latest-request guards, midnight recycle, perf flush).
+- **`useJournalEntriesLoad`:** Journal focus reload + **`computeMonthWindowExtension`** pure window math for calendar scroll-end extension.
+- **`useCalendarMonthTimelineScroll`:** month timeline window, FlashList scroll/viewability, layout coalescing, and row heights extracted from **CalendarScreen** (behavior unchanged).
+- **`CalendarEditModal`** + **`useCalendarEntryEdit`:** quick-edit sheet UI and save/day-tap state extracted from **CalendarScreen** (~480 LOC screen).
+- **Expo Go fix:** renamed **`src/app/`** → **`src/bootstrap/`** so Expo CLI no longer treats the project as Expo Router (fixes QR *“problem running the requested app”*).
+- **`useGoalsFocusLoad`:** focus-deferred goals list reload (perf flush on blur) shared by **GoalsScreen**.
+- Docs: [`MOBILE_PRODUCTION_AUDIT.md`](./MOBILE_PRODUCTION_AUDIT.md).
+
+### Engineering — deployment readiness (2026-05)
+
+- **`app.config.ts`** replaces `app.json` (icons, adaptive icon, bundle IDs, `APP_VARIANT`, EAS `extra`).
+- **`eas.json`**: production `store` distribution, `autoIncrement`, env profiles; npm scripts `build:*:production` / `submit:*`.
+- **Settings**: Privacy Policy, Terms, Support links; native build line via **`expo-constants`**; data-delete footer for store compliance.
+- **Docs**: [`DEPLOYMENT.md`](./DEPLOYMENT.md), [`PRIVACY.md`](./PRIVACY.md), [`TERMS.md`](./TERMS.md), [`.env.example`](../.env.example).
+
+### Engineering — storage & calendar performance (2026-05)
+
+- **`moodStorage`**: warm-path **`upsertEntry`** / **`deleteEntry`** use session cache via **`loadEntriesCacheIfNeeded()`** (no full-record clone per save). **`getJournalEntriesSortedDescSnapshot()`** for Journal focus reloads (stable sorted-array identity; defensive **`getEntriesSortedDesc`** unchanged).
+- **`CalendarScreen`**: **`fetchMoodCalendarSnapshot`** (same coalesced path as year view); production **`CalendarTimelineMonth`** rows; layout coalescing + per-month FlashList heights; deferred work **cancelled on blur**; conditional **`calendarListEpoch`**.
+- **Docs**: `DATA_CONTRACT`, `perf-calendar.md`, `PERFORMANCE_NOTES.md`, `logger.md` synced to **`calendar.loadData`** and snapshot APIs.
+
 ### Engineering
 
 - **`insightsRepository`** (`src/data/repositories/insightsRepository.ts`) — `getWeeklyInsightBundle`, `getMonthlyInsightBundle`; composes **`getDayActivityRange`** + **`goalsRepository.getGoals()`** + `buildPeriodMetrics`.

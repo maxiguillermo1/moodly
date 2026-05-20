@@ -158,8 +158,9 @@ and one current physical iPhone using a TestFlight or release-style EAS build.
 - Complete App Store Connect metadata: screenshots, support URL, privacy nutrition labels, age rating,
   copyright, review notes, and export compliance.
 
-`app.json` now declares build numbers and `ios.config.usesNonExemptEncryption: false`; increment
-`ios.buildNumber` / `android.versionCode` for every submitted build.
+`app.config.ts` declares bundle IDs, icons, build numbers, and `usesNonExemptEncryption: false`.
+Production EAS profile uses `autoIncrement`; otherwise increment `ios.buildNumber` / `android.versionCode` per submit.
+See [`DEPLOYMENT.md`](./DEPLOYMENT.md).
 
 ## App Store Connect Answers
 

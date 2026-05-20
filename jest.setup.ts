@@ -6,6 +6,8 @@ jest.mock('@react-native-async-storage/async-storage', () =>
   require('@react-native-async-storage/async-storage/jest/async-storage-mock')
 );
 
+jest.mock('expo-sqlite', () => require('./src/data/persistence/sqlite/__mocks__/expoSqliteMock'));
+
 jest.mock('react-native-draggable-flatlist', () => {
   const React = require('react');
   const { ScrollView } = require('react-native');

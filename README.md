@@ -2,7 +2,7 @@
 
 ### Local-first mood tracking for iOS and Android — built with [Expo](https://expo.dev) and [React Native](https://reactnative.dev)
 
-**Moodly v0.5** (release **0.5.0**) is a **daily mood + journal** app with an iOS-native feel: **Today**, **Calendar** (year grid + month timeline), **Journal**, **Goals**, **Reminders**, and **Settings** — all **on device**, with **no backend** and **no required account**. Data lives in **AsyncStorage**; you control the install and the backup story. The product line is **intentionally pre-1.0** — refining foundations, not claiming a “2.0” platform; see [`docs/CHANGELOG.md`](./docs/CHANGELOG.md) § Versioning and [`docs/AGENTS.md`](./docs/AGENTS.md) § Product maturity & versioning.
+**Moodly v0.6** (release **0.6.0**) is a **daily mood + journal** app with an iOS-native feel: **Today**, **Calendar** (year grid + month timeline), **Journal**, **Goals**, **Reminders**, and **Settings** — all **on device**, with **no backend** and **no required account**. Data lives in **AsyncStorage**; you control the install and the backup story. The product line is **intentionally pre-1.0** — refining foundations, not claiming a “2.0” platform; see [`docs/CHANGELOG.md`](./docs/CHANGELOG.md) § Versioning and [`docs/AGENTS.md`](./docs/AGENTS.md) § Product maturity & versioning.
 
 **Elevator pitch:** One calm place to log how your day felt, skim the year at a glance, read back journal lines, and keep lightweight goals/reminders nearby — with a **floating glass tab bar**, shared **mood + note** editing everywhere, and documentation aimed at **shipping** (tests, CI, App Store–style hygiene) without turning the product into a spreadsheet.
 
@@ -168,7 +168,7 @@ Full dependency list: [`package.json`](./package.json).
 npm run validate
 ```
 
-**Before release, or before changing Metro, Babel, or `app.json` / `eas.json`, run:**
+**Before release, or before changing Metro, Babel, `app.config.ts`, or `eas.json`, run:**
 
 ```bash
 npm run validate:release
@@ -188,9 +188,24 @@ npm run validate:ios-release
 
 **CI:** pushes and PRs to `main` run `npm run validate:release` — [`.github/workflows/ci.yml`](./.github/workflows/ci.yml) (timeout **20 minutes**).
 
-There are **no** required `.env` files.
+Optional **`.env`** — see [`.env.example`](./.env.example) (legal URLs, `APP_VARIANT`). Core journaling requires **no API keys**.
 
-**Native splash** is configured in **`app.json`** (`expo-splash-screen`). Validate real splash on **`npx expo run:ios`** / **`run:android`** or an EAS build — not only Expo Go.
+**Native config** lives in **`app.config.ts`** (icons, bundle IDs, splash). Validate splash on **`npx expo run:ios`** / **`run:android`** or an EAS build — not only Expo Go.
+
+### Store deployment (EAS)
+
+Full guide: **[`docs/DEPLOYMENT.md`](./docs/DEPLOYMENT.md)**
+
+```bash
+npm install -g eas-cli
+eas login
+eas init
+npm run validate:release
+npm run build:ios:production      # or build:android:production
+npm run submit:ios                # after TestFlight QA
+```
+
+Replace placeholder icons under **`assets/images/`** before public App Store marketing.
 
 ---
 
@@ -201,7 +216,7 @@ moodly/
 ├── App.tsx                    # Re-exports src/App (Expo entry)
 ├── README.md                  # Project overview (you are here)
 ├── LICENSE
-├── app.json
+├── app.config.ts
 ├── eas.json
 ├── package.json
 ├── assets/images/
@@ -246,6 +261,7 @@ Mechanical map: [`docs/PROJECT_STRUCTURE.md`](./docs/PROJECT_STRUCTURE.md). **Pl
 | [`docs/COMPONENTS.md`](./docs/COMPONENTS.md) | Reusable UI + storage façade usage |
 | [`docs/TESTING.md`](./docs/TESTING.md) | Jest, TZ, CI |
 | [`docs/APP_STORE_READINESS.md`](./docs/APP_STORE_READINESS.md) | Native release checklist |
+| [`docs/MOBILE_PRODUCTION_AUDIT.md`](./docs/MOBILE_PRODUCTION_AUDIT.md) | Production polish audit (stability, perf, a11y, store gaps) |
 | [`docs/WEB_DEPLOYMENT_CHUNKS.md`](./docs/WEB_DEPLOYMENT_CHUNKS.md) | Web sequencing (optional) |
 | [`docs/CHANGELOG.md`](./docs/CHANGELOG.md) | Product-facing changelog |
 | [`docs/DECISIONS.md`](./docs/DECISIONS.md) | Long-lived decisions |
