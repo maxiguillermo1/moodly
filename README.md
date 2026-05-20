@@ -2,13 +2,33 @@
 
 ### Local-first mood tracking for iOS and Android — built with [Expo](https://expo.dev) and [React Native](https://reactnative.dev)
 
-**Kairo v0.6** (release **0.6.0**) is a **daily mood + journal** app with an iOS-native feel: **Today**, **Calendar** (year grid + month timeline), **Journal**, **Goals**, **Reminders**, and **Settings** — all **on device**, with **no backend** and **no required account**. Data lives in **AsyncStorage**; you control the install and the backup story. The product line is **intentionally pre-1.0** — refining foundations, not claiming a “2.0” platform; see [`docs/CHANGELOG.md`](./docs/CHANGELOG.md) § Versioning and [`docs/AGENTS.md`](./docs/AGENTS.md) § Product maturity & versioning.
+**Kairo v0.6** (release **0.6.0**) is a **daily mood + journal** app with an iOS-native feel: **Today**, **Calendar** (year grid + month timeline), **Journal**, **Goals**, **Reminders**, and **Settings**. Data is **local-first** on device (SQLite + AsyncStorage); **optional Supabase cloud sync** is available when you configure env vars — no account required for core journaling. The product line is **intentionally pre-1.0** — refining foundations, not claiming a “2.0” platform; see [`docs/CHANGELOG.md`](./docs/CHANGELOG.md) § Versioning and [`docs/AGENTS.md`](./docs/AGENTS.md) § Product maturity & versioning.
 
 **Elevator pitch:** One calm place to log how your day felt, skim the year at a glance, read back journal lines, and keep lightweight goals/reminders nearby — with a **floating glass tab bar**, shared **mood + note** editing everywhere, and documentation aimed at **shipping** (tests, CI, App Store–style hygiene) without turning the product into a spreadsheet.
+
+**Repository:** [github.com/maxiguillermo1/kairo](https://github.com/maxiguillermo1/kairo)
 
 **Changelog (high level):** [`docs/CHANGELOG.md`](./docs/CHANGELOG.md) · **Engineering log:** [`docs/summary.md`](./docs/summary.md) · **All docs:** [`docs/README.md`](./docs/README.md)
 
 **Contributor read order:** [`docs/ZERO_COMPROMISE.md`](./docs/ZERO_COMPROMISE.md) → [`docs/CODEBASE_MAP.md`](./docs/CODEBASE_MAP.md) → [`docs/architecture.md`](./docs/architecture.md) → [`docs/DATA_SAFETY.md`](./docs/DATA_SAFETY.md) → [`docs/RISK_REGISTER.md`](./docs/RISK_REGISTER.md) → [`docs/ROADMAP.md`](./docs/ROADMAP.md)
+
+---
+
+## Project identity
+
+| Field | Value |
+|--------|--------|
+| **Display name** | Kairo (`Kairo (Dev)` in development builds) |
+| **npm package** | `kairo` |
+| **Expo slug** | `kairo` |
+| **Deep link scheme** | `kairo://` |
+| **iOS bundle ID** | `com.maxiguillermo.kairo` |
+| **Android package** | `com.maxiguillermo.kairo` |
+| **Storage key prefix** | `kairo.*` (AsyncStorage + export envelopes) |
+| **SQLite database** | `kairo.db` |
+| **Config source of truth** | [`app.config.ts`](./app.config.ts) · [`package.json`](./package.json) · [`eas.json`](./eas.json) |
+
+> **Renamed from Moodly:** Existing installs and **`moodly.localExport.v1`** backup files are migrated automatically (AsyncStorage key rename + legacy export import). See [Migration from Moodly](#migration-from-moodly) below.
 
 ---
 
@@ -21,7 +41,7 @@ Many mood apps want accounts, feeds, or cloud sync first. Kairo is for people wh
 ## What makes it different
 
 **1. Local-first by design.**  
-No network layer for user data. Storage is validated, **quarantined** on corruption, and written with **serialized** mutations so rapid saves do not clobber each other.
+No network required for core journaling. Storage is validated, **quarantined** on corruption, and written with **serialized** mutations so rapid saves do not clobber each other. Optional **Supabase** sync is opt-in via env configuration.
 
 **2. Calendar as the hero surface.**  
 A **year pager** and a **month timeline** share the same **local `YYYY-MM-DD`** semantics (no accidental UTC “day shift” near midnight).
@@ -31,6 +51,9 @@ A **year pager** and a **month timeline** share the same **local `YYYY-MM-DD`** 
 
 **4. Built like a product, not a demo.**  
 Structured **privacy-safe logging**, ESLint **import boundaries**, **Jest** coverage on dates/storage, and CI that runs **Metro bundle export** for **iOS + Android** — see [Quality & CI](#quality--ci).
+
+**5. Optional cloud account (when configured).**  
+Sign in with Apple, Google, or email to sync mood, habits, goals, and reminders to **Supabase Postgres** with row-level security — see [`docs/SUPABASE.md`](./docs/SUPABASE.md).
 
 ---
 
@@ -65,7 +88,7 @@ Plain language: what you actually open in the app.
 | **Calendar** | **Year** swipe grid opens the **month** timeline; tap a **day** to view or edit that date’s entry. |
 | **Journal** | Newest-first list of entries; open editor, save, long-press to delete. |
 | **Reminders** (stack **`Todo`**) | Full **Reminders** screen for one **`YYYY-MM-DD`**: hot day rows in **`kairo.tasks.day.<date>`** shards; metadata/recurrence in **`kairo.tasks`** (legacy **`kairo.dayTodos`** migrates once), optional time-of-day cues (in-app only), drag reorder / swipe delete; opened from **Today** strip, **Journal** / **Calendar** day flows, or **Settings**. |
-| **Settings** | Appearance (**Auto / Light / Dark**), calendar style (**dot / fill**), mood visuals (**solid / gradient**), **Extensions** (Habits, Goals, **Reminders** per-day list), stats, About (version from `APP_RELEASE_VERSION`). |
+| **Settings** | Appearance (**Auto / Light / Dark**), calendar style (**dot / fill**), mood visuals (**solid / gradient**), **Extensions** (Habits, Goals, **Reminders** per-day list), **Export / Import** JSON backup, optional **Account** (cloud sync), stats, About (version from `APP_RELEASE_VERSION`). |
 
 **Settings** opens as a **modal** (not a tab), from headers where a gear is shown (including Calendar).
 
@@ -74,14 +97,17 @@ Plain language: what you actually open in the app.
 ## How it works
 
 ```
-You log mood + note  →  Kairo validates + writes AsyncStorage  →  Calendar / Journal read the same local-day keys
+You log mood + note  →  Kairo validates + writes local storage  →  Calendar / Journal read the same local-day keys
+                                              ↓ (optional, when Supabase configured)
+                                    Cloud sync push / pull via outbox
 ```
 
 ### Simple picture
 
 - **You** interact with **React Native** screens (tabs + stacks).  
 - **Expo** supplies the native shell, splash, and toolchain (`npm run ios` / `android` / `web`).  
-- **Persistence** is **AsyncStorage** behind **`src/storage`** — screens never import raw storage implementation paths.
+- **Persistence** is **SQLite + AsyncStorage** behind **`src/storage`** — screens never import raw storage implementation paths.
+- **Cloud** (optional): `src/cloud/` handles Supabase auth + sync; UI still imports **`src/storage`** only.
 
 ### Architecture (for curious readers)
 
@@ -93,16 +119,19 @@ flowchart LR
     Theme["AppThemeProvider"]
     Facade["src/storage facade\n(repositories)"]
     Impl["src/data/storage"]
+    Cloud["src/cloud\n(optional Supabase)"]
   end
 
   UI --> Nav
   UI --> Theme
   UI --> Facade
   Facade --> Impl
-  Impl <-->|"JSON blobs"| AS[("AsyncStorage\n(on device)")]
+  Impl <-->|"JSON blobs + SQLite"| Local[("Local cache\n(on device)")]
+  Impl --> Cloud
+  Cloud <-->|"RLS Postgres"| SB[("Supabase\n(optional)")]
 ```
 
-On boot, **`AppErrorBoundary`** (inside **`AppThemeProvider`**) can catch a subtree failure and offer **Try again** instead of a blank screen — see `src/app/AppErrorBoundary.tsx`.
+On boot, **`AppErrorBoundary`** (inside **`AppThemeProvider`**) can catch a subtree failure and offer **Try again** instead of a blank screen — see `src/bootstrap/AppErrorBoundary.tsx`.
 
 ---
 
@@ -144,6 +173,29 @@ npm run android
 | **Settings** → **Appearance** | Auto/Light/Dark persists |
 
 **Web:** `npm run web` works for previews; native is the primary target — see [`docs/WEB_DEPLOYMENT_CHUNKS.md`](./docs/WEB_DEPLOYMENT_CHUNKS.md).
+
+### 5. Optional — enable cloud sync (Supabase)
+
+Copy [`.env.example`](./.env.example) to `.env` and set:
+
+```bash
+EXPO_PUBLIC_SUPABASE_URL=https://YOUR_PROJECT.supabase.co
+EXPO_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
+```
+
+Apply the Postgres schema from [`supabase/migrations/20260520100000_kairo_cloud_schema.sql`](./supabase/migrations/20260520100000_kairo_cloud_schema.sql). Configure auth redirect URLs as **`kairo://auth/callback`**. Full guide: [`docs/SUPABASE.md`](./docs/SUPABASE.md).
+
+Without these vars, Kairo runs **local-only** (default).
+
+### 6. After cloning or renaming the project folder
+
+```bash
+rm -rf node_modules .expo .metro-cache .tmp-expo-export
+npm install
+npm run start:clear   # or: npx expo start --clear
+```
+
+If the repo path contains **spaces**, Expo Go on a physical device may fail — run `npm run fix:dev-path`.
 
 ---
 
@@ -188,7 +240,19 @@ npm run validate:ios-release
 
 **CI:** pushes and PRs to `main` run `npm run validate:release` — [`.github/workflows/ci.yml`](./.github/workflows/ci.yml) (timeout **20 minutes**).
 
-Optional **`.env`** — see [`.env.example`](./.env.example) (legal URLs, `APP_VARIANT`). Core journaling requires **no API keys**.
+Optional **`.env`** — see [`.env.example`](./.env.example). Common variables:
+
+| Variable | Purpose |
+|----------|---------|
+| `EXPO_PUBLIC_SUPABASE_URL` | Supabase project URL (optional cloud sync) |
+| `EXPO_PUBLIC_SUPABASE_ANON_KEY` | Supabase anon key (optional cloud sync) |
+| `APP_VARIANT` | EAS channel: `production` · `development` · `preview` |
+| `EXPO_PUBLIC_PRIVACY_POLICY_URL` | HTTPS legal URL for App Store / Play |
+| `EXPO_PUBLIC_TERMS_URL` | HTTPS terms URL |
+| `KAIRO_ALLOW_SPACED_PATH` | Dev override when project path has spaces |
+| `EXPO_PUBLIC_KAIRO_PERF_PROBE` | Dev perf logging (off by default) |
+
+Core journaling requires **no API keys**.
 
 **Native config** lives in **`app.config.ts`** (icons, bundle IDs, splash). Validate splash on **`npx expo run:ios`** / **`run:android`** or an EAS build — not only Expo Go.
 
@@ -216,24 +280,28 @@ kairo/
 ├── App.tsx                    # Re-exports src/App (Expo entry)
 ├── README.md                  # Project overview (you are here)
 ├── LICENSE
-├── app.config.ts
-├── eas.json
-├── package.json
+├── app.config.ts              # Expo name, slug, scheme, bundle IDs
+├── eas.json                   # EAS build profiles
+├── package.json               # npm name: kairo
 ├── assets/images/
 ├── src/
 │   ├── App.tsx                # Gesture handler + safe console + RootApp
-│   ├── app/
+│   ├── bootstrap/             # RootApp, AppErrorBoundary
+│   ├── cloud/                 # Supabase auth + sync (optional)
 │   ├── components/
-│   ├── data/storage/
-│   ├── extensions/          # Day-scoped extension stack (Habits / Goals / Reminders slots)
-│   ├── features/            # Route screens by product area (today, journal, calendar, …)
+│   ├── data/                  # repositories, storage, persistence, sync
+│   ├── extensions/            # Day-scoped extension stack (Habits / Goals / Reminders)
+│   ├── features/              # Route screens by product area (today, journal, calendar, …)
 │   ├── navigation/
-│   ├── screens/             # Barrel → re-exports feature screens
+│   ├── storage/               # Public persistence façade (import from here in UI)
 │   ├── theme/
 │   └── ...
+├── supabase/
+│   └── migrations/            # Postgres schema for optional cloud sync
 └── docs/                      # Developer guides — see docs/README.md
     ├── README.md              # Documentation index
     ├── AGENTS.md
+    ├── SUPABASE.md
     ├── SCALABILITY.md
     ├── CONTRIBUTING.md
     ├── architecture.md
@@ -244,15 +312,34 @@ Mechanical map: [`docs/PROJECT_STRUCTURE.md`](./docs/PROJECT_STRUCTURE.md). **Pl
 
 ---
 
+## Migration from Moodly
+
+Kairo was renamed from **Moodly** (repo, app name, bundle IDs, and storage keys). Existing data is preserved:
+
+| Area | Behavior |
+|------|----------|
+| **AsyncStorage keys** | Automatic migration renames `moodly.*` → `kairo.*` (schema v2) |
+| **SQLite** | New `kairo.db`; `moodly_meta` table renamed to `kairo_meta` when present; mood/habit/goal rows re-import from local cache |
+| **JSON export / import** | New exports use `kairo.localExport.v1`; **Settings → Import** still accepts legacy **`moodly.localExport.v1`** files |
+| **App Store / Play ID** | **`com.maxiguillermo.kairo`** is a **new** bundle identifier (not an in-place rename of `com.moodly.app`) |
+| **Deep links / auth** | Use scheme **`kairo://`** (update Supabase redirect URLs if using cloud sync) |
+
+After pulling the rename commit, run `npm install` and `npm run start:clear` (or clear caches as in [Quick start §6](#6-after-cloning-or-renaming-the-project-folder)).
+
+---
+
 ## Documentation index
 
 | Doc | Purpose |
 |-----|---------|
 | [`docs/CODEBASE_MAP.md`](./docs/CODEBASE_MAP.md) | Plain-English map: features ↔ `src/` paths, naming rules, agent checklist |
+| [`docs/SUPABASE.md`](./docs/SUPABASE.md) | Optional cloud sync: auth, Postgres schema, env setup |
+| [`docs/DEPLOYMENT.md`](./docs/DEPLOYMENT.md) | EAS builds, native release channels |
+| [`docs/DATA_ARCHITECTURE.md`](./docs/DATA_ARCHITECTURE.md) | Local SQLite + AsyncStorage layering |
 | [`docs/README.md`](./docs/README.md) | Index of everything in **`docs/`** |
 | [`docs/AGENTS.md`](./docs/AGENTS.md) | Master guide: product identity, UX/iOS standards, Goals & Reminders, data scale, agent profiles |
 | [`docs/FEATURES.md`](./docs/FEATURES.md) | Feature map and code pointers |
-| [`.cursor/rules/`](./.cursor/rules/) | Cursor **`.mdc`** rules (core + globs for storage / UI) |
+| [`.cursor/rules/`](./.cursor/rules/) | Cursor **`.mdc`** rules (`kairo-core`, `kairo-data-storage`, `kairo-ui-screens`) |
 | [`docs/CONTRIBUTING.md`](./docs/CONTRIBUTING.md) | Contributor workflow + standards |
 | [`docs/ENGINEERING_HANDOFF.md`](./docs/ENGINEERING_HANDOFF.md) | First-read onboarding |
 | [`docs/architecture.md`](./docs/architecture.md) | **Canonical** architecture + ESLint import rules |
@@ -275,7 +362,7 @@ Mechanical map: [`docs/PROJECT_STRUCTURE.md`](./docs/PROJECT_STRUCTURE.md). **Pl
 
 ## Contributing
 
-See **[`docs/CONTRIBUTING.md`](./docs/CONTRIBUTING.md)** for quality gates, layer rules, and PR expectations. **AI / Cursor:** start with **[`docs/AGENTS.md`](./docs/AGENTS.md)** and **`.cursor/rules/`** (Kairo-specific agent rules). The repo includes **[`.editorconfig`](./.editorconfig)** for consistent basic formatting across editors.
+See **[`docs/CONTRIBUTING.md`](./docs/CONTRIBUTING.md)** for quality gates, layer rules, and PR expectations. **AI / Cursor:** start with **[`docs/AGENTS.md`](./docs/AGENTS.md)** and **`.cursor/rules/kairo-*.mdc`**. The repo includes **[`.editorconfig`](./.editorconfig)** for consistent basic formatting across editors.
 
 Improvements are welcome: bug fixes, documentation, performance work on calendar/journal hot paths, and tests that protect **date** and **storage** invariants.
 
