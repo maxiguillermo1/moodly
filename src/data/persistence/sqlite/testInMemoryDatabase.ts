@@ -38,6 +38,8 @@ export function createInMemoryKairoDatabase(): KairoSqliteDatabase {
     else table.push(row);
   };
 
+  let txDepth = 0;
+
   const db: KairoSqliteDatabase = {
     async execAsync(source: string): Promise<void> {
       const statements = source
@@ -172,7 +174,15 @@ export function createInMemoryKairoDatabase(): KairoSqliteDatabase {
     },
 
     async withTransactionAsync(task: () => Promise<void>): Promise<void> {
-      await task();
+      if (txDepth > 0) {
+        throw new Error('cannot start a transaction within a transaction');
+      }
+      txDepth += 1;
+      try {
+        await task();
+      } finally {
+        txDepth -= 1;
+      }
     },
   };
 

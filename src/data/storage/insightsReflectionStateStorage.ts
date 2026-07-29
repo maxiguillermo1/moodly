@@ -8,6 +8,7 @@
 import type { InsightsTimingStateV1 } from '../../lib/insights/reflectionTiming';
 import { timingStateAfterRecording } from '../../lib/insights/reflectionTiming';
 import { assertLocalPersistenceWritable, ensureLocalPersistenceReady } from '../persistence/bootstrap';
+import { notifyInsightsTimingChanged } from '../sync/syncBridge';
 import { storage } from './asyncStorage';
 
 const STORAGE_KEY = 'kairo.insights.reflectionTiming';
@@ -60,6 +61,7 @@ async function persist(next: InsightsTimingStateV1): Promise<void> {
   assertLocalPersistenceWritable();
   cache = next;
   await storage.setItem(STORAGE_KEY, JSON.stringify(next));
+  notifyInsightsTimingChanged(next as Record<string, unknown>);
 }
 
 export async function replaceInsightsReflectionTimingForSync(payload: Record<string, unknown>): Promise<void> {
@@ -85,5 +87,14 @@ export const insightsReflectionStateStorage = {
   resetSessionCacheForTests(): void {
     cache = null;
     loadPromise = null;
+  },
+
+  async clearAll(): Promise<void> {
+    await ensureLocalPersistenceReady();
+    assertLocalPersistenceWritable();
+    cache = emptyState();
+    loadPromise = null;
+    await storage.removeItem(STORAGE_KEY);
+    notifyInsightsTimingChanged(emptyState() as Record<string, unknown>);
   },
 } as const;

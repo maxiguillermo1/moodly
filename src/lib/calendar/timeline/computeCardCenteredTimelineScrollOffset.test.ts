@@ -4,7 +4,7 @@
 
 import { buildFullGridMetrics } from '../../../components/calendar/fullGridLayout';
 import type { MonthItem } from '../monthWindow';
-import { computeCardCenteredTimelineScrollOffset } from './computeCardCenteredTimelineScrollOffset';
+import { computeCardCenteredTimelineScrollOffset, resolveCardCenteredTimelineScrollOffset } from './computeCardCenteredTimelineScrollOffset';
 import { computeMonthTimelineRowHeights } from './flashListLayout';
 import { getTimelineMonthRowMetrics, minMonthSectionBottomForCardCenterClip } from './timelineMonthRowMetrics';
 
@@ -96,5 +96,35 @@ describe('computeCardCenteredTimelineScrollOffset', () => {
       monthSectionBottomPad,
     });
     expect(o).toBe(0);
+  });
+
+  it('applies nudgeUpPx on top of the centered offset', () => {
+    const { monthsData, cumulativeTops, heights } = layoutTwoMonths();
+    const vh = Math.max(200, Math.floor((heights[0] ?? 0) - 48));
+    const base = computeCardCenteredTimelineScrollOffset({
+      monthsData,
+      cumulativeTops,
+      heights,
+      index: 0,
+      viewportHeight: vh,
+      contentPaddingBottom: 96,
+      grid,
+      monthCardPadding,
+      monthSectionTopPad,
+      monthSectionBottomPad,
+    });
+    const nudged = resolveCardCenteredTimelineScrollOffset({
+      monthsData,
+      heights,
+      index: 0,
+      viewportHeight: vh,
+      contentPaddingBottom: 96,
+      grid,
+      monthCardPadding,
+      monthSectionTopPad,
+      monthSectionBottomPad,
+      nudgeUpPx: 12,
+    });
+    expect(nudged).toBe(base + 12);
   });
 });

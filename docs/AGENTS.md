@@ -33,7 +33,7 @@ When auditing habits, goals, reminders, insights, narrative, Daily Activity, Tod
 - A **calm, local-first emotional memory** anchored in **mood across time**, rendered as a **visual, year-scale color story** users can return to for years.
 - **Apple-inspired**: minimal chrome, soft surfaces, native-feeling motion, premium restraint — tuned for **emotional calm**, not dashboard energy.
 - **Mood- and memory-first** — journal, calendar, and Today **orbit** the timeline; throughput and “optimization” are non-goals.
-- **Lightweight**: no accounts, no network for core use; data stays on device (AsyncStorage today).
+- **Lightweight**: no account required for core use; data stays on device by default (SQLite + AsyncStorage). **Optional Supabase cloud sync** when env vars are configured — see [`SUPABASE.md`](./SUPABASE.md).
 - **Emotionally intelligent in tone**: observational, humble language; supportive without toxic positivity or pseudo-therapy.
 
 ### What Kairo is not
@@ -280,6 +280,7 @@ Kairo should feel **responsive and tactile** — interaction quality is part of 
 | Migrations / KV adapter | `src/data/persistence/` |
 | Theme | `src/theme/` (`AppThemeProvider`, `systemPalettes`, tokens) |
 | Security / logger | `src/security/` |
+| Cloud sync (optional) | `src/cloud/` (Supabase auth + sync when `EXPO_PUBLIC_SUPABASE_*` set) |
 | Perf probes (dev) | `src/perf/` |
 
 **State today:** no global Redux/Zustand store — **React state**, **navigation state**, **`AppThemeContext`**, and **async persistence** via `src/storage` with module caches in `src/data/storage/*`.

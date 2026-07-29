@@ -16,6 +16,7 @@ import type { HabitSelectionsRecord } from '../storage/habitSelectionsStorage';
 import { isCloudPullActive, runSyncCycle } from '../../cloud/sync/syncEngine';
 import { enqueueSyncOperation } from '../../cloud/sync/syncOutbox';
 import { restoreAuthSession } from '../../cloud/auth/authService';
+import { getCachedAuthSession, setCachedAuthSession } from '../../cloud/auth/authSessionCache';
 import { isSupabaseConfigured } from '../../cloud/supabase/client';
 
 let debounceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -24,9 +25,17 @@ function skipSync(): boolean {
   return !isSupabaseConfigured() || isCloudPullActive();
 }
 
+async function resolveAuthSession() {
+  const cached = getCachedAuthSession();
+  if (cached) return cached;
+  const session = await restoreAuthSession();
+  if (session) setCachedAuthSession(session);
+  return session;
+}
+
 async function triggerSyncSoon(): Promise<void> {
   if (skipSync()) return;
-  const session = await restoreAuthSession();
+  const session = await resolveAuthSession();
   if (!session) return;
   if (debounceTimer) clearTimeout(debounceTimer);
   debounceTimer = setTimeout(() => {

@@ -30,6 +30,9 @@ import { AppThemeProvider, useAppTheme } from '../theme';
 import { AppErrorBoundary } from './AppErrorBoundary';
 import { AuthProvider } from '../cloud/auth/AuthContext';
 
+/** Start migrations + session RAM as early as possible (coalesced with Auth + Today peek paths). */
+void primeAppStorage().catch(() => {});
+
 const gestureRootStyle = StyleSheet.create({ root: { flex: 1 } }).root;
 
 void SplashScreen.preventAutoHideAsync().catch(() => {});
@@ -130,20 +133,18 @@ export function RootApp() {
   }, []);
 
   useEffect(() => {
-    queueMicrotask(() => {
-      void primeAppStorage()
-        .then(() => {
-          InteractionManager.runAfterInteractions(() => {
-            try {
-              require('../navigation/CalendarStack');
-              require('@features/journal/screens/JournalScreen');
-            } catch {
-              /* best-effort preload */
-            }
-          });
-        })
-        .catch(() => {});
-    });
+    void primeAppStorage()
+      .then(() => {
+        InteractionManager.runAfterInteractions(() => {
+          try {
+            require('../navigation/CalendarStack');
+            require('@features/journal/screens/JournalScreen');
+          } catch {
+            /* best-effort preload */
+          }
+        });
+      })
+      .catch(() => {});
 
     if (typeof __DEV__ === 'undefined' || !__DEV__) return;
     const task = InteractionManager.runAfterInteractions(() => {

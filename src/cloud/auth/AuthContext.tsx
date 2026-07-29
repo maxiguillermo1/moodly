@@ -5,25 +5,40 @@
 
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type { Session, User } from '@supabase/supabase-js';
+import { logger } from '../../lib/security/logger';
 import { isSupabaseConfigured } from '../supabase/client';
 import {
   deleteCloudAccount,
   onAuthStateChange,
-  restoreAuthSession,
   signInWithApple,
   signInWithEmail,
   signInWithGoogle,
   signOut,
   signUpWithEmail,
+  type AuthChangeEvent,
 } from './authService';
+import {
+  shouldBlockUiDuringRestore,
+  shouldEnqueueFullLocalSnapshot,
+  shouldRunCloudRestore,
+} from './authSessionPolicy';
 import type { AuthState, SignInResult } from './types';
-import { runInitialCloudRestore, runSyncCycle, onUserSignedOut } from '../sync/syncEngine';
+import { runSyncCycle, onUserSignedOut } from '../sync/syncEngine';
+import { runFreshSignInFlow } from './freshSignInFlow';
+import { setCachedAuthSession } from './authSessionCache';
 import { registerKairoCloudPullApplier } from '../../data/sync/cloudPullApplier';
-import { enqueueFullLocalSnapshotForCloud } from '../../data/sync/cloudSnapshotEnqueue';
 import { clearLocalUserDataOnLogout } from '../../data/sync/cloudLogout';
+import { setSyncStatus } from '../sync/syncStatusStore';
+import { getSettings, peekSettingsCache, setLocalOnlyMode } from '../../data/storage/settingsStorage';
+import { primeAppStorage } from '../../storage/prime';
 
 type AuthContextValue = AuthState & {
   cloudEnabled: boolean;
+  /** Persisted preference: user skipped sign-in and uses local-only mode. */
+  localOnlyMode: boolean;
+  /** True after settings (incl. localOnlyMode) are loaded when cloud is enabled. */
+  settingsLoaded: boolean;
+  continueOffline: () => Promise<void>;
   signInEmail: (email: string, password: string) => Promise<SignInResult>;
   signUpEmail: (email: string, password: string) => Promise<SignInResult>;
   signInApple: () => Promise<SignInResult>;
@@ -35,10 +50,13 @@ type AuthContextValue = AuthState & {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-async function handleSignedIn(session: Session): Promise<void> {
+async function handleFreshSignIn(session: Session): Promise<void> {
+  await runFreshSignInFlow(session);
+}
+
+async function handleSessionResume(session: Session): Promise<void> {
   await registerKairoCloudPullApplier();
-  await enqueueFullLocalSnapshotForCloud();
-  await runInitialCloudRestore(session.user);
+  await runSyncCycle(session);
 }
 
 async function handleSignedOut(): Promise<void> {
@@ -48,36 +66,133 @@ async function handleSignedOut(): Promise<void> {
 
 export function AuthProvider({ children }: { children: React.ReactNode }): React.ReactElement {
   const cloudEnabled = isSupabaseConfigured();
+  const [localOnlyMode, setLocalOnlyModeState] = useState(
+    () => peekSettingsCache()?.localOnlyMode === true
+  );
+  const [settingsLoaded, setSettingsLoaded] = useState(
+    () => !cloudEnabled || peekSettingsCache() !== null
+  );
   const [state, setState] = useState<AuthState>({
     initialized: !cloudEnabled,
+    restoring: false,
     session: null,
     user: null,
   });
   const hadSessionRef = useRef(false);
+  const restoredUserIdRef = useRef<string | null>(null);
+  const sessionRef = useRef<Session | null>(null);
+  const localOnlyModeRef = useRef(false);
+
+  useEffect(() => {
+    localOnlyModeRef.current = localOnlyMode;
+  }, [localOnlyMode]);
 
   useEffect(() => {
     if (!cloudEnabled) return;
 
     let mounted = true;
-    void (async () => {
-      const session = await restoreAuthSession();
-      if (!mounted) return;
-      hadSessionRef.current = Boolean(session);
-      setState({ initialized: true, session, user: session?.user ?? null });
-      if (session) {
-        await handleSignedIn(session);
-      }
-    })();
+    void primeAppStorage()
+      .then(() => getSettings())
+      .then((settings) => {
+        if (!mounted) return;
+        setLocalOnlyModeState(settings.localOnlyMode === true);
+        setSettingsLoaded(true);
+      })
+      .catch(() => {
+        if (!mounted) return;
+        setSettingsLoaded(true);
+      });
 
-    const unsubscribe = onAuthStateChange(async (session) => {
+    return () => {
+      mounted = false;
+    };
+  }, [cloudEnabled]);
+
+  const continueOffline = useCallback(async () => {
+    await setLocalOnlyMode(true);
+    setLocalOnlyModeState(true);
+  }, []);
+
+  useEffect(() => {
+    if (!cloudEnabled) return;
+
+    let mounted = true;
+
+    const runRestoreForSession = async (
+      session: Session,
+      event: AuthChangeEvent,
+      blockUi: boolean
+    ): Promise<void> => {
+      const userId = session.user.id;
+      if (restoredUserIdRef.current === userId) return;
+
+      if (blockUi && mounted) {
+        setState((prev) => ({ ...prev, restoring: true }));
+      }
+
+      try {
+        if (shouldEnqueueFullLocalSnapshot(event)) {
+          await handleFreshSignIn(session);
+        } else {
+          await handleSessionResume(session);
+        }
+        restoredUserIdRef.current = userId;
+      } catch (e) {
+        logger.warn('auth.cloudRestore.failed', { error: e });
+        setSyncStatus('offline', 'Signed in, but sync failed. Try again from Account.');
+      } finally {
+        if (blockUi && mounted) {
+          setState((prev) => ({ ...prev, restoring: false }));
+        }
+      }
+    };
+
+    const unsubscribe = onAuthStateChange(async (event, session) => {
+      if (!mounted) return;
+
+      sessionRef.current = session;
+      setCachedAuthSession(session);
+
       const wasSignedIn = hadSessionRef.current;
-      setState({ initialized: true, session, user: session?.user ?? null });
+      setState((prev) => {
+        const nextUserId = session?.user?.id ?? null;
+        const prevUserId = prev.user?.id ?? null;
+        if (event === 'TOKEN_REFRESHED' && nextUserId === prevUserId && nextUserId !== null) {
+          return prev;
+        }
+        return {
+          ...prev,
+          initialized: true,
+          session,
+          user: session?.user ?? null,
+        };
+      });
+
       if (session) {
         hadSessionRef.current = true;
-        await handleSignedIn(session);
-      } else if (wasSignedIn) {
+        if (localOnlyModeRef.current) {
+          void setLocalOnlyMode(false).then(() => {
+            if (mounted) setLocalOnlyModeState(false);
+          });
+        }
+        if (shouldRunCloudRestore(event)) {
+          const blockUi = shouldBlockUiDuringRestore(event);
+          await runRestoreForSession(session, event, blockUi);
+        }
+        return;
+      }
+
+      if (wasSignedIn) {
         hadSessionRef.current = false;
-        await handleSignedOut();
+        restoredUserIdRef.current = null;
+        sessionRef.current = null;
+        setCachedAuthSession(null);
+        setState((prev) => ({ ...prev, restoring: false }));
+        try {
+          await handleSignedOut();
+        } catch (e) {
+          logger.warn('auth.signOutCleanup.failed', { error: e });
+        }
       }
     });
 
@@ -93,20 +208,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
   const signInGoogle = useCallback(async () => signInWithGoogle(), []);
 
   const signOutUser = useCallback(async () => {
-    await signOut();
+    try {
+      await signOut();
+    } catch (e) {
+      logger.warn('auth.signOut.failed', { error: e });
+      throw e;
+    }
   }, []);
 
   const deleteAccount = useCallback(async () => deleteCloudAccount(), []);
 
   const refreshSync = useCallback(async () => {
-    const session = state.session ?? (await restoreAuthSession());
+    const session = sessionRef.current;
     if (session) await runSyncCycle(session);
-  }, [state.session]);
+  }, []);
 
   const value = useMemo<AuthContextValue>(
     () => ({
       ...state,
       cloudEnabled,
+      localOnlyMode,
+      settingsLoaded,
+      continueOffline,
       signInEmail,
       signUpEmail,
       signInApple,
@@ -115,7 +238,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
       deleteAccount,
       refreshSync,
     }),
-    [state, cloudEnabled, signInEmail, signUpEmail, signInApple, signInGoogle, signOutUser, deleteAccount, refreshSync]
+    [state, cloudEnabled, localOnlyMode, settingsLoaded, continueOffline, signInEmail, signUpEmail, signInApple, signInGoogle, signOutUser, deleteAccount, refreshSync]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

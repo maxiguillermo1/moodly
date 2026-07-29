@@ -506,6 +506,28 @@ export function invalidateGoalsSessionCache(): void {
   summaryCache = null;
 }
 
+
+
+/** Sync read from warmed goals cache. */
+export function peekGoalsFromSessionCache(): Goal[] | undefined {
+  if (!cache) return undefined;
+  return Object.values(cache.goalsById).map(cloneGoal);
+}
+
+/** Sync read from warmed goals cache (active goals for Today extension). */
+export function peekTodayGoalSummariesFromSessionCache(limit = 3): GoalSummary[] | undefined {
+  if (!cache) return undefined;
+  const today = getToday();
+  const active = Object.values(cache.goalsById).filter((g) => g.status === 'active');
+  active.sort((a, b) => b.updatedAt - a.updatedAt || a.title.localeCompare(b.title));
+  return active.slice(0, Math.max(0, limit)).map((g) => ({ ...goalSummary(g, today) }));
+}
+
+/** Session write generation — stable across tab switches until goals mutate. */
+export function getGoalsCacheGeneration(): number {
+  return cacheGeneration;
+}
+
 /** @internal Jest only — parse goals JSON without touching caches or disk. */
 export function testParseGoalsDiskJson(json: string | null): {
   record: GoalsRecord;

@@ -8,35 +8,50 @@ import { getHabitSelectionsRecordSnapshot } from '../storage/habitSelectionsStor
 import { getTrackedHabitIds } from '../storage/habitTrackingStorage';
 import { getGoals } from '../storage/goalsStorage';
 import { getSettings } from '../storage/settingsStorage';
-import { getTasksRecordSnapshot } from '../storage/tasksStorage';
+import { getTasksRecordSnapshot, getTaskDayIndexSnapshot, getTasksForDate } from '../storage/tasksStorage';
 import { insightsReflectionStateStorage } from '../storage/insightsReflectionStateStorage';
-import { enqueueSyncOperation } from '../../cloud/sync/syncOutbox';
+import { enqueueSyncOperationsBatch } from '../../cloud/sync/syncOutbox';
 import { isSupabaseConfigured } from '../../cloud/supabase/client';
+import type { SyncOperationInput } from '../../cloud/sync/types';
 
 /** Push all local domains to outbox so first sync uploads device history to cloud. */
 export async function enqueueFullLocalSnapshotForCloud(): Promise<void> {
   if (!isSupabaseConfigured()) return;
 
-  const [entries, habitSelections, trackedIds, goals, settings, tasksRecord, insights] = await Promise.all([
-    getAllEntries(),
-    getHabitSelectionsRecordSnapshot(),
-    getTrackedHabitIds(),
-    getGoals(),
-    getSettings(),
-    getTasksRecordSnapshot(),
-    insightsReflectionStateStorage.getTimingState(),
-  ]);
+  const [entries, habitSelections, trackedIds, goals, settings, tasksRecord, insights, dayIndex] =
+    await Promise.all([
+      getAllEntries(),
+      getHabitSelectionsRecordSnapshot(),
+      getTrackedHabitIds(),
+      getGoals(),
+      getSettings(),
+      getTasksRecordSnapshot(),
+      insightsReflectionStateStorage.getTimingState(),
+      getTaskDayIndexSnapshot(),
+    ]);
 
   const goalsById = Object.fromEntries(goals.map((g) => [g.id, g]));
+  const ops: SyncOperationInput[] = [
+    { kind: 'settings_snapshot', settings },
+    { kind: 'habits_snapshot', selections: habitSelections },
+    { kind: 'tracked_habits_snapshot', habitIds: trackedIds },
+    { kind: 'goals_snapshot', record: { version: 2, goalsById } },
+    { kind: 'tasks_snapshot', record: tasksRecord },
+    { kind: 'insights_timing_snapshot', payload: insights as Record<string, unknown> },
+  ];
 
-  await enqueueSyncOperation({ kind: 'settings_snapshot', settings });
-  await enqueueSyncOperation({ kind: 'habits_snapshot', selections: habitSelections });
-  await enqueueSyncOperation({ kind: 'tracked_habits_snapshot', habitIds: trackedIds });
-  await enqueueSyncOperation({ kind: 'goals_snapshot', record: { version: 2, goalsById } });
-  await enqueueSyncOperation({ kind: 'tasks_snapshot', record: tasksRecord });
-  await enqueueSyncOperation({ kind: 'insights_timing_snapshot', payload: insights as Record<string, unknown> });
+  const taskDaySnapshots = await Promise.all(
+    dayIndex.map(async (date) => ({
+      kind: 'task_day_snapshot' as const,
+      date,
+      items: await getTasksForDate(date),
+    }))
+  );
+  ops.push(...taskDaySnapshots);
 
   for (const entry of Object.values(entries)) {
-    if (entry) await enqueueSyncOperation({ kind: 'mood_upsert', entry });
+    if (entry) ops.push({ kind: 'mood_upsert', entry });
   }
+
+  await enqueueSyncOperationsBatch(ops);
 }

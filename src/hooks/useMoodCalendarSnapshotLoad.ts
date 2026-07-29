@@ -8,7 +8,7 @@ import { InteractionManager } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import type { MoodEntry } from '../types';
 import type { CalendarMoodStyle } from '../types/settings.types';
-import { fetchMoodCalendarSnapshot } from '../storage/calendar';
+import { fetchMoodCalendarSnapshot, getMoodCalendarSnapshotEpoch, peekMoodCalendarSnapshotFromWarmCache } from '../storage/calendar';
 import { applyMoodCalendarSnapshot, didLocalTodayChangeAcrossBlur, isLatestRequest, nextRequestId } from '../utils';
 import { logger } from '../security';
 import { perfProbe } from '../perf';
@@ -46,6 +46,24 @@ export type MoodCalendarSnapshotLoadResult = {
   reload: () => Promise<void>;
 };
 
+function hydrateFromSessionPeek(
+  setEntriesByMonthKey: React.Dispatch<React.SetStateAction<Record<string, Record<string, MoodEntry>>>>,
+  setCalendarMoodStyle: React.Dispatch<React.SetStateAction<CalendarMoodStyle>>,
+  entriesRevisionRef: React.MutableRefObject<number>,
+  onMutated?: () => void
+): boolean {
+  const peeked = peekMoodCalendarSnapshotFromWarmCache();
+  if (!peeked) return false;
+  applyMoodCalendarSnapshot({
+    snapshot: peeked,
+    setEntriesByMonthKey,
+    setCalendarMoodStyle,
+    entriesRevisionRef,
+    onMutated,
+  });
+  return true;
+}
+
 export function useMoodCalendarSnapshotLoad({
   screen,
   loadPerfEvent,
@@ -58,8 +76,13 @@ export function useMoodCalendarSnapshotLoad({
   perfFlushViaMicrotask = false,
   focusRefs,
 }: MoodCalendarSnapshotLoadConfig): MoodCalendarSnapshotLoadResult {
-  const [entriesByMonthKey, setEntriesByMonthKey] = useState<Record<string, Record<string, MoodEntry>>>({});
-  const [calendarMoodStyle, setCalendarMoodStyle] = useState<CalendarMoodStyle>('dot');
+  const initialPeek = peekMoodCalendarSnapshotFromWarmCache();
+  const [entriesByMonthKey, setEntriesByMonthKey] = useState<Record<string, Record<string, MoodEntry>>>(
+    () => initialPeek?.byMonthKey ?? {}
+  );
+  const [calendarMoodStyle, setCalendarMoodStyle] = useState<CalendarMoodStyle>(
+    () => initialPeek?.calendarMoodStyle ?? 'fill'
+  );
   const entriesRevisionRef = useRef(0);
   const internalFocusedRef = useRef(true);
   const internalDeferredRef = useRef<{ cancel: () => void } | null>(null);
@@ -73,6 +96,7 @@ export function useMoodCalendarSnapshotLoad({
   todayKeyRef.current = todayKey;
   const prevTodayKeyForMidnightRef = useRef(todayKey);
   const didFlushPerfReportRef = useRef(false);
+  const lastSnapshotEpochRef = useRef<{ entries: number; settings: number } | null>(null);
 
   const onTodayKeyChangeWhileFocusedRef = useRef(onTodayKeyChangeWhileFocused);
   const onSnapshotMutatedRef = useRef(onSnapshotMutated);
@@ -89,6 +113,15 @@ export function useMoodCalendarSnapshotLoad({
   }, []);
 
   const reload = useCallback(async () => {
+    const epoch = getMoodCalendarSnapshotEpoch();
+    if (
+      lastSnapshotEpochRef.current &&
+      lastSnapshotEpochRef.current.entries === epoch.entries &&
+      lastSnapshotEpochRef.current.settings === epoch.settings
+    ) {
+      return;
+    }
+
     if (perfProbe.enabled) perfProbe.setCulpritPhase(`${screen}.loadData`);
     const reqId = nextRequestId(loadReqIdRef);
     const phase = entriesLoadCountRef.current === 0 ? 'cold' : 'warm';
@@ -113,6 +146,7 @@ export function useMoodCalendarSnapshotLoad({
       durationMs: Number((perfProbe.nowMs() - start).toFixed(1)),
     });
     if (perfProbe.enabled) perfProbe.setCulpritPhase(null);
+    lastSnapshotEpochRef.current = getMoodCalendarSnapshotEpoch();
   }, [isFocusedRef, loadPerfEvent, loadPerfSource, screen]);
 
   useFocusEffect(
@@ -124,9 +158,47 @@ export function useMoodCalendarSnapshotLoad({
         onTodayKeyChangeWhileFocusedRef.current?.();
       }
       didFlushPerfReportRef.current = false;
-      const task = InteractionManager.runAfterInteractions(() => {
+
+      const sessionPrimed = hydrateFromSessionPeek(
+        setEntriesByMonthKey,
+        setCalendarMoodStyle,
+        entriesRevisionRef,
+        onSnapshotMutatedRef.current
+      );
+
+      const runReload = () => {
         void reload();
-      });
+      };
+
+      const epoch = getMoodCalendarSnapshotEpoch();
+      const warmReturn =
+        lastSnapshotEpochRef.current !== null &&
+        lastSnapshotEpochRef.current.entries === epoch.entries &&
+        lastSnapshotEpochRef.current.settings === epoch.settings &&
+        entriesLoadCountRef.current > 0;
+
+      if (warmReturn || sessionPrimed) {
+        queueMicrotask(runReload);
+        return () => {
+          deferredInteractionRef.current = null;
+          isFocusedRef.current = false;
+          todayKeyWhenBlurredRef.current = todayKeyRef.current;
+          nextRequestId(loadReqIdRef);
+          onBlurExtraRef.current?.();
+
+          if (perfProbe.enabled && !didFlushPerfReportRef.current) {
+            didFlushPerfReportRef.current = true;
+            const tag = perfFlushReportTag ?? `${screen}.blur`;
+            if (perfFlushViaMicrotask) {
+              queueMicrotask(() => perfProbe.flushReport(tag));
+            } else {
+              perfProbe.flushReport(tag);
+            }
+          }
+        };
+      }
+
+      const task = InteractionManager.runAfterInteractions(runReload);
       deferredInteractionRef.current = task;
       return () => {
         task.cancel();

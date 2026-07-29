@@ -430,3 +430,17 @@ export function invalidateHabitSelectionsSessionCache(): void {
   cacheGeneration = 0;
   writeTail = Promise.resolve();
 }
+
+
+/** Sync read from warmed selections bundle. */
+export function peekHabitSelectionsForDateFromSessionCache(date: string): HabitId[] | undefined {
+  if (!isValidISODateKey(date)) return [];
+  if (!cache) return undefined;
+  const raw = cache.selections[date];
+  return raw && raw.length > 0 ? orderHabitIdsForPersist(raw) : [];
+}
+
+/** Session write generation — stable across tab switches until selections mutate. */
+export function getHabitSelectionsCacheGeneration(): number {
+  return cacheGeneration;
+}

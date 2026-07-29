@@ -15,7 +15,6 @@ import { getMonthRenderModel } from './monthModel';
 import type { CalendarMoodStyle as CalendarMoodStyle2 } from './monthModel';
 import { perfProbe } from '../../perf';
 import { Touchable } from '../../ui/Touchable';
-import { formatDayCellA11yLabel } from '../../system/accessibility';
 import type { FullGridMetrics } from './fullGridLayout';
 
 export type CalendarMoodStyle = CalendarMoodStyle2;
@@ -51,6 +50,51 @@ type SharedCellStyles = {
 };
 
 const sharedStylesCache = new Map<string, SharedCellStyles>();
+
+type FullGridCellStyles = {
+  cellSizeStyle: { width: number; height: number; marginVertical: number };
+  pillBaseStyle: { width: number; height: number; borderRadius: number };
+  dayTextSizeStyle: { fontSize: number; lineHeight: number; marginTop: number };
+  dotBaseStyle: { width: number; height: number; borderRadius: number; marginTop: number };
+  todayRingStyle: { borderWidth: number; borderColor: string };
+  pillFullGridDotLayout: {
+    justifyContent: 'flex-start';
+    paddingTop: number;
+    paddingBottom: number;
+  };
+};
+
+const fullGridStylesCache = new Map<string, FullGridCellStyles>();
+
+function getFullGridCellStyles(fg: FullGridMetrics, accentBlue: string): FullGridCellStyles {
+  const cacheKey = `${fg.cell}|${fg.gap}|${fg.fontSize}|${fg.lineHeight}|${fg.dotSize}|${fg.dotMarginTop}|${fg.todayRingW}|${fg.dotPadTop}|${fg.dotPadBottom}|${accentBlue}`;
+  const cached = fullGridStylesCache.get(cacheKey);
+  if (cached) return cached;
+
+  const next: FullGridCellStyles = Object.freeze({
+    cellSizeStyle: Object.freeze({ width: fg.cell, height: fg.cell, marginVertical: 0 }),
+    pillBaseStyle: Object.freeze({
+      width: fg.cell,
+      height: fg.cell,
+      borderRadius: fg.cell / 2,
+    }),
+    dayTextSizeStyle: Object.freeze({ fontSize: fg.fontSize, lineHeight: fg.lineHeight, marginTop: 0 }),
+    dotBaseStyle: Object.freeze({
+      width: fg.dotSize,
+      height: fg.dotSize,
+      borderRadius: fg.dotSize / 2,
+      marginTop: fg.dotMarginTop,
+    }),
+    todayRingStyle: Object.freeze({ borderWidth: fg.todayRingW, borderColor: accentBlue }),
+    pillFullGridDotLayout: Object.freeze({
+      justifyContent: 'flex-start' as const,
+      paddingTop: fg.dotPadTop,
+      paddingBottom: fg.dotPadBottom,
+    }),
+  });
+  fullGridStylesCache.set(cacheKey, next);
+  return next;
+}
 
 function getSharedStyles(sizeKey: SizeKey, accentBlue: string): SharedCellStyles {
   const cacheKey = `7|${sizeKey}|${accentBlue}`;
@@ -176,29 +220,14 @@ const DayCell = React.memo(
       fullGridLayout,
     } = props;
     const isBold = isFill || forceBold;
-    const shared = getSharedStyles(sizeKey, accentBlue);
-    const fg = variant === 'full' && fullGridLayout ? fullGridLayout : null;
+    const fgStyles = variant === 'full' && fullGridLayout ? getFullGridCellStyles(fullGridLayout, accentBlue) : null;
+    const shared = fgStyles ? null : getSharedStyles(sizeKey, accentBlue);
 
-    const cellSizeStyle = fg
-      ? { width: fg.cell, height: fg.cell, marginVertical: 0 }
-      : shared.cellSizeStyle;
-    const pillBaseStyle = fg
-      ? { width: fg.cell, height: fg.cell, borderRadius: fg.cell / 2 }
-      : shared.pillBaseStyle;
-    const dayTextSizeStyle = fg
-      ? { fontSize: fg.fontSize, lineHeight: fg.lineHeight, marginTop: 0 }
-      : shared.dayTextSizeStyle;
-    const dotBaseStyle = fg
-      ? {
-          width: fg.dotSize,
-          height: fg.dotSize,
-          borderRadius: fg.dotSize / 2,
-          marginTop: fg.dotMarginTop,
-        }
-      : shared.dotBaseStyle;
-    const todayRingStyle = fg
-      ? { borderWidth: fg.todayRingW, borderColor: accentBlue }
-      : shared.todayRingStyle;
+    const cellSizeStyle = fgStyles ? fgStyles.cellSizeStyle : shared!.cellSizeStyle;
+    const pillBaseStyle = fgStyles ? fgStyles.pillBaseStyle : shared!.pillBaseStyle;
+    const dayTextSizeStyle = fgStyles ? fgStyles.dayTextSizeStyle : shared!.dayTextSizeStyle;
+    const dotBaseStyle = fgStyles ? fgStyles.dotBaseStyle : shared!.dotBaseStyle;
+    const todayRingStyle = fgStyles ? fgStyles.todayRingStyle : shared!.todayRingStyle;
 
     if (perfProbe.enabled) {
       if (day === 1) perfProbe.breadcrumb(variant === 'mini' ? 'DayCell.render.mini' : 'DayCell.render.full');
@@ -234,15 +263,10 @@ const DayCell = React.memo(
         />
       ) : null;
 
-    /** Full month + dot theme: stack number + mood dot. Fill theme (model): full pill + centered number only. */
     const pillFullGridDotLayout =
       variant === 'full' && !isFill
-        ? fg
-          ? {
-              justifyContent: 'flex-start' as const,
-              paddingTop: fg.dotPadTop,
-              paddingBottom: fg.dotPadBottom,
-            }
+        ? fgStyles
+          ? fgStyles.pillFullGridDotLayout
           : styles.pillFullDotMode
         : null;
 
@@ -465,18 +489,7 @@ export const MonthGrid = React.memo(function MonthGrid({
             const isSelected = model.selectedDay === day;
             const isToday = model.todayDay === day;
 
-            const a11yLabel = model.pressByDay
-              ? formatDayCellA11yLabel({
-                  weekdayIndex0: model.weekdayByDay[day] ?? 0,
-                  monthName: model.monthName,
-                  day,
-                  year,
-                  mood: moodGrade,
-                  hasNote: model.hasNoteByDay[day],
-                  isToday,
-                  isSelected,
-                })
-              : '';
+            const a11yLabel = model.pressByDay ? (model.a11yLabelByDay[day] ?? '') : '';
 
             return (
               <DayCell

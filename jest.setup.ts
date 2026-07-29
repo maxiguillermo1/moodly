@@ -6,6 +6,10 @@ jest.mock('@react-native-async-storage/async-storage', () =>
   require('@react-native-async-storage/async-storage/jest/async-storage-mock')
 );
 
+// jest-expo runs with NODE_ENV=production unless the test script sets NODE_ENV=test.
+// React 19 + RNTL require development `act()` — see package.json `test` script.
+globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+
 jest.mock('expo-sqlite', () => require('./src/data/persistence/sqlite/__mocks__/expoSqliteMock'));
 
 jest.mock('react-native-draggable-flatlist', () => {

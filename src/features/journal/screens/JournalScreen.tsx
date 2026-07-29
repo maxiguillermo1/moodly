@@ -32,6 +32,7 @@ import {
   applySoloMoodFilter,
   a11yAnnouncementForViewMode,
   scanJournalEntryPresence,
+  EMPTY_JOURNAL_ENTRY_PRESENCE,
   nextMoodSoloFromHeaderTap,
   nextWeekdaySoloFromHeaderTap,
   nextMonthSoloFromHeaderTap,
@@ -260,7 +261,12 @@ export default function JournalScreen() {
     return entriesDesc;
   }, [entriesDesc, viewMode]);
 
-  const journalEntryPresence = useMemo(() => scanJournalEntryPresence(entriesDesc), [entriesDesc]);
+  const isGroupedView = viewMode === 'byMonth' || viewMode === 'byDay' || viewMode === 'byMood';
+
+  const journalEntryPresence = useMemo(
+    () => (isGroupedView ? scanJournalEntryPresence(entriesDesc) : EMPTY_JOURNAL_ENTRY_PRESENCE),
+    [entriesDesc, isGroupedView]
+  );
 
   const monthSectionsBase = useMemo(
     () => (viewMode === 'byMonth' ? buildMonthSections(entriesDesc) : []),
@@ -385,8 +391,6 @@ export default function JournalScreen() {
     setByMonthSoloKey(null);
     announceForAccessibility('Showing all months');
   }, [byMonthSoloKey]);
-
-  const isGroupedView = viewMode === 'byMonth' || viewMode === 'byDay' || viewMode === 'byMood';
 
   const toggleSortMenu = useCallback(() => {
     haptics.select();

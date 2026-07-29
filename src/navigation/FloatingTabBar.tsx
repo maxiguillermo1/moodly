@@ -3,7 +3,7 @@
  * @module navigation/FloatingTabBar
  */
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { View, StyleSheet, Platform, Pressable, Keyboard, InteractionManager, Text, type LayoutChangeEvent } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import Animated, {
@@ -29,19 +29,23 @@ import { DEFAULT_HIT_SLOP } from '../system/accessibility';
 import { haptics } from '../system/haptics';
 import { logger } from '../security';
 import { nearestTabFromPillCenter } from '../utils';
+import {
+  computeAllTabSelectionLayouts,
+  TAB_SELECTION_SLOT_GAP,
+  TAB_SELECTION_SYM_W,
+  TAB_SELECTION_TRACK_PAD_H,
+} from './tabBarSelectionLayout';
 
 /** Slightly roomier pill; wider ratio widens slots → more space between icon centers (same nudge). */
 const OUTER_WIDTH_RATIO = 0.54;
 const OUTER_PAD_V = 6;
 const OUTER_PAD_H = 6;
-const TRACK_PAD_H = 0;
+const TRACK_PAD_H = TAB_SELECTION_TRACK_PAD_H;
 /** No gap between slot columns — icons as close as equal flex allows. */
-const SLOT_GAP = 0;
+const SLOT_GAP = TAB_SELECTION_SLOT_GAP;
 
 const ICON_SIZE = 18;
-/** Horizontal padding inside selection pill around icon (tight fit). */
-const PILL_PAD_H = 7;
-const PILL_W = ICON_SIZE + PILL_PAD_H * 2;
+const PILL_W = TAB_SELECTION_SYM_W;
 /** Vertical gap between icon and label (px). */
 const TAB_LABEL_GAP = 3;
 const TAB_LABEL_LINE_H = Math.ceil(Number(typography.caption2.lineHeight ?? 12));
@@ -97,73 +101,6 @@ const PRESS_SPRING = { damping: 18, stiffness: 400, mass: 0.72 } as const;
 const AnimatedText = Animated.createAnimatedComponent(Text);
 const AnimatedIonicons = Animated.createAnimatedComponent(Ionicons);
 
-/**
- * Positions the selection so end tabs flush to the inner track edge (icon-centered width 2·cx / 2·(R−cx));
- * middle tabs fill each slot so the stadium is equally visible.
- */
-function computeSelectionLayout(params: {
-  trackInnerW: number;
-  nTabs: number;
-  index: number;
-}): { x: number; w: number } {
-  const { trackInnerW, nTabs, index } = params;
-  const symW = PILL_W;
-  if (trackInnerW <= 0 || nTabs <= 0) return { x: 0, w: symW };
-
-  const trackW = Math.max(0, trackInnerW - 2 * TRACK_PAD_H);
-  const slotW = (trackW - (nTabs - 1) * SLOT_GAP) / nTabs;
-  const slotStart = (i: number) => TRACK_PAD_H + i * (slotW + SLOT_GAP);
-  const cx = slotStart(index) + slotW / 2;
-  const rightInner = TRACK_PAD_H + trackW;
-
-  if (nTabs === 1) {
-    return { x: 0, w: Math.max(MIN_STADIUM_W, trackInnerW) };
-  }
-
-  if (index === 0) {
-    // Left edge flush at 0; width 2·cx so icon center (cx) is the geometric center of the pill.
-    const w = Math.min(rightInner, Math.max(MIN_STADIUM_W, symW, 2 * cx));
-    return { x: 0, w };
-  }
-
-  if (index === nTabs - 1) {
-    // Right edge flush at rightInner; width 2·(rightInner − cx) centers icon in the pill.
-    let w = Math.max(MIN_STADIUM_W, symW, 2 * (rightInner - cx));
-    let x = rightInner - w;
-    if (x < TRACK_PAD_H) {
-      x = TRACK_PAD_H;
-      w = rightInner - x;
-    }
-    return { x, w };
-  }
-
-  return computeMiddleSelectionLayout(params);
-}
-
-/** Middle tabs: fill the slot (minus inset) so the stadium reads as clearly as the wider edge pills. */
-function computeMiddleSelectionLayout(params: {
-  trackInnerW: number;
-  nTabs: number;
-  index: number;
-}): { x: number; w: number } {
-  const { trackInnerW, nTabs, index } = params;
-  const symW = PILL_W;
-  const trackW = Math.max(0, trackInnerW - 2 * TRACK_PAD_H);
-  const slotW = (trackW - (nTabs - 1) * SLOT_GAP) / nTabs;
-  const slotStart = (i: number) => TRACK_PAD_H + i * (slotW + SLOT_GAP);
-  const cx = slotStart(index) + slotW / 2;
-  const rightInner = TRACK_PAD_H + trackW;
-  const slotLeft = slotStart(index);
-  const inset = 2;
-  const wCap = slotW - inset * 2;
-  let w = Math.max(MIN_STADIUM_W, symW, wCap);
-  if (w > wCap) w = wCap;
-  let x = cx - w / 2;
-  x = Math.max(slotLeft + inset, Math.min(x, slotLeft + slotW - w - inset));
-  x = Math.max(TRACK_PAD_H, Math.min(x, rightInner - w));
-  return { x, w };
-}
-
 type TabCellProps = {
   routeKey: string;
   routeName: string;
@@ -173,6 +110,7 @@ type TabCellProps = {
   navigation: BottomTabBarProps['navigation'];
   inactiveColor: string;
   activeColor: string;
+  onTabSelectIntent: (index: number) => void;
 };
 
 const TabCell = React.memo(function TabCell({
@@ -184,6 +122,7 @@ const TabCell = React.memo(function TabCell({
   navigation,
   inactiveColor,
   activeColor,
+  onTabSelectIntent,
 }: TabCellProps) {
   const scale = useSharedValue(1);
 
@@ -194,11 +133,12 @@ const TabCell = React.memo(function TabCell({
       canPreventDefault: true,
     });
     if (!isFocused && !event.defaultPrevented) {
-      perfProbe.onMainTabPress(routeName);
-      haptics.tab();
+      onTabSelectIntent(tabIndex);
       navigation.navigate(routeName as never);
+      haptics.tab();
+      perfProbe.onMainTabPress(routeName);
     }
-  }, [isFocused, navigation, routeKey, routeName]);
+  }, [isFocused, navigation, onTabSelectIntent, routeKey, routeName, tabIndex]);
 
   const onPressIn = useCallback(() => {
     scale.value = withTiming(0.94, PRESS_TIMING);
@@ -346,22 +286,54 @@ function FloatingTabBarInner({ state, navigation, descriptors, insets }: BottomT
     };
   }, [a11y.reduceMotion, keyboardHiddenProgress, tabBarHideOnKeyboard]);
 
-  const journalPreloadDone = useRef(false);
+  const tabsPreloadedRef = useRef(false);
   useEffect(() => {
-    if (journalPreloadDone.current) return;
-    const task = InteractionManager.runAfterInteractions(() => {
-      if (journalPreloadDone.current) return;
+    if (tabsPreloadedRef.current) return;
+    const preloadInactiveTabs = () => {
+      if (tabsPreloadedRef.current) return;
       try {
         const tabState = navigation.getState();
         const routes = tabState?.routes;
-        if (!routes?.some((r) => r.name === 'Journal')) return;
-        navigation.dispatch(CommonActions.preload('Journal'));
-        journalPreloadDone.current = true;
-        logger.perf('nav.tab.preload', { phase: 'warm', source: 'ui', tab: 'Journal' });
+        if (!routes?.length) return;
+        const focused = routes[tabState.index ?? 0]?.name;
+        for (const route of routes) {
+          if (route.name === focused) continue;
+          navigation.dispatch(CommonActions.preload(route.name));
+          if (route.name === 'Journal') {
+            try {
+              const { warmJournalSortedDescCacheIfPrimed } = require('../data/storage/moodStorage') as typeof import('../data/storage/moodStorage');
+              warmJournalSortedDescCacheIfPrimed();
+            } catch {
+              /* best-effort */
+            }
+          }
+          if (route.name === 'Calendar') {
+            try {
+              const { warmMoodCalendarSnapshotCacheIfPrimed } = require('../data/storage/calendarSnapshot') as typeof import('../data/storage/calendarSnapshot');
+              warmMoodCalendarSnapshotCacheIfPrimed();
+            } catch {
+              /* best-effort */
+            }
+          }
+          if (route.name === 'Today') {
+            try {
+              const { getToday } = require('../lib/utils/date') as typeof import('../lib/utils/date');
+              const today = getToday();
+              const { warmDayTodosCacheIfPrimed } = require('../data/storage/tasksStorage') as typeof import('../data/storage/tasksStorage');
+              warmDayTodosCacheIfPrimed(today);
+            } catch {
+              /* best-effort */
+            }
+          }
+          logger.perf('nav.tab.preload', { phase: 'warm', source: 'ui', tab: route.name });
+        }
+        tabsPreloadedRef.current = true;
       } catch {
-        logger.warn('nav.tab.preload.failed', { tab: 'Journal' });
+        logger.warn('nav.tab.preload.failed', { tab: 'all' });
       }
-    });
+    };
+    queueMicrotask(preloadInactiveTabs);
+    const task = InteractionManager.runAfterInteractions(preloadInactiveTabs);
     return () => task.cancel();
   }, [navigation]);
 
@@ -384,6 +356,79 @@ function FloatingTabBarInner({ state, navigation, descriptors, insets }: BottomT
 
   const nTabs = state.routes.length;
 
+  const selectionLayouts = useMemo(
+    () => (trackInnerW > 0 && nTabs > 0 ? computeAllTabSelectionLayouts(trackInnerW, nTabs, MIN_STADIUM_W) : null),
+    [trackInnerW, nTabs]
+  );
+  const selectionLayoutKey = selectionLayouts ? `${trackInnerW}:${nTabs}` : '';
+  const selectionLayoutKeyRef = useRef('');
+
+  const animatePillToIndex = useCallback(
+    (index: number) => {
+      if (!selectionLayouts || index < 0 || index >= selectionLayouts.length) return;
+      const { x, w } = selectionLayouts[index]!;
+      const layoutChanged = selectionLayoutKeyRef.current !== selectionLayoutKey;
+      selectionLayoutKeyRef.current = selectionLayoutKey;
+
+      const prev = prevTabIndexRef.current;
+      const indexChanged = prev !== null && prev !== index;
+      const isFirstPosition = prev === null;
+      if (prev === index && !layoutChanged) return;
+      prevTabIndexRef.current = index;
+
+      if (a11y.reduceMotion || isFirstPosition || layoutChanged) {
+        cancelAnimation(pillX);
+        cancelAnimation(pillW);
+        cancelAnimation(pillVisualOpacity);
+        pillX.value = x;
+        pillW.value = w;
+        pillVisualOpacity.value = 1;
+        visualTabSV.value = index;
+        return;
+      }
+
+      cancelAnimation(pillX);
+      cancelAnimation(pillW);
+      pillX.value = withSpring(x, PILL_SPRING);
+      pillW.value = withSpring(w, PILL_SPRING_WIDTH);
+      visualTabSV.value = index;
+
+      if (indexChanged) {
+        cancelAnimation(pillVisualOpacity);
+        pillVisualOpacity.value = withSequence(
+          withTiming(0.88, {
+            duration: 88,
+            easing: Easing.bezier(0.4, 0, 0.2, 1),
+          }),
+          withTiming(1, {
+            duration: 280,
+            easing: Easing.bezier(0.17, 1, 0.2, 1),
+          })
+        );
+      }
+    },
+    [
+      a11y.reduceMotion,
+      pillVisualOpacity,
+      pillW,
+      pillX,
+      selectionLayoutKey,
+      selectionLayouts,
+      visualTabSV,
+    ]
+  );
+
+  const onTabSelectIntent = useCallback(
+    (index: number) => {
+      animatePillToIndex(index);
+    },
+    [animatePillToIndex]
+  );
+
+  useLayoutEffect(() => {
+    animatePillToIndex(state.index);
+  }, [animatePillToIndex, state.index]);
+
   useEffect(() => {
     trackInnerWSV.value = trackInnerW;
     nTabsSV.value = nTabs;
@@ -403,43 +448,6 @@ function FloatingTabBarInner({ state, navigation, descriptors, insets }: BottomT
       }
     }
   );
-
-  useEffect(() => {
-    if (trackInnerW <= 0 || nTabs <= 0) return;
-    const { x, w } = computeSelectionLayout({ trackInnerW, nTabs, index: state.index });
-
-    const prev = prevTabIndexRef.current;
-    const indexChanged = prev !== null && prev !== state.index;
-    prevTabIndexRef.current = state.index;
-
-    if (a11y.reduceMotion) {
-      cancelAnimation(pillX);
-      cancelAnimation(pillW);
-      cancelAnimation(pillVisualOpacity);
-      pillX.value = x;
-      pillW.value = w;
-      pillVisualOpacity.value = 1;
-      visualTabSV.value = state.index;
-      return;
-    }
-
-    pillX.value = withSpring(x, PILL_SPRING);
-    pillW.value = withSpring(w, PILL_SPRING_WIDTH);
-
-    if (indexChanged) {
-      cancelAnimation(pillVisualOpacity);
-      pillVisualOpacity.value = withSequence(
-        withTiming(0.88, {
-          duration: 88,
-          easing: Easing.bezier(0.4, 0, 0.2, 1),
-        }),
-        withTiming(1, {
-          duration: 280,
-          easing: Easing.bezier(0.17, 1, 0.2, 1),
-        })
-      );
-    }
-  }, [trackInnerW, state.index, nTabs, a11y.reduceMotion, pillX, pillW, pillVisualOpacity, visualTabSV]);
 
   const onTrackLayout = useCallback((e: LayoutChangeEvent) => {
     const w = e.nativeEvent.layout.width;
@@ -554,6 +562,7 @@ function FloatingTabBarInner({ state, navigation, descriptors, insets }: BottomT
                   navigation={navigation}
                   inactiveColor={inactiveColor}
                   activeColor={activeColor}
+                  onTabSelectIntent={onTabSelectIntent}
                 />
               );
             })}

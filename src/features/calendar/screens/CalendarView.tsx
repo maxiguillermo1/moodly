@@ -15,6 +15,7 @@ import { PerfProfiler, usePerfScreen } from '@/perf';
 import { spacing, typography, useAppTheme, getCalendarTextLimits } from '@/theme';
 import { useTodayKey } from '@/hooks/useTodayKey';
 import { useCoalescedEpoch } from '@/hooks/useCoalescedEpoch';
+import { createFrameCoalescer } from '@/utils';
 import { useMoodCalendarSnapshotLoad } from '@/hooks/useMoodCalendarSnapshotLoad';
 import { afterNextFrame } from '@/utils';
 import { interactionQueue } from '@/system/interactionQueue';
@@ -38,6 +39,8 @@ export default function CalendarView() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
+  const navigationRef = useRef(navigation);
+  navigationRef.current = navigation;
   const scrollRetryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     return () => {
@@ -171,13 +174,21 @@ export default function CalendarView() {
 
   const gridHorizontalPadStyle = useMemo(() => ({ paddingHorizontal: spacing[4] }), []);
 
-  const openMonth = useCallback(
-    (y: number, mIdx: number) => {
+  const openMonthCoalescerRef = useRef(
+    createFrameCoalescer<{ y: number; mIdx: number }>((value) => {
       if (!mountedRef.current || !isFocusedRef.current) return;
-      navigation.navigate('CalendarScreen', { year: y, month: mIdx });
-    },
-    [navigation]
+      navigationRef.current.navigate('CalendarScreen', { year: value.y, month: value.mIdx });
+    })
   );
+
+  useEffect(() => {
+    const coalescer = openMonthCoalescerRef.current;
+    return () => coalescer.cancel();
+  }, []);
+
+  const openMonth = useCallback((y: number, mIdx: number) => {
+    openMonthCoalescerRef.current.enqueue({ y, mIdx });
+  }, []);
 
   const keyExtractor = useCallback((y: number) => String(y), []);
 

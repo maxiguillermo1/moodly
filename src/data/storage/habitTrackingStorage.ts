@@ -156,3 +156,15 @@ export function resetHabitTrackingStorageSessionStateForTests(): void {
   cacheGeneration = 0;
   writeTail = Promise.resolve();
 }
+
+
+/** Sync read from warmed tracked-habits cache. */
+export function peekTrackedHabitIdsFromSessionCache(): HabitId[] | undefined {
+  if (!cache) return undefined;
+  return [...cache];
+}
+
+/** Session write generation — stable across tab switches until tracked set mutates. */
+export function getHabitTrackingCacheGeneration(): number {
+  return cacheGeneration;
+}

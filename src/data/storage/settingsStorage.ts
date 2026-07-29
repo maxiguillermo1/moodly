@@ -14,12 +14,14 @@ const CORRUPT_PREFIX = `${SETTINGS_KEY}.corrupt.`;
 
 const DEFAULT_SETTINGS: AppSettings = {
   appearance: 'system',
-  calendarMoodStyle: 'dot',
+  calendarMoodStyle: 'fill',
   moodGradeColorStyle: 'solid',
   habitsEnabled: false,
   todayGoalsEnabled: false,
   todayTodoEnabled: false,
   todayExtensionsOrder: ['habits', 'goals', 'todo'],
+  cloudBackupPromptDismissed: false,
+  localOnlyMode: false,
 };
 
 const STACK_IDS: readonly TodayExtensionStackId[] = ['habits', 'goals', 'todo'];
@@ -54,6 +56,17 @@ function stackOrdersEqual(a: readonly TodayExtensionStackId[], b: readonly Today
 
 let settingsCache: AppSettings | null = null;
 let settingsLoadPromise: Promise<AppSettings> | null = null;
+let settingsSessionEpoch = 0;
+
+/** Bumps when persisted settings are written to the in-memory cache. */
+export function getSettingsSessionEpoch(): number {
+  return settingsSessionEpoch;
+}
+
+/** Sync read of the in-memory settings cache (null until first `getSettings` completes). */
+export function peekSettingsCache(): AppSettings | null {
+  return settingsCache ? cloneSettings(settingsCache) : null;
+}
 
 /**
  * Write serialization (reliability).
@@ -85,10 +98,7 @@ function safeParseSettings(json: string | null): AppSettings {
       raw.appearance === 'light' || raw.appearance === 'dark' || raw.appearance === 'system'
         ? raw.appearance
         : DEFAULT_SETTINGS.appearance;
-    const calendarMoodStyle =
-      raw.calendarMoodStyle === 'dot' || raw.calendarMoodStyle === 'fill'
-        ? (raw.calendarMoodStyle as CalendarMoodStyle)
-        : DEFAULT_SETTINGS.calendarMoodStyle;
+    const calendarMoodStyle: CalendarMoodStyle = 'fill';
     const moodGradeColorStyle: MoodGradeColorStyle =
       raw.moodGradeColorStyle === 'gradient' || raw.moodGradeColorStyle === 'solid'
         ? raw.moodGradeColorStyle
@@ -100,6 +110,12 @@ function safeParseSettings(json: string | null): AppSettings {
     const todayTodoEnabled =
       typeof raw.todayTodoEnabled === 'boolean' ? raw.todayTodoEnabled : DEFAULT_SETTINGS.todayTodoEnabled;
     const todayExtensionsOrder = normalizeTodayExtensionsOrder(raw.todayExtensionsOrder);
+    const cloudBackupPromptDismissed =
+      typeof raw.cloudBackupPromptDismissed === 'boolean'
+        ? raw.cloudBackupPromptDismissed
+        : DEFAULT_SETTINGS.cloudBackupPromptDismissed;
+    const localOnlyMode =
+      typeof raw.localOnlyMode === 'boolean' ? raw.localOnlyMode : DEFAULT_SETTINGS.localOnlyMode;
     return {
       ...DEFAULT_SETTINGS,
       appearance,
@@ -109,6 +125,8 @@ function safeParseSettings(json: string | null): AppSettings {
       todayGoalsEnabled,
       todayTodoEnabled,
       todayExtensionsOrder,
+      cloudBackupPromptDismissed,
+      localOnlyMode,
     };
   } catch {
     return DEFAULT_SETTINGS;
@@ -247,14 +265,16 @@ function assertValidSettingsForDev(next: AppSettings): void {
 }
 
 async function persistSettingsUnlocked(next: AppSettings): Promise<void> {
-  assertValidSettingsForDev(next);
+  const normalized: AppSettings = { ...next, calendarMoodStyle: 'fill' };
+  assertValidSettingsForDev(normalized);
   try {
     // Persist first. Only update RAM cache after the write succeeds.
     await ensureLocalPersistenceReady();
     assertLocalPersistenceWritable();
-    const safeNext = cloneSettings(next);
+    const safeNext = cloneSettings(normalized);
     await storage.setItem(SETTINGS_KEY, JSON.stringify(safeNext));
     settingsCache = safeNext;
+    settingsSessionEpoch += 1;
     notifySettingsChanged(safeNext);
   } catch (error) {
     logger.error('storage.settings.set.failed', { key: SETTINGS_KEY, error });
@@ -269,8 +289,8 @@ async function updateSettings(mutator: (current: AppSettings) => AppSettings): P
   });
 }
 
-export async function setCalendarMoodStyle(style: CalendarMoodStyle): Promise<void> {
-  await updateSettings((current) => ({ ...current, calendarMoodStyle: style }));
+export async function setCalendarMoodStyle(_style: CalendarMoodStyle): Promise<void> {
+  await updateSettings((current) => ({ ...current, calendarMoodStyle: 'fill' }));
 }
 
 export async function setAppearancePreference(mode: AppSettings['appearance']): Promise<void> {
@@ -317,6 +337,14 @@ export async function bumpTodayExtensionStackOrder(id: TodayExtensionStackId): P
   });
 }
 
+export async function setCloudBackupPromptDismissed(dismissed: boolean): Promise<void> {
+  await updateSettings((current) => ({ ...current, cloudBackupPromptDismissed: dismissed }));
+}
+
+export async function setLocalOnlyMode(enabled: boolean): Promise<void> {
+  await updateSettings((current) => ({ ...current, localOnlyMode: enabled }));
+}
+
 /**
  * @internal Jest-only: simulate a cold read path without `jest.resetModules()`.
  *
@@ -332,4 +360,5 @@ export function invalidateSettingsSessionCache(): void {
   settingsCache = null;
   settingsLoadPromise = null;
   settingsWriteTail = Promise.resolve();
+  settingsSessionEpoch = 0;
 }

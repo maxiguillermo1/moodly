@@ -44,4 +44,13 @@ export interface AppSettings {
    * depends on {@link AppSettings.habitsEnabled} / goals / todo toggles and habit strip rules.
    */
   todayExtensionsOrder: TodayExtensionStackId[];
+
+  /** When true, user dismissed the optional cloud backup onboarding prompt. */
+  cloudBackupPromptDismissed?: boolean;
+
+  /**
+   * When true, user chose local-only use and skipped the cloud sign-in gate.
+   * Cleared automatically on successful sign-in.
+   */
+  localOnlyMode?: boolean;
 }

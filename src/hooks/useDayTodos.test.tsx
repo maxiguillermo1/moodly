@@ -54,4 +54,13 @@ describe('useDayTodos', () => {
     await waitFor(() => expect(result.current.loaded).toBe(true));
     expect(result.current.items).toEqual([]);
   });
-});
+
+  it('hydrates from session cache without waiting for InteractionManager', async () => {
+    const { addTaskForDate, peekDayTodosFromSessionCache } = require('../data/storage/tasksStorage') as typeof import('../data/storage/tasksStorage');
+    await addTaskForDate(day, 'Cached task');
+    expect(peekDayTodosFromSessionCache(day)?.map((t) => t.title)).toEqual(['Cached task']);
+
+    const { result } = renderHook(() => useDayTodos(day));
+    expect(result.current.loaded).toBe(true);
+    expect(result.current.items.map((t) => t.title)).toEqual(['Cached task']);
+  });});

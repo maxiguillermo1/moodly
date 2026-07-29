@@ -15,19 +15,21 @@ describe('settingsStorage corrupt JSON handling', () => {
     const AsyncStorage: any = mod?.default ?? mod;
     await AsyncStorage.setItem(SETTINGS_KEY, '{not json');
     const res = await getSettings();
-    expect(res.calendarMoodStyle).toBe('dot');
+    expect(res.calendarMoodStyle).toBe('fill');
     expect(res.appearance).toBe('system');
     expect(res.moodGradeColorStyle).toBe('solid');
     const after = await AsyncStorage.getItem(SETTINGS_KEY);
     expect(after).toBe(
       JSON.stringify({
         appearance: 'system',
-        calendarMoodStyle: 'dot',
+        calendarMoodStyle: 'fill',
         moodGradeColorStyle: 'solid',
         habitsEnabled: false,
         todayGoalsEnabled: false,
         todayTodoEnabled: false,
         todayExtensionsOrder: ['habits', 'goals', 'todo'],
+        cloudBackupPromptDismissed: false,
+        localOnlyMode: false,
       })
     );
   });
@@ -62,7 +64,7 @@ describe('settingsStorage corrupt JSON handling', () => {
       SETTINGS_KEY,
       JSON.stringify({
         appearance: 'light',
-        calendarMoodStyle: 'dot',
+        calendarMoodStyle: 'fill',
         // omit habitsEnabled, goals, todo, order, moodGradeColorStyle
       })
     );
@@ -93,7 +95,7 @@ describe('settingsStorage corrupt JSON handling', () => {
     const first = await settings.getSettings();
     expect(first.appearance).toBe('dark');
     expect(first.habitsEnabled).toBe(true);
-    expect(first.calendarMoodStyle).toBe('dot');
+    expect(first.calendarMoodStyle).toBe('fill');
 
     settings.resetSettingsStorageSessionStateForTests();
     resetPersistenceBootstrapForTests();
@@ -115,6 +117,28 @@ describe('settingsStorage corrupt JSON handling', () => {
     expect(res.todayGoalsEnabled).toBe(true);
     expect(res.todayTodoEnabled).toBe(true);
     expect(new Set(res.todayExtensionsOrder)).toEqual(new Set(['habits', 'goals', 'todo']));
+  });
+
+  it('persists localOnlyMode for offline-first welcome gate', async () => {
+    const settings = require('./settingsStorage') as typeof import('./settingsStorage');
+    await settings.setLocalOnlyMode(true);
+    const res = await settings.getSettings();
+    expect(res.localOnlyMode).toBe(true);
+    await settings.setLocalOnlyMode(false);
+    const cleared = await settings.getSettings();
+    expect(cleared.localOnlyMode).toBe(false);
+  });
+
+  it('peekSettingsCache returns null before load and a defensive copy after warm', async () => {
+    const settings = require('./settingsStorage') as typeof import('./settingsStorage');
+    expect(settings.peekSettingsCache()).toBeNull();
+    const loaded = await settings.getSettings();
+    const peeked = settings.peekSettingsCache();
+    expect(peeked).not.toBeNull();
+    expect(peeked!.localOnlyMode).toBe(loaded.localOnlyMode);
+    peeked!.localOnlyMode = true;
+    const again = await settings.getSettings();
+    expect(again.localOnlyMode).toBe(loaded.localOnlyMode);
   });
 
   it('returns defensive copies so callers cannot mutate the session cache', async () => {

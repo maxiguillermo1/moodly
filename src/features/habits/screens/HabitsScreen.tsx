@@ -15,8 +15,10 @@ import type { HabitId } from '@/types';
 import {
   getHabitSelectionsForDate,
   getHabitMarkedDayCounts,
+  getHabitSelectionsCacheGeneration,
   toggleHabitForDate,
   getTrackedHabitIds,
+  getHabitTrackingCacheGeneration,
   setTrackedHabitIds,
 } from '@/storage';
 import { borderRadius, spacing, typography, useAppTheme } from '@/theme';
@@ -45,6 +47,8 @@ export default function HabitsScreen() {
   const selectionsReqIdRef = useRef(0);
   const trackedReqIdRef = useRef(0);
   const writingRef = useRef(false);
+  const lastSelectionsGenerationRef = useRef(-1);
+  const lastTrackedGenerationRef = useRef(-1);
 
   useEffect(() => {
     return () => {
@@ -61,6 +65,11 @@ export default function HabitsScreen() {
   }, [tracked]);
 
   const reloadSelections = useCallback(async () => {
+    const generation = getHabitSelectionsCacheGeneration();
+    if (lastSelectionsGenerationRef.current === generation && generation >= 0) {
+      return;
+    }
+
     const reqId = ++selectionsReqIdRef.current;
     try {
       const [ids, counts] = await Promise.all([getHabitSelectionsForDate(day), getHabitMarkedDayCounts()]);
@@ -74,12 +83,18 @@ export default function HabitsScreen() {
         if (typeof n === 'number' && n > 0) cm.set(hid as HabitId, n);
       }
       setMarkedDayCounts(cm);
+      lastSelectionsGenerationRef.current = getHabitSelectionsCacheGeneration();
     } catch (e) {
       logger.warn('habits.screen.load.failed', { day, error: e });
     }
   }, [day]);
 
   const reloadTracked = useCallback(async () => {
+    const generation = getHabitTrackingCacheGeneration();
+    if (lastTrackedGenerationRef.current === generation && generation >= 0) {
+      return;
+    }
+
     const reqId = ++trackedReqIdRef.current;
     try {
       const ids = await getTrackedHabitIds();
@@ -87,6 +102,7 @@ export default function HabitsScreen() {
       const ns = new Set(ids);
       setTracked(ns);
       trackedRef.current = ns;
+      lastTrackedGenerationRef.current = getHabitTrackingCacheGeneration();
     } catch (e) {
       logger.warn('habits.screen.tracked.load.failed', { error: e });
     }

@@ -5,6 +5,7 @@
  */
 
 import type { FullGridMetrics } from '../../../components/calendar/fullGridLayout';
+import { buildTimelineCumulativeTops } from './flashListLayout';
 import { getTimelineMonthRowMetrics } from './timelineMonthRowMetrics';
 
 export function computeCardCenteredTimelineScrollOffset(params: {
@@ -56,4 +57,24 @@ export function computeCardCenteredTimelineScrollOffset(params: {
     i + 1 < n ? (cumulativeTops[i + 1] ?? 0) - viewportHeight : maxScroll;
 
   return Math.max(0, Math.min(yIdeal, yCapNext, maxScroll));
+}
+
+/** Card-centered offset for a month index; builds cumulative tops from row heights. */
+export function resolveCardCenteredTimelineScrollOffset(params: {
+  monthsData: readonly { y: number; m: number }[];
+  heights: readonly number[];
+  index: number;
+  viewportHeight: number;
+  contentPaddingBottom: number;
+  grid: FullGridMetrics;
+  monthCardPadding: number;
+  monthSectionTopPad: number;
+  monthSectionBottomPad: number;
+  /** Extra scroll (points) to shift the card upward on screen. */
+  nudgeUpPx?: number;
+}): number {
+  const { nudgeUpPx, heights, ...rest } = params;
+  const cumulativeTops = buildTimelineCumulativeTops(heights);
+  const base = computeCardCenteredTimelineScrollOffset({ ...rest, cumulativeTops, heights });
+  return base + Math.max(0, nudgeUpPx ?? 0);
 }

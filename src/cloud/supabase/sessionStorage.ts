@@ -4,6 +4,7 @@
  */
 
 import * as SecureStore from 'expo-secure-store';
+import { logger } from '../../lib/security/logger';
 
 const STORAGE_KEY = 'kairo.supabase.auth.session';
 
@@ -11,22 +12,23 @@ export const supabaseSecureStorage = {
   async getItem(key: string): Promise<string | null> {
     try {
       return await SecureStore.getItemAsync(key === 'supabase.auth.token' ? STORAGE_KEY : key);
-    } catch {
+    } catch (e) {
+      logger.warn('auth.secureStore.read_failed', { op: 'getItem', error: e });
       return null;
     }
   },
   async setItem(key: string, value: string): Promise<void> {
     try {
       await SecureStore.setItemAsync(key === 'supabase.auth.token' ? STORAGE_KEY : key, value);
-    } catch {
-      /* best-effort */
+    } catch (e) {
+      logger.warn('auth.secureStore.write_failed', { op: 'setItem', error: e });
     }
   },
   async removeItem(key: string): Promise<void> {
     try {
       await SecureStore.deleteItemAsync(key === 'supabase.auth.token' ? STORAGE_KEY : key);
-    } catch {
-      /* best-effort */
+    } catch (e) {
+      logger.warn('auth.secureStore.write_failed', { op: 'removeItem', error: e });
     }
   },
 };
@@ -34,7 +36,7 @@ export const supabaseSecureStorage = {
 export async function clearSupabaseSessionStorage(): Promise<void> {
   try {
     await SecureStore.deleteItemAsync(STORAGE_KEY);
-  } catch {
-    /* best-effort */
+  } catch (e) {
+    logger.warn('auth.secureStore.write_failed', { op: 'clearSession', error: e });
   }
 }

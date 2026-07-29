@@ -12,9 +12,11 @@ function resetSqliteTestHarness(): void {
   __resetExpoSqliteMockForTests();
   const { __setKairoSqliteDatabaseForTests, resetKairoSqliteBootstrapForTests } = require('./database');
   const { getSharedInMemoryKairoDatabase, resetSharedInMemoryKairoDatabase } = require('./testInMemoryDatabase');
+  const { resetKairoSqliteWriteLockForTests } = require('./sqliteWriteLock');
   resetSharedInMemoryKairoDatabase();
   __setKairoSqliteDatabaseForTests(getSharedInMemoryKairoDatabase());
   resetKairoSqliteBootstrapForTests();
+  resetKairoSqliteWriteLockForTests();
   const { resetMoodEntriesBackendCacheForTests } = require('./storageBackend');
   const { resetHabitSelectionsBackendCacheForTests } = require('./habitsStorageBackend');
   const { resetGoalsBackendCacheForTests } = require('./goalsStorageBackend');

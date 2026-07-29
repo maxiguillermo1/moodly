@@ -10,11 +10,12 @@ import { ensureKairoSqliteReady } from '../persistence/sqlite/database';
 import {
   clearMoodEntriesSqlite,
   deleteMoodEntrySqlite,
-  importMoodEntriesToSqlite,
   loadAllMoodEntriesFromSqlite,
+  replaceAllMoodEntriesInSqlite,
   upsertMoodEntrySqlite,
 } from '../persistence/sqlite/moodEntriesStore';
 import { resolveMoodEntriesBackend } from '../persistence/sqlite/storageBackend';
+import { withKairoSqliteWriteLock } from '../persistence/sqlite/sqliteWriteLock';
 import { storage } from './asyncStorage';
 
 export const MOOD_ENTRIES_STORAGE_KEY = 'kairo.entries';
@@ -46,8 +47,7 @@ export async function loadMoodEntriesFromDisk(): Promise<MoodEntriesRecord> {
 export async function persistMoodEntriesBlob(record: MoodEntriesRecord): Promise<void> {
   if (await usesSqlite()) {
     const db = await ensureKairoSqliteReady();
-    await clearMoodEntriesSqlite(db);
-    await importMoodEntriesToSqlite(db, record);
+    await replaceAllMoodEntriesInSqlite(db, record);
     return;
   }
   await storage.setItem(MOOD_ENTRIES_STORAGE_KEY, JSON.stringify(record));
@@ -74,7 +74,9 @@ export async function deleteMoodEntryRow(date: string, fullRecord: MoodEntriesRe
 export async function clearMoodEntriesOnDisk(): Promise<void> {
   if (await usesSqlite()) {
     const db = await ensureKairoSqliteReady();
-    await clearMoodEntriesSqlite(db);
+    await withKairoSqliteWriteLock(async () => {
+      await clearMoodEntriesSqlite(db);
+    });
     return;
   }
   await storage.removeItem(MOOD_ENTRIES_STORAGE_KEY);
@@ -88,7 +90,9 @@ export async function quarantineRawMoodEntriesJson(rawJson: string, backupKey: s
   await storage.setItem(backupKey, rawJson);
   if (await usesSqlite()) {
     const db = await ensureKairoSqliteReady();
-    await clearMoodEntriesSqlite(db);
+    await withKairoSqliteWriteLock(async () => {
+      await clearMoodEntriesSqlite(db);
+    });
     return;
   }
   await storage.setItem(MOOD_ENTRIES_STORAGE_KEY, JSON.stringify({}));

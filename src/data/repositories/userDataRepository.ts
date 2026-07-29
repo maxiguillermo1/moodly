@@ -4,3 +4,5 @@
  */
 
 export { clearAllUserData } from '../storage/userDataReset';
+export { resetLocalUserDataCompletely } from '../sync/localUserDataReset';
+export { clearAllUserJournalData } from '../sync/clearAllUserJournalData';

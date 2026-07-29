@@ -1,0 +1,481 @@
+#!/usr/bin/env bash
+# Kairo — global dev launcher (`kairo` command)
+# Clean restart: stop stale Metro/Expo, boot last iOS Simulator, launch app.
+set -euo pipefail
+
+APP_ROOT="/Users/astrofy/Desktop/Kairo"
+RUNTIME_DIR="${APP_ROOT}/.runtime"
+PID_DIR="${RUNTIME_DIR}/pids"
+LOG_DIR="${RUNTIME_DIR}/logs"
+STATE_FILE="${RUNTIME_DIR}/state.json"
+PID_FILE="${PID_DIR}/metro.pid"
+METRO_LOG="${LOG_DIR}/metro.log"
+DEFAULT_PORT="${KAIRO_METRO_PORT:-8081}"
+BUNDLE_ID="com.maxiguillermo.kairo"
+EXPO_GO_BUNDLE="host.exp.Exponent"
+
+color() { printf '\033[%sm' "$1"; }
+reset() { printf '\033[0m'; }
+info()  { echo "$(color '0;36')▸$(reset) $*"; }
+ok()    { echo "$(color '0;32')✓$(reset) $*"; }
+warn()  { echo "$(color '0;33')!$(reset) $*"; }
+err()   { echo "$(color '0;31')✗$(reset) $*" >&2; }
+
+ensure_runtime_dirs() {
+  mkdir -p "$PID_DIR" "$LOG_DIR"
+}
+
+write_state() {
+  local status="$1" mode="$2" pid="${3:-}" health="${4:-unknown}" sim="${5:-}"
+  ensure_runtime_dirs
+  printf '{\n  "status": "%s",\n  "mode": "%s",\n  "pid": "%s",\n  "health": "%s",\n  "simulator": "%s",\n  "port": %s,\n  "updatedAt": "%s",\n  "appRoot": "%s"\n}\n' \
+    "$status" "$mode" "$pid" "$health" "$sim" "$DEFAULT_PORT" "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" "$APP_ROOT" \
+    > "$STATE_FILE"
+}
+
+pid_alive() {
+  local pid="$1"
+  [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null
+}
+
+process_cmdline() {
+  local pid="$1"
+  ps -p "$pid" -o command= 2>/dev/null || true
+}
+
+is_kairo_metro_process() {
+  local pid="$1"
+  local cmd
+  cmd="$(process_cmdline "$pid")"
+  [[ "$cmd" == *"Desktop/Kairo"* ]] && [[ "$cmd" == *"expo"* || "$cmd" == *"expo-start.mjs"* || "$cmd" == *"metro"* || "$cmd" == *"npm run start"* ]]
+}
+
+is_kairo_worker_process() {
+  local pid="$1"
+  local cmd
+  cmd="$(process_cmdline "$pid")"
+  [[ "$cmd" == *"Desktop/Kairo/node_modules"* ]]
+}
+
+find_metro_pid() {
+  local pid=""
+  if [[ -f "$PID_FILE" ]]; then
+    pid="$(tr -d '[:space:]' < "$PID_FILE" 2>/dev/null || true)"
+    if pid_alive "$pid" && is_kairo_metro_process "$pid"; then
+      echo "$pid"
+      return 0
+    fi
+  fi
+
+  local match
+  while IFS= read -r match; do
+    if [[ -n "$match" ]] && pid_alive "$match" && is_kairo_metro_process "$match"; then
+      echo "$match" > "$PID_FILE"
+      echo "$match"
+      return 0
+    fi
+  done < <(pgrep -f "${APP_ROOT}.*(expo-start\\.mjs|expo/bin/cli|npm run start)" 2>/dev/null || true)
+
+  local listener
+  while IFS= read -r listener; do
+    if [[ -n "$listener" ]] && pid_alive "$listener" && is_kairo_metro_process "$listener"; then
+      echo "$listener" > "$PID_FILE"
+      echo "$listener"
+      return 0
+    fi
+  done < <(lsof -tiTCP:"${DEFAULT_PORT}" -sTCP:LISTEN 2>/dev/null || true)
+
+  return 1
+}
+
+metro_http_ok() {
+  curl -fsS --max-time 2 "http://127.0.0.1:${DEFAULT_PORT}/status" >/dev/null 2>&1
+}
+
+resolve_simulator_udid() {
+  local udid=""
+  udid="$(defaults read com.apple.iphonesimulator CurrentDeviceUDID 2>/dev/null || true)"
+  if [[ -n "$udid" ]]; then
+    echo "$udid"
+    return 0
+  fi
+  # Fallback: first available iPhone simulator
+  udid="$(xcrun simctl list devices available -j 2>/dev/null \
+    | /usr/bin/python3 -c "
+import json, sys
+data = json.load(sys.stdin)
+for runtime, devices in data.get('devices', {}).items():
+    if 'iOS' not in runtime:
+        continue
+    for d in devices:
+        if d.get('isAvailable') and 'iPhone' in d.get('name', ''):
+            print(d['udid'])
+            raise SystemExit(0)
+" 2>/dev/null || true)"
+  [[ -n "$udid" ]] && echo "$udid"
+}
+
+simulator_name() {
+  local udid="$1"
+  xcrun simctl list devices available 2>/dev/null | awk -v id="$udid" '$0 ~ id { sub(/^[[:space:]]+/, ""); print; exit }'
+}
+
+simulator_booted() {
+  local udid="$1"
+  xcrun simctl list devices booted 2>/dev/null | grep -q "$udid"
+}
+
+boot_simulator() {
+  local udid="$1"
+  [[ -n "$udid" ]] || return 1
+  local name
+  name="$(simulator_name "$udid" | sed 's/ (.*//')"
+  if simulator_booted "$udid"; then
+    open -a Simulator >/dev/null 2>&1 || true
+    return 0
+  fi
+  info "Booting iOS Simulator (${name})..."
+  xcrun simctl boot "$udid" 2>/dev/null || true
+  open -a Simulator >/dev/null 2>&1 || true
+  xcrun simctl bootstatus "$udid" -b 2>/dev/null || true
+  local i=0
+  while (( i < 60 )); do
+    if simulator_booted "$udid"; then
+      return 0
+    fi
+    sleep 0.25
+    i=$((i + 1))
+  done
+  return 1
+}
+
+resolve_lan_ipv4() {
+  ipconfig getifaddr en0 2>/dev/null \
+    || ipconfig getifaddr en1 2>/dev/null \
+    || ipconfig getifaddr en2 2>/dev/null \
+    || true
+}
+
+open_app_on_simulator() {
+  local udid="$1"
+  local port="${DEFAULT_PORT}"
+  local host="127.0.0.1"
+  local lan=""
+  lan="$(resolve_lan_ipv4 || true)"
+  if [[ -n "$lan" ]]; then
+    host="$lan"
+  fi
+  local url="exp://${host}:${port}"
+  local attempt=0
+
+  # Launch Expo Go first so deep links have a handler (avoids simctl openurl timeouts).
+  xcrun simctl launch "$udid" "$EXPO_GO_BUNDLE" >/dev/null 2>&1 || true
+  sleep 3
+
+  while (( attempt < 5 )); do
+    if xcrun simctl openurl "$udid" "$url" 2>/dev/null; then
+      return 0
+    fi
+    attempt=$((attempt + 1))
+    sleep 1.5
+  done
+  return 1
+}
+
+ensure_project_ready() {
+  if [[ ! -d "$APP_ROOT" ]]; then
+    err "Kairo not found at: $APP_ROOT"
+    exit 1
+  fi
+  if [[ ! -d "${APP_ROOT}/node_modules" ]]; then
+    info "Installing dependencies (first run)..."
+    (cd "$APP_ROOT" && npm install) >> "$METRO_LOG" 2>&1
+  fi
+}
+
+kill_pid_tree() {
+  local pid="$1"
+  [[ -n "$pid" ]] || return 0
+  if ! pid_alive "$pid"; then
+    return 0
+  fi
+  local child
+  while IFS= read -r child; do
+    [[ -n "$child" ]] && kill_pid_tree "$child"
+  done < <(pgrep -P "$pid" 2>/dev/null || true)
+  kill "$pid" 2>/dev/null || true
+}
+
+cmd_stop() {
+  ensure_runtime_dirs
+  local stopped=0
+
+  if pid="$(find_metro_pid 2>/dev/null || true)" && [[ -n "$pid" ]]; then
+    info "Stopping Metro (PID ${pid})..."
+    kill_pid_tree "$pid"
+    local i=0
+    while pid_alive "$pid" && (( i < 16 )); do
+      sleep 0.15
+      i=$((i + 1))
+    done
+    if pid_alive "$pid"; then
+      kill -9 "$pid" 2>/dev/null || true
+    fi
+    stopped=1
+  fi
+
+  # Sweep any orphaned Kairo bundler workers still holding the port.
+  local match
+  while IFS= read -r match; do
+    if [[ -n "$match" ]] && is_kairo_metro_process "$match"; then
+      kill_pid_tree "$match"
+      stopped=1
+    fi
+  done < <(pgrep -f "${APP_ROOT}.*(expo-start\\.mjs|expo/bin/cli|npm run start)" 2>/dev/null || true)
+
+  while IFS= read -r match; do
+    if [[ -n "$match" ]] && is_kairo_worker_process "$match"; then
+      kill "$match" 2>/dev/null || true
+      stopped=1
+    fi
+  done < <(pgrep -f "${APP_ROOT}/node_modules/(jest-worker|metro)" 2>/dev/null || true)
+
+  local port_pid
+  for port_pid in $(lsof -ti:"${DEFAULT_PORT}" 2>/dev/null || true); do
+    if is_kairo_metro_process "$port_pid" || is_kairo_worker_process "$port_pid"; then
+      kill_pid_tree "$port_pid" 2>/dev/null || true
+      stopped=1
+    fi
+  done
+
+  rm -f "$PID_FILE"
+  write_state "stopped" "ios" "" "stopped" ""
+
+  if (( stopped )); then
+    ok "Kairo dev server stopped"
+  else
+    ok "No running Kairo dev server"
+  fi
+}
+
+wait_for_metro() {
+  local attempts="${1:-80}"
+  local i=0
+  while (( i < attempts )); do
+    if metro_http_ok; then
+      # Require two consecutive OK checks so we do not race a dying bundler.
+      sleep 0.35
+      if metro_http_ok; then
+        return 0
+      fi
+    fi
+    sleep 0.2
+    i=$((i + 1))
+  done
+  return 1
+}
+
+launch_metro_background() {
+  ensure_runtime_dirs
+  : >> "$METRO_LOG"
+
+  # nohup + disown keeps Metro alive after the launcher exits (macOS has no setsid).
+  # Invoke expo-start directly — skip npm wrapper for a stable child PID.
+  nohup env -u CI EXPO_NO_METRO_LAZY=1 \
+    bash -c "cd \"${APP_ROOT}\" && exec node scripts/expo-start.mjs start --lan" \
+    >> "$METRO_LOG" 2>&1 < /dev/null &
+
+  disown 2>/dev/null || true
+
+  # Wait for the real Expo CLI listener on :8081.
+  local i=0 child=""
+  while (( i < 60 )); do
+    if child="$(find_metro_pid 2>/dev/null || true)"; then
+      echo "$child" > "$PID_FILE"
+      echo "$child"
+      return 0
+    fi
+    sleep 0.25
+    i=$((i + 1))
+  done
+
+  return 1
+}
+
+cmd_start() {
+  ensure_project_ready
+  ensure_runtime_dirs
+
+  local udid=""
+  udid="$(resolve_simulator_udid || true)"
+  if [[ -z "$udid" ]]; then
+    err "No iOS Simulator device found. Install Xcode runtimes or open Simulator once."
+    exit 1
+  fi
+
+  if metro_http_ok; then
+    local pid=""
+    pid="$(find_metro_pid 2>/dev/null || true)"
+    ok "Metro already running${pid:+ (PID ${pid})}"
+    boot_simulator "$udid"
+    info "Opening Kairo on simulator..."
+    open_app_on_simulator "$udid" || warn "Could not deep-link — press i in Metro or reload Expo Go"
+    write_state "running" "ios" "${pid:-}" "healthy" "$udid"
+    return 0
+  fi
+
+  if pid="$(find_metro_pid 2>/dev/null || true)" && [[ -n "$pid" ]]; then
+    warn "Metro process found (PID ${pid}) but /status not ready — waiting..."
+    if wait_for_metro 40; then
+      ok "Metro healthy (PID ${pid})"
+      boot_simulator "$udid"
+      open_app_on_simulator "$udid" || true
+      write_state "running" "ios" "$pid" "healthy" "$udid"
+      return 0
+    fi
+    warn "Stale Metro process — restarting"
+    cmd_stop
+    sleep 0.35
+  fi
+
+  info "Starting Kairo (Metro + iOS Simulator)..."
+  boot_simulator "$udid" || warn "Simulator boot slow — continuing"
+
+  if ! metro_pid="$(launch_metro_background)"; then
+    err "Metro failed to start. Check: kairo logs"
+    tail -n 30 "$METRO_LOG" >&2 || true
+    write_state "error" "ios" "" "down" "$udid"
+    exit 1
+  fi
+
+  info "Waiting for Metro on port ${DEFAULT_PORT}..."
+  if ! wait_for_metro 100; then
+    err "Metro did not become healthy in time"
+    err "Check: kairo logs"
+    tail -n 40 "$METRO_LOG" >&2 || true
+    write_state "error" "ios" "$metro_pid" "down" "$udid"
+    exit 1
+  fi
+
+  # Give Metro a moment to accept bundle requests before deep-linking Expo Go.
+  sleep 1
+
+  info "Opening Kairo on simulator..."
+  open_app_on_simulator "$udid" || warn "Could not deep-link — open Expo Go manually or press i in Metro"
+
+  ok "Kairo running"
+  write_state "running" "ios" "$metro_pid" "healthy" "$udid"
+  echo ""
+  echo "═══════════════════════════════════════════════════════"
+  echo "  Kairo dev"
+  echo "═══════════════════════════════════════════════════════"
+  echo "  Metro:      http://127.0.0.1:${DEFAULT_PORT} (healthy)"
+  echo "  Simulator:  $(simulator_name "$udid" | sed 's/ (.*//')"
+  echo "  Logs:       ${METRO_LOG}"
+  echo "  Stop:       kairo stop"
+  echo "═══════════════════════════════════════════════════════"
+  echo ""
+}
+
+cmd_restart() {
+  cmd_stop
+  sleep 0.35
+  cmd_start
+}
+
+cmd_status() {
+  ensure_runtime_dirs
+  echo "Kairo — status"
+  echo "──────────────────────────────────────"
+  echo "Project:     ${APP_ROOT}"
+
+  if pid="$(find_metro_pid 2>/dev/null || true)"; then
+    echo "Metro PID:   ${pid}"
+  else
+    echo "Metro PID:   —"
+  fi
+
+  if metro_http_ok; then
+    echo "Metro:       healthy (/status OK on :${DEFAULT_PORT})"
+  else
+    echo "Metro:       down"
+  fi
+
+  local udid=""
+  udid="$(resolve_simulator_udid || true)"
+  if [[ -n "$udid" ]]; then
+    echo "Simulator:   $(simulator_name "$udid")"
+    if xcrun simctl list devices booted 2>/dev/null | grep -q "$udid"; then
+      echo "Sim state:   booted"
+    else
+      echo "Sim state:   shutdown"
+    fi
+  fi
+
+  if [[ -f "$STATE_FILE" ]]; then
+    echo "State file:  ${STATE_FILE}"
+  fi
+  echo "Logs:        ${LOG_DIR}/"
+}
+
+cmd_logs() {
+  ensure_runtime_dirs
+  local follow="${1:-false}"
+  if [[ ! -f "$METRO_LOG" ]]; then
+    warn "No logs yet. Run: kairo"
+    return 0
+  fi
+  if [[ "$follow" == "true" || "$follow" == "-f" ]]; then
+    tail -n 80 -f "$METRO_LOG"
+  else
+    tail -n 80 "$METRO_LOG"
+  fi
+}
+
+cmd_validate() {
+  info "Running quality gates (typecheck, lint, tests)…"
+  (unset NODE_ENV; cd "$APP_ROOT" && npm run validate) || {
+    err "validate failed"
+    exit 1
+  }
+  ok "All quality gates passed"
+}
+
+usage() {
+  cat <<'EOF'
+Kairo — launch the Expo dev server and iOS Simulator
+
+Usage:
+  kairo              Clean restart (stop + start) — default
+  kairo start        Start Metro if needed; open simulator
+  kairo restart      Stop any running instance, then start fresh
+  kairo stop         Stop Metro and Kairo bundler workers
+  kairo status       Show Metro / simulator status
+  kairo logs         Tail Metro log (kairo logs -f to follow)
+  kairo validate     Run typecheck + lint + tests (fast quality gate)
+
+Environment:
+  KAIRO_METRO_PORT   Metro port (default: 8081)
+EOF
+}
+
+main() {
+  local cmd="${1:-}"
+  case "$cmd" in
+    -h|--help|help) usage ;;
+    stop)           cmd_stop ;;
+    start)          cmd_start ;;
+    restart)        cmd_restart ;;
+    status)         cmd_status ;;
+    logs)           shift || true; cmd_logs "${1:-false}" ;;
+    validate)       cmd_validate ;;
+    "")             cmd_restart ;;
+    *)
+      err "Unknown command: $cmd"
+      usage
+      exit 1
+      ;;
+  esac
+}
+
+main "$@"

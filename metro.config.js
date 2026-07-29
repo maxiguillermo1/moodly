@@ -4,8 +4,11 @@
  */
 const crypto = require('crypto');
 const path = require('path');
+const { createRequire } = require('module');
 const { getDefaultConfig } = require('expo/metro-config');
-const { FileStore } = require('@expo/metro-config/file-store');
+
+const expoRequire = createRequire(require.resolve('expo/package.json'));
+const { FileStore } = expoRequire('@expo/metro-config/file-store');
 
 const projectRoot = __dirname;
 const { version: appVersion } = require('./package.json');

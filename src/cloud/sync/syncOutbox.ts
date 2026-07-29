@@ -82,14 +82,24 @@ function coalesceOps(ops: SyncOperation[]): SyncOperation[] {
   ];
 }
 
-export async function enqueueSyncOperation(op: SyncOperationInput): Promise<void> {
-  const full: SyncOperation = {
+function toSyncOperation(op: SyncOperationInput): SyncOperation {
+  return {
     ...op,
     id: op.id ?? newOpId(),
     enqueuedAtMs: op.enqueuedAtMs ?? Date.now(),
   };
+}
+
+export async function enqueueSyncOperation(op: SyncOperationInput): Promise<void> {
+  await enqueueSyncOperationsBatch([op]);
+}
+
+/** One outbox load + persist for many ops (avoids O(n) disk writes on first sign-in snapshot). */
+export async function enqueueSyncOperationsBatch(batch: SyncOperationInput[]): Promise<void> {
+  if (batch.length === 0) return;
+  const full = batch.map(toSyncOperation);
   const current = await loadOutbox();
-  const next = coalesceOps([...current, full]);
+  const next = coalesceOps([...current, ...full]);
   await persistOutbox(next);
 }
 

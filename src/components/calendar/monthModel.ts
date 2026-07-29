@@ -23,6 +23,7 @@ import {
   setWithLruEvict,
 } from '../../utils';
 import { logger } from '../../security';
+import { formatDayCellA11yLabel } from '../../system/accessibility';
 
 export type CalendarMoodStyle = 'dot' | 'fill';
 
@@ -44,6 +45,8 @@ export type MonthRenderModel = {
   moodGradeByDay: Array<MoodGrade | null>; // 1..31
   hasNoteByDay: boolean[]; // 1..31
   weekdayByDay: number[]; // 1..31 (0..6)
+  /** Precomputed VoiceOver labels for pressable full grids (index 1..31). */
+  a11yLabelByDay: ReadonlyArray<string>;
   // `pressByDay` is optional (mini grids do not handle presses).
   pressByDay: PressByDay | null;
   // Selected day (1..31) if selectedDate is in this month; otherwise 0.
@@ -73,6 +76,7 @@ const ALL_MOODGRADE_NULL_32: ReadonlyArray<MoodGrade | null> = Object.freeze(
 );
 const ALL_FALSE_32: ReadonlyArray<boolean> = Object.freeze(new Array(32).fill(false));
 const ALL_ZERO_32: ReadonlyArray<number> = Object.freeze(new Array(32).fill(0));
+const EMPTY_A11Y_32: ReadonlyArray<string> = Object.freeze(new Array(32).fill(''));
 
 function monthKeyOf(year: number, monthIndex0: number): string {
   const mm2 = String(monthIndex0 + 1).padStart(2, '0');
@@ -281,6 +285,26 @@ export function getMonthRenderModel(opts: {
   const sizeKey: MonthRenderModel['sizeKey'] =
     variant === 'full' ? 'full' : isFillTheme ? 'mini-fill' : 'mini-dot';
 
+  const monthName = monthNameLongEn(monthIndex0);
+  let a11yLabelByDay: ReadonlyArray<string> = EMPTY_A11Y_32;
+  if (onPressDate) {
+    const labels = new Array<string>(32);
+    labels[0] = '';
+    for (let d = 1; d <= 31; d++) {
+      labels[d] = formatDayCellA11yLabel({
+        weekdayIndex0: weekdayByDay[d] ?? 0,
+        monthName,
+        day: d,
+        year,
+        mood: moodGradeByDay[d],
+        hasNote: hasNoteByDay[d],
+        isToday: todayDay === d,
+        isSelected: selectedDay === d,
+      });
+    }
+    a11yLabelByDay = labels;
+  }
+
   const model: MonthRenderModel = {
     monthKey: mk,
     isoByDay,
@@ -288,12 +312,13 @@ export function getMonthRenderModel(opts: {
     moodGradeByDay,
     hasNoteByDay,
     weekdayByDay,
+    a11yLabelByDay,
     pressByDay,
     selectedDay,
     todayDay,
     isFillTheme,
     sizeKey,
-    monthName: monthNameLongEn(monthIndex0),
+    monthName,
     year,
     monthIndex0,
   };

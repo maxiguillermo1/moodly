@@ -1,22 +1,32 @@
 jest.mock('./moodStorage', () => ({
   getCalendarEntriesByMonthIndexSnapshot: jest.fn(),
+  getEntriesSessionEpoch: jest.fn(() => 1),
 }));
 
 jest.mock('./settingsStorage', () => ({
   getSettings: jest.fn(),
+  getSettingsSessionEpoch: jest.fn(() => 1),
 }));
 
-import { fetchMoodCalendarSnapshot } from './calendarSnapshot';
+import {
+  fetchMoodCalendarSnapshot,
+  invalidateMoodCalendarSnapshotWarmCacheForTests,
+  peekMoodCalendarSnapshotFromWarmCache,
+} from './calendarSnapshot';
 import type { AppSettings } from '../../types/settings.types';
 
-const { getCalendarEntriesByMonthIndexSnapshot } = require('./moodStorage') as {
+const { getCalendarEntriesByMonthIndexSnapshot, getEntriesSessionEpoch } = require('./moodStorage') as {
   getCalendarEntriesByMonthIndexSnapshot: jest.Mock;
+  getEntriesSessionEpoch: jest.Mock;
 };
-const { getSettings } = require('./settingsStorage') as { getSettings: jest.Mock };
+const { getSettings, getSettingsSessionEpoch } = require('./settingsStorage') as {
+  getSettings: jest.Mock;
+  getSettingsSessionEpoch: jest.Mock;
+};
 
 const baseSettings: AppSettings = {
   appearance: 'system',
-  calendarMoodStyle: 'dot',
+  calendarMoodStyle: 'fill',
   moodGradeColorStyle: 'solid',
   habitsEnabled: false,
   todayGoalsEnabled: false,
@@ -27,6 +37,9 @@ const baseSettings: AppSettings = {
 describe('fetchMoodCalendarSnapshot', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    invalidateMoodCalendarSnapshotWarmCacheForTests();
+    getEntriesSessionEpoch.mockReturnValue(1);
+    getSettingsSessionEpoch.mockReturnValue(1);
   });
 
   it('loads month index and settings in parallel and merges fields', async () => {
@@ -68,8 +81,56 @@ describe('fetchMoodCalendarSnapshot', () => {
     expect(getSettings).toHaveBeenCalledTimes(1);
     await Promise.all([p1, p2]);
 
+    invalidateMoodCalendarSnapshotWarmCacheForTests();
     await fetchMoodCalendarSnapshot();
     expect(getCalendarEntriesByMonthIndexSnapshot).toHaveBeenCalledTimes(2);
     expect(getSettings).toHaveBeenCalledTimes(2);
+  });
+
+  it('returns warm RAM snapshot when session epochs unchanged', async () => {
+    getCalendarEntriesByMonthIndexSnapshot.mockResolvedValue({});
+    getSettings.mockResolvedValue(baseSettings);
+
+    await fetchMoodCalendarSnapshot();
+    expect(getCalendarEntriesByMonthIndexSnapshot).toHaveBeenCalledTimes(1);
+
+    await fetchMoodCalendarSnapshot();
+    expect(getCalendarEntriesByMonthIndexSnapshot).toHaveBeenCalledTimes(1);
+    expect(getSettings).toHaveBeenCalledTimes(1);
+  });
+
+  it('refetches when entries session epoch changes', async () => {
+    getCalendarEntriesByMonthIndexSnapshot.mockResolvedValue({});
+    getSettings.mockResolvedValue(baseSettings);
+
+    await fetchMoodCalendarSnapshot();
+    getEntriesSessionEpoch.mockReturnValue(2);
+    await fetchMoodCalendarSnapshot();
+
+    expect(getCalendarEntriesByMonthIndexSnapshot).toHaveBeenCalledTimes(2);
+    expect(getSettings).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('peekMoodCalendarSnapshotFromWarmCache', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    invalidateMoodCalendarSnapshotWarmCacheForTests();
+    getEntriesSessionEpoch.mockReturnValue(1);
+    getSettingsSessionEpoch.mockReturnValue(1);
+  });
+
+  it('returns undefined before warm cache is built', () => {
+    expect(peekMoodCalendarSnapshotFromWarmCache()).toBeUndefined();
+  });
+
+  it('returns warm snapshot after fetch without extra IO', async () => {
+    getCalendarEntriesByMonthIndexSnapshot.mockResolvedValue({ '2026-01': {} });
+    getSettings.mockResolvedValue(baseSettings);
+
+    await fetchMoodCalendarSnapshot();
+    const peeked = peekMoodCalendarSnapshotFromWarmCache();
+    expect(peeked?.byMonthKey).toEqual({ '2026-01': {} });
+    expect(peeked?.calendarMoodStyle).toBe('fill');
   });
 });

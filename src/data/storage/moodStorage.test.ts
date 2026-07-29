@@ -223,6 +223,14 @@ describe('moodStorage reliability edge cases', () => {
     expect(stats.moodCounts.B).toBe(0);
   });
 
+  it('peekJournalEntriesSortedDescFromSessionCache returns undefined before warm', async () => {
+    const { peekJournalEntriesSortedDescFromSessionCache, primeEntriesSessionCache } =
+      require('./moodStorage') as typeof import('./moodStorage');
+    expect(peekJournalEntriesSortedDescFromSessionCache()).toBeUndefined();
+    await primeEntriesSessionCache();
+    expect(peekJournalEntriesSortedDescFromSessionCache()).toEqual([]);
+  });
+
   it('keeps journal sorted snapshot references stable until entries change', async () => {
     const { upsertEntry, getJournalEntriesSortedDescSnapshot } =
       require('./moodStorage') as typeof import('./moodStorage');

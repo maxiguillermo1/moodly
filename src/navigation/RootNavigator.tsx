@@ -4,6 +4,7 @@
  */
 
 import React from 'react';
+import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
@@ -11,6 +12,8 @@ import TodayScreen from '@features/today/screens/TodayScreen';
 import { FloatingTabBar } from './FloatingTabBar';
 import { TabBarAutoHideProvider } from './TabBarAutoHideContext';
 import { useAppTheme } from '../theme';
+import { useAuth } from '../hooks/useAuth';
+import AccountLoginScreen from '@features/account/screens/AccountLoginScreen';
 
 import type { RootStackParamList } from './types';
 
@@ -60,7 +63,7 @@ function MainTabs() {
 }
 
 /** Root stack with settings modal */
-export default function RootNavigator() {
+function MainStackNavigator() {
   const { groupedCanvas, a11y } = useAppTheme();
   const modalAnimation = a11y.reduceMotion ? 'none' : 'slide_from_bottom';
   const pushAnimation = a11y.reduceMotion ? 'none' : 'slide_from_right';
@@ -97,7 +100,6 @@ export default function RootNavigator() {
           presentation: 'card',
           animation: pushAnimation,
           gestureEnabled: true,
-          // iOS: full-width edge swipe to dismiss (feels native after replacing the settings modal).
           fullScreenGestureEnabled: true,
           animationTypeForReplace: 'push',
         }}
@@ -126,4 +128,39 @@ export default function RootNavigator() {
       />
     </Stack.Navigator>
   );
+}
+
+function AuthBootstrapLoading({ label = 'Loading account' }: { label?: string }): React.ReactElement {
+  const { groupedCanvas, system } = useAppTheme();
+  return (
+    <View style={[authGateStyles.loading, { backgroundColor: groupedCanvas }]}>
+      <ActivityIndicator color={system.blue} accessibilityLabel={label} />
+    </View>
+  );
+}
+
+const authGateStyles = StyleSheet.create({
+  loading: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+});
+
+/** Shows login gate when cloud is enabled and user is signed out; otherwise main app. */
+export default function RootNavigator() {
+  const { cloudEnabled, initialized, restoring, user, localOnlyMode, settingsLoaded } = useAuth();
+
+  if (cloudEnabled && !settingsLoaded) {
+    return <AuthBootstrapLoading label="Loading Kairo" />;
+  }
+
+  if (cloudEnabled && !user && !localOnlyMode) {
+    if (!initialized) {
+      return <AuthBootstrapLoading label="Loading sign in" />;
+    }
+    return <AccountLoginScreen />;
+  }
+
+  if (cloudEnabled && user && restoring) {
+    return <AuthBootstrapLoading label="Setting up your account" />;
+  }
+
+  return <MainStackNavigator />;
 }

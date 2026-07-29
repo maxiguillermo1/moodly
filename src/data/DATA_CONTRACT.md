@@ -128,6 +128,10 @@ interface AppSettings {
   todayTodoEnabled: boolean
   /** Order of extension slots on Today (permutation of `habits` | `goals` | `todo`). */
   todayExtensionsOrder: ('habits' | 'goals' | 'todo')[]
+  /** When true, optional cloud backup onboarding prompt was dismissed. */
+  cloudBackupPromptDismissed?: boolean
+  /** When true, user skipped cloud sign-in and uses Kairo local-only until they sign in. */
+  localOnlyMode?: boolean
 }
 ```
 

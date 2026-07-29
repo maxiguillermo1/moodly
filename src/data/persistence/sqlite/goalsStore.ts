@@ -6,6 +6,7 @@
 import type { Goal, GoalHistory, GoalsRecord } from '../../../types';
 import { isValidISODateKey } from '../../model/entry';
 import type { KairoSqliteDatabase } from './databaseTypes';
+import { runInKairoSqliteTransaction } from './sqliteWriteLock';
 
 const GOALS_SQLITE_RECORD_VERSION = 2 as const;
 
@@ -60,7 +61,7 @@ export async function clearGoalsSqlite(db: KairoSqliteDatabase): Promise<void> {
 
 export async function importGoalsRecordToSqlite(db: KairoSqliteDatabase, record: GoalsRecord): Promise<number> {
   let imported = 0;
-  await db.withTransactionAsync(async () => {
+  await runInKairoSqliteTransaction(db, async () => {
     await clearGoalsSqlite(db);
     for (const goal of Object.values(record.goalsById)) {
       if (!goal?.id) continue;

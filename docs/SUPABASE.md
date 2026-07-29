@@ -14,8 +14,23 @@
 
 ```bash
 EXPO_PUBLIC_SUPABASE_URL=https://YOUR_PROJECT.supabase.co
-EXPO_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
+EXPO_PUBLIC_SUPABASE_ANON_KEY=your-anon-or-publishable-key
 ```
+
+**CLI workflow (recommended for this repo):**
+
+```bash
+npx supabase login
+npx supabase link --project-ref YOUR_PROJECT_REF
+npx supabase db push          # applies supabase/migrations/
+npx supabase config push      # auth redirect kairo://auth/callback, email signup
+```
+
+Auth redirect and email settings live in [`supabase/config.toml`](../supabase/config.toml).
+
+**EAS builds:** set the same two `EXPO_PUBLIC_*` vars via `eas env:create` for `production`, `preview`, and `development` (project `@habibeatsteam/kairo`).
+
+**Cursor MCP (optional):** project-scoped Supabase MCP is configured in [`.cursor/mcp.json`](../.cursor/mcp.json). On first use, Cursor prompts Supabase OAuth (Settings → Tools & MCP). Scoped to `zmdmfjneqxrromayqhzw` only.
 
 5. Rebuild native app after adding `expo-apple-authentication` (EAS / dev client).
 
@@ -77,6 +92,10 @@ See `supabase/migrations/20260520100000_kairo_cloud_schema.sql`.
 3. Background push to Supabase (debounced ~400ms).
 4. Status: `syncing` → `saved` / `offline` (Settings + Account).
 
+**Domains wired to `syncBridge` (incremental push after local persist):** mood/journal, habit selections, tracked habits, goals, settings, reminders/tasks (metadata + day shards), insights reflection timing.
+
+**First sign-in snapshot** (`cloudSnapshotEnqueue`): uploads all domains above including every reminder day shard from `dayIndex`.
+
 ### Read path / recovery
 
 1. App launch or sign-in → `pullCloudDataToLocal` merges cloud into local cache.
@@ -111,6 +130,72 @@ See `supabase/migrations/20260520100000_kairo_cloud_schema.sql`.
 | `src/data/sync/syncBridge.ts` | Storage → outbox hooks |
 | `src/data/sync/cloudPullApplier.ts` | Pull → local storage |
 | `src/features/account/screens/AccountScreen.tsx` | Account UI |
+
+## Verification
+
+After setup, run:
+
+```bash
+npm run verify:supabase
+```
+
+Checks: env vars, all 10 Kairo tables via PostgREST, RLS (anon sees no rows), email sign-in, `delete_own_account` RPC registration.
+
+**CLI checks:**
+
+```bash
+npx supabase migration list --linked   # local === remote
+npx supabase inspect db table-stats --linked
+```
+
+**Cursor MCP:** [`.cursor/mcp.json`](../.cursor/mcp.json) — complete OAuth in Settings → Tools & MCP if tools are missing.
+
+## Apple & Google sign-in
+
+App code is wired (`authService.ts`, `AccountAuthForm`). Providers must be enabled in Supabase with OAuth credentials.
+
+Redirect URI for all OAuth: **`kairo://auth/callback`** (matches `app.config.ts` `scheme`).
+
+### Google
+
+1. [Google Cloud Console](https://console.cloud.google.com/) → APIs & Services → Credentials.
+2. Create **Web application** OAuth client:
+   - Authorized redirect URI: `https://zmdmfjneqxrromayqhzw.supabase.co/auth/v1/callback`
+3. (Optional) Create **iOS** client with bundle ID `com.maxiguillermo.kairo`.
+4. Supabase Dashboard → Auth → Google → enable, paste Web client ID + secret.
+   - Client IDs field: `WEB_ID,IOS_ID` (Web first). Enable **Skip nonce check** for mobile.
+5. Or add to `.env` and run `npm run configure:oauth` (see `.env.example`).
+
+### Apple
+
+**iOS (native — recommended):**
+
+1. Apple Developer → Identifiers → App ID `com.maxiguillermo.kairo` → enable **Sign in with Apple**.
+2. Supabase Dashboard → Auth → Apple → enable.
+3. **Client IDs:** `com.maxiguillermo.kairo` (+ `host.exp.Exponent` for Expo Go testing).
+4. No OAuth secret needed for native-only iOS (`signInWithIdToken` via `expo-apple-authentication`).
+5. `app.config.ts` sets `ios.usesAppleSignIn: true`.
+
+**Android (OAuth fallback):**
+
+Uses browser OAuth when Apple provider is enabled. Requires Apple Services ID + secret in Supabase (same as web OAuth setup).
+
+### Verify providers
+
+```bash
+npm run verify:supabase   # reports Apple/Google enabled status
+npm run configure:oauth   # push credentials from .env via Management API
+```
+
+UI only shows Apple/Google buttons when the provider is enabled on your Supabase project (`/auth/v1/settings`).
+
+## Auth providers status
+
+| Provider | App support | Supabase config |
+|----------|-------------|-----------------|
+| **Email** | Ready | Enabled via `supabase/config.toml` |
+| **Apple** | iOS native + Android OAuth | **Enabled** — `com.maxiguillermo.kairo`, `host.exp.Exponent` (run `npm run configure:oauth`) |
+| **Google** | OAuth (all platforms) | Web client ID + secret in Dashboard |
 
 ## Testing
 

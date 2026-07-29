@@ -13,20 +13,42 @@ import {
   clearCompletedDayTodos,
   deleteDayTodo,
   getDayTodosForDate,
+  getTasksCacheGeneration,
+  peekDayTodosFromSessionCache,
   reorderOpenDayTodos,
   setDayTodoDone,
   setDayTodoReminder,
 } from '../storage';
 
+function dayTodosSame(a: readonly DayTodoItem[], b: readonly DayTodoItem[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i += 1) {
+    const x = a[i]!;
+    const y = b[i]!;
+    if (
+      x.id !== y.id ||
+      x.title !== y.title ||
+      x.done !== y.done ||
+      x.sortIndex !== y.sortIndex ||
+      x.reminderMinutes !== y.reminderMinutes
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
 export function useDayTodos(date: string) {
-  const [items, setItems] = useState<readonly DayTodoItem[]>([]);
+  const [items, setItems] = useState<readonly DayTodoItem[]>(() => peekDayTodosFromSessionCache(date) ?? []);
   const [busy, setBusy] = useState(false);
   /** False until the first load for the current `date` finishes (focused). */
-  const [loaded, setLoaded] = useState(false);
+  const [loaded, setLoaded] = useState(() => peekDayTodosFromSessionCache(date) !== undefined);
   const isFocused = useIsFocused();
   const mountedRef = useRef(true);
   const requestIdRef = useRef(0);
   const dateRef = useRef(date);
+  const lastGenerationRef = useRef(-1);
+  const loadCountRef = useRef(0);
   dateRef.current = date;
   const enqueueRef = useRef(createSerialEnqueue());
 
@@ -39,31 +61,62 @@ export function useDayTodos(date: string) {
 
   useEffect(() => {
     requestIdRef.current += 1;
-    setLoaded(false);
+    const peeked = peekDayTodosFromSessionCache(date);
+    if (peeked !== undefined) {
+      setItems(peeked);
+      setLoaded(true);
+    } else {
+      setLoaded(false);
+    }
   }, [date]);
 
   const reload = useCallback(() => {
+    const generation = getTasksCacheGeneration();
+    if (lastGenerationRef.current === generation && loadCountRef.current > 0) {
+      return Promise.resolve();
+    }
+
     const reqId = ++requestIdRef.current;
+    loadCountRef.current += 1;
     return enqueueRef.current(async () => {
       const day = dateRef.current;
       try {
         const next = await getDayTodosForDate(day);
         if (!mountedRef.current || reqId !== requestIdRef.current) return;
-        setItems(next);
+        setItems((prev) => (dayTodosSame(prev, next) ? prev : next));
       } catch {
         if (!mountedRef.current || reqId !== requestIdRef.current) return;
         setItems([]);
       } finally {
-        if (mountedRef.current && reqId === requestIdRef.current) setLoaded(true);
+        if (mountedRef.current && reqId === requestIdRef.current) {
+          setLoaded(true);
+          lastGenerationRef.current = getTasksCacheGeneration();
+        }
       }
     });
   }, []);
 
   useEffect(() => {
     if (!isFocused) return;
-    const task = InteractionManager.runAfterInteractions(() => {
+
+    const peeked = peekDayTodosFromSessionCache(date);
+    if (peeked !== undefined) {
+      setItems((prev) => (dayTodosSame(prev, peeked) ? prev : peeked));
+      setLoaded(true);
+    }
+
+    const runReload = () => {
       void reload();
-    });
+    };
+
+    const generation = getTasksCacheGeneration();
+    const warmReturn = lastGenerationRef.current === generation && loadCountRef.current > 0;
+    if (warmReturn || peeked !== undefined) {
+      queueMicrotask(runReload);
+      return;
+    }
+
+    const task = InteractionManager.runAfterInteractions(runReload);
     return () => task.cancel();
   }, [isFocused, date, reload]);
 

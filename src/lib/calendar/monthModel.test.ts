@@ -82,4 +82,21 @@ describe('getMonthRenderModel', () => {
     });
     expect(m.moodGradeByDay[28]).toBe('B');
   });
+
+  it('precomputes accessibility labels when month is pressable', () => {
+    const onPressDate = jest.fn();
+    const m = getMonthRenderModel({
+      year: 2026,
+      monthIndex0: 4,
+      variant: 'full',
+      calendarMoodStyle: 'dot',
+      monthEntries: emptyEntries,
+      entriesRevision: 0,
+      todayIso: '2026-05-12',
+      selectedDate: '2026-05-12',
+      onPressDate,
+    });
+    expect(m.a11yLabelByDay[12]).toContain('Selected');
+    expect(m.a11yLabelByDay[12]).toContain('Today');
+  });
 });

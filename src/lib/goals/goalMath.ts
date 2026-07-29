@@ -183,6 +183,17 @@ export function sortGoalsForDisplay(goals: readonly Goal[]): Goal[] {
   });
 }
 
+/** Cheap identity for Goals tab focus reload — skips React commit when display order unchanged. */
+export function goalsDisplaySame(prev: readonly Goal[], next: readonly Goal[]): boolean {
+  if (prev.length !== next.length) return false;
+  for (let i = 0; i < prev.length; i++) {
+    const a = prev[i]!;
+    const b = next[i]!;
+    if (a.id !== b.id || a.updatedAt !== b.updatedAt || a.status !== b.status) return false;
+  }
+  return true;
+}
+
 export function todayGoalPreview(goals: readonly Goal[]): Goal[] {
   return sortGoalsForDisplay(goals.filter((goal) => goal.status === 'active')).slice(0, 3).map((goal) => ({
     ...goal,

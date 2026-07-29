@@ -9,8 +9,10 @@ import {
   Text,
   StyleSheet,
   AccessibilityInfo,
+  Dimensions,
+  type LayoutChangeEvent,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import Animated, {
   Extrapolate,
@@ -21,13 +23,16 @@ import Animated, {
 } from 'react-native-reanimated';
 import { MoodEntry } from '@/types';
 import { CalendarTimelineMonth, CapsuleButton } from '@/components';
-import { useAppTheme, getCalendarTextLimits, getMonthTimelineSpacing, spacing, typography } from '@/theme';
+import { useAppTheme, getCalendarTextLimits, spacing, typography } from '@/theme';
 import { getLastAllEntriesSource } from '@/storage/entries';
 import {
   MONTH_NAMES_EN_LONG,
   MonthItem,
   monthKey as monthKey2,
   formatDateToISO,
+  CALENDAR_MONTH_TIMELINE_HEADER_CHROME,
+  CALENDAR_MONTH_TIMELINE_LIST_PULL_UP_PX,
+  CALENDAR_MONTH_TIMELINE_TITLE_CARD_GAP_PX,
 } from '@/utils';
 import { logger } from '@/security';
 import { PerfProfiler, usePerfScreen, perfProbe } from '@/perf';
@@ -38,6 +43,7 @@ import {
   useCalendarMonthTimelineScroll,
   useCalendarEntryEdit,
 } from '@/hooks';
+import { useCoalescedEpoch } from '@/hooks/useCoalescedEpoch';
 import { useTodayKey } from '@/hooks/useTodayKey';
 import { haptics } from '@/system/haptics';
 import { CalendarEditModal } from '../components/CalendarEditModal';
@@ -54,6 +60,7 @@ export default function CalendarScreen() {
   usePerfScreen('CalendarScreen', { listIds: ['list.calendarMonthTimeline'] });
 
   const appTheme = useAppTheme();
+  const insets = useSafeAreaInsets();
   const sys = appTheme.system;
   const windowWidth = appTheme.windowWidth;
   const moodGradeColorStyle = appTheme.moodGradeColorStyle;
@@ -104,8 +111,20 @@ export default function CalendarScreen() {
   useShowTabBarOnScreenBlur(showTabBar);
   const { todayKey } = useTodayKey();
   const [calendarListEpoch, setCalendarListEpoch] = useState(0);
+  const [entriesListEpoch, scheduleEntriesListEpoch] = useCoalescedEpoch();
   const isFocusedRef = useRef(true);
   const deferredInteractionRef = useRef<{ cancel: () => void } | null>(null);
+
+  const estimatedListViewportHeight = useMemo(() => {
+    const windowH =
+      appTheme.windowHeight > 0 ? appTheme.windowHeight : Dimensions.get('window').height;
+    return Math.max(0, windowH - insets.top - CALENDAR_MONTH_TIMELINE_HEADER_CHROME);
+  }, [appTheme.windowHeight, insets.top]);
+  const [measuredListViewportHeight, setMeasuredListViewportHeight] = useState(0);
+  const listViewportHeight =
+    measuredListViewportHeight > 0 ? measuredListViewportHeight : estimatedListViewportHeight;
+
+  const scrollY = useSharedValue(0);
 
   const {
     visibleMonth,
@@ -123,6 +142,7 @@ export default function CalendarScreen() {
     AnimatedFlashList,
     keyExtractor,
     fullGridMetrics,
+    monthTimelineSpacing: monthPad,
     onCalendarCardInnerLayout,
     overrideItemLayout,
     clearLayoutCoalesce,
@@ -136,12 +156,25 @@ export default function CalendarScreen() {
       m: (initialAnchorDateRef.current as Date).getMonth(),
     },
     windowWidth: appTheme.windowWidth,
+    listViewportHeight,
     fontScale: appTheme.fontScale,
+    scrollY,
     tabBarOnScrollBeginDrag,
     tabBarOnScrollEndDrag,
     tabBarOnMomentumScrollBegin,
     tabBarOnMomentumScrollEnd,
   });
+
+  const onTimelineListLayout = useCallback(
+    (e: LayoutChangeEvent) => {
+      const h = Math.round(e.nativeEvent.layout.height);
+      if (h > 0) {
+        setMeasuredListViewportHeight((prev) => (prev !== h ? h : prev));
+      }
+      onListLayout();
+    },
+    [onListLayout]
+  );
 
   const {
     entriesByMonthKey,
@@ -156,6 +189,7 @@ export default function CalendarScreen() {
     todayKey,
     focusRefs: { isFocusedRef, deferredInteractionRef },
     onTodayKeyChangeWhileFocused: () => setCalendarListEpoch((x) => x + 1),
+    onSnapshotMutated: scheduleEntriesListEpoch,
     perfFlushReportTag: 'CalendarScreen.unmount',
     onBlurExtra: clearLayoutCoalesce,
   });
@@ -178,6 +212,7 @@ export default function CalendarScreen() {
     entriesRevisionRef,
     setEntriesByMonthKey,
     reduceMotion: rm,
+    onEntriesMutated: scheduleEntriesListEpoch,
   });
 
   // Year grid moved to `CalendarView` for performance.
@@ -219,7 +254,6 @@ export default function CalendarScreen() {
   const TITLE_TRANSLATE_Y = -16;
   const TITLE_SCALE_MIN = 0.82;
 
-  const scrollY = useSharedValue(0);
   const scrollHandler = useAnimatedScrollHandler({
     onScroll: (event) => {
       scrollY.value = event.contentOffset.y;
@@ -243,14 +277,19 @@ export default function CalendarScreen() {
     () => getCalendarTextLimits(appTheme.fontScale, appTheme.windowWidth),
     [appTheme.fontScale, appTheme.windowWidth]
   );
-  const monthPad = useMemo(
-    () => getMonthTimelineSpacing(appTheme.fontScale, appTheme.windowWidth),
-    [appTheme.fontScale, appTheme.windowWidth]
-  );
 
   const monthListSurfaceStyle = useMemo(
     () => ({ flex: 1 as const, backgroundColor: sys.secondaryBackground }),
     [sys.secondaryBackground]
+  );
+
+  /** Lifts the whole timeline (title + card); see CALENDAR_MONTH_TIMELINE_LIST_PULL_UP_PX. */
+  const monthTimelineLiftStyle = useMemo(
+    () => ({
+      flex: 1 as const,
+      transform: [{ translateY: CALENDAR_MONTH_TIMELINE_LIST_PULL_UP_PX }],
+    }),
+    []
   );
 
   const styles = useMemo(
@@ -276,11 +315,11 @@ export default function CalendarScreen() {
           ...typography.largeTitle,
           color: sys.label,
           paddingHorizontal: spacing[4],
-          paddingTop: spacing[2],
-          paddingBottom: spacing[3],
+          paddingTop: spacing[1],
+          paddingBottom: spacing[1],
         },
         largeTitleContainer: {
-          height: 56,
+          height: 42,
           justifyContent: 'flex-end',
         },
         monthTimeline: {
@@ -292,7 +331,7 @@ export default function CalendarScreen() {
         monthSectionTitle: {
           ...typography.title1,
           color: sys.label,
-          marginBottom: spacing[2],
+          marginBottom: CALENDAR_MONTH_TIMELINE_TITLE_CARD_GAP_PX,
         },
         calendarCard: {
           backgroundColor: sys.secondaryBackground,
@@ -322,7 +361,7 @@ export default function CalendarScreen() {
         <CalendarTimelineMonth
           item={item}
           monthEntries={monthEntries}
-          entriesRevision={entriesRevisionRef.current}
+          entriesRevision={entriesListEpoch}
           selectedForThisMonth={selectedForThisMonth}
           monthSectionTopPad={monthPad.monthSectionTop}
           monthSectionBottomPad={monthPad.monthSectionBottom}
@@ -348,6 +387,7 @@ export default function CalendarScreen() {
       calLimits.monthSectionTitle,
       entriesByMonthKey,
       fullGridMetrics,
+      entriesListEpoch,
       handleHapticSelect,
       handlePressDate,
       isDark,
@@ -371,14 +411,24 @@ export default function CalendarScreen() {
       selectedDate,
       todayKey,
       calendarMoodStyle,
-      entriesByMonthKey,
       fullGridLayout: fullGridMetrics,
-      entriesRevision: entriesRevisionRef.current,
+      entriesRevision: entriesListEpoch,
       calendarListEpoch,
       moodGradeColorStyle,
       isDark,
+      monthTimelineSpacing: monthPad,
     }),
-    [selectedDate, todayKey, calendarMoodStyle, entriesByMonthKey, fullGridMetrics, calendarListEpoch, moodGradeColorStyle, isDark]
+    [
+      selectedDate,
+      todayKey,
+      calendarMoodStyle,
+      fullGridMetrics,
+      entriesListEpoch,
+      calendarListEpoch,
+      moodGradeColorStyle,
+      isDark,
+      monthPad,
+    ]
   );
 
   return (
@@ -421,7 +471,8 @@ export default function CalendarScreen() {
 
       {/* Month timeline (months only; overlay header handles month label) */}
       <PerfProfiler id="list.calendarMonthTimeline">
-        <AnimatedFlashList
+        <View style={monthTimelineLiftStyle}>
+          <AnimatedFlashList
           // Key remount keeps initialScrollIndex deterministic when we reset the anchor (Today).
           key={timelineKey}
           ref={monthListRef}
@@ -429,7 +480,10 @@ export default function CalendarScreen() {
           data={monthsData}
           keyExtractor={keyExtractor}
           // FlashList v2 note: `estimatedItemSize` is deprecated/removed.
-          estimatedListSize={{ width: windowWidth, height: 800 }}
+          estimatedListSize={{
+            width: windowWidth,
+            height: Math.max(320, listViewportHeight),
+          }}
           // Phase 5 perf knobs (tuning): tighten render-ahead/batching to reduce work during active scroll.
           // Rollback: restore drawDistance={800} and remove batching props if blanking occurs.
           drawDistance={500}
@@ -439,7 +493,7 @@ export default function CalendarScreen() {
           // Phase 3: isolate scroll-path work; allow native to clip offscreen views.
           removeClippedSubviews
           overrideItemLayout={overrideItemLayout}
-          onLayout={onListLayout}
+          onLayout={onTimelineListLayout}
           initialScrollIndex={initialMonthIndex}
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.monthTimeline}
@@ -455,6 +509,7 @@ export default function CalendarScreen() {
           renderItem={renderMonthItem as any}
           extraData={monthListExtraData}
         />
+        </View>
       </PerfProfiler>
 
       <CalendarEditModal

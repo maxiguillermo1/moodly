@@ -107,7 +107,10 @@ export const CalendarTimelineMonth = React.memo(function CalendarTimelineMonth({
       >
         {title}
       </Text>
-      <View style={[s.calendarCard, { padding: monthCardPadding }]} onLayout={onCalendarCardInnerLayout}>
+      <View
+        style={[s.calendarCard, { padding: monthCardPadding }]}
+        onLayout={onCalendarCardInnerLayout}
+      >
         <WeekdayRow variant="full" fullGridLayout={fullGridMetrics} />
         <MonthGrid
           year={item.y}

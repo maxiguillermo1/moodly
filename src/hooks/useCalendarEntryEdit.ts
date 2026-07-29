@@ -19,6 +19,7 @@ export type CalendarEntryEditConfig = {
   entriesRevisionRef: MutableRefObject<number>;
   setEntriesByMonthKey: React.Dispatch<React.SetStateAction<Record<string, Record<string, MoodEntry>>>>;
   reduceMotion: boolean;
+  onEntriesMutated?: () => void;
 };
 
 export function useCalendarEntryEdit({
@@ -27,6 +28,7 @@ export function useCalendarEntryEdit({
   entriesRevisionRef,
   setEntriesByMonthKey,
   reduceMotion,
+  onEntriesMutated,
 }: CalendarEntryEditConfig) {
   const [selectedDate, setSelectedDate] = useState(initialSelectedDate);
   const selectedDateRef = useRef(selectedDate);
@@ -78,6 +80,7 @@ export function useCalendarEntryEdit({
         const mk = selectedDate.slice(0, 7);
         const monthMap = prev[mk] ?? {};
         entriesRevisionRef.current += 1;
+        onEntriesMutated?.();
         return { ...prev, [mk]: { ...monthMap, [selectedDate]: next } };
       });
     if (!reduceMotion) haptics.success();
@@ -99,7 +102,7 @@ export function useCalendarEntryEdit({
       .finally(() => {
         isSavingRef.current = false;
       });
-  }, [editMood, editNote, entriesRevisionRef, mountedRef, reduceMotion, selectedDate, setEntriesByMonthKey]);
+  }, [editMood, editNote, entriesRevisionRef, mountedRef, onEntriesMutated, reduceMotion, selectedDate, setEntriesByMonthKey]);
 
   return {
     selectedDate,

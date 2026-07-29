@@ -27,13 +27,11 @@ import {
   TodoTodaySettingsRow,
 } from '@/components';
 import {
-  clearAllUserData,
   exportUserDataJson,
-  getSettings,
   getMoodStats,
   importUserDataFromJson,
   pickJsonImport,
-  setCalendarMoodStyle,
+  clearAllUserJournalData,
   shareJsonExport,
 } from '@/storage';
 import { MOOD_GRADES, getMoodLabel, openExternalUrl } from '@/utils';
@@ -41,7 +39,7 @@ import { logger } from '@/security';
 import { LEGAL_URLS } from '@/constants';
 import { formatReleaseVersionLine } from '@/config/releaseMetadata';
 import { perfProbe, usePerfScreen } from '@/perf';
-import { CalendarMoodStyle, MoodGrade, MoodGradeColorStyle } from '@/types';
+import { MoodGrade, MoodGradeColorStyle } from '@/types';
 import { spacing, useAppTheme } from '@/theme';
 import { haptics } from '@/system/haptics';
 import { formatMoodA11yLabel } from '@/system/accessibility';
@@ -49,7 +47,7 @@ import { formatMoodA11yLabel } from '@/system/accessibility';
 export default function SettingsScreen() {
   usePerfScreen('Settings');
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const { cloudEnabled, user } = useAuth();
+  const { cloudEnabled, user, signOutUser } = useAuth();
   const { status: syncStatus } = useCloudSyncStatus();
   const {
     system: s,
@@ -87,7 +85,6 @@ export default function SettingsScreen() {
   const [moodCounts, setMoodCounts] = useState<Record<MoodGrade, number>>({
     'A+': 0, A: 0, B: 0, C: 0, D: 0, F: 0,
   });
-  const [calendarMoodStyle, setCalendarMoodStyleState] = useState<CalendarMoodStyle>('dot');
 
   const loadStatsCountRef = useRef(0);
   const didFlushPerfReportRef = useRef(false);
@@ -106,23 +103,11 @@ export default function SettingsScreen() {
     });
   }, []);
 
-  const loadTheme = useCallback(async () => {
-    const start = perfProbe.nowMs();
-    const settings = await getSettings();
-    setCalendarMoodStyleState(settings.calendarMoodStyle);
-    logger.perf('settings.loadTheme', {
-      phase: 'warm',
-      source: 'sessionCache',
-      durationMs: Number((perfProbe.nowMs() - start).toFixed(1)),
-    });
-  }, []);
-
   useFocusEffect(
     useCallback(() => {
       if (perfProbe.enabled) didFlushPerfReportRef.current = false;
       const task = InteractionManager.runAfterInteractions(() => {
         void loadStats();
-        void loadTheme();
       });
       return () => {
         task.cancel();
@@ -131,7 +116,7 @@ export default function SettingsScreen() {
           perfProbe.flushReport('SettingsScreen.blur');
         }
       };
-    }, [loadStats, loadTheme])
+    }, [loadStats])
   );
 
   const handleExportData = useCallback(() => {
@@ -177,9 +162,12 @@ export default function SettingsScreen() {
   }, [loadStats]);
 
   const handleClearData = useCallback(() => {
+    const cloudSignedIn = cloudEnabled && Boolean(user);
     Alert.alert(
       'Clear All Data',
-      'This will permanently delete all mood entries, habits, goals, and reminders on this device. This action cannot be undone.',
+      cloudSignedIn
+        ? 'This permanently deletes all mood, habit, goal, and reminder data on this device and in your cloud backup. Your account stays signed in.'
+        : 'This will permanently delete all mood entries, habits, goals, and reminders on this device. This action cannot be undone.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -189,9 +177,9 @@ export default function SettingsScreen() {
             void (async () => {
               try {
                 haptics.toggle();
-                await clearAllUserData();
+                await clearAllUserJournalData({ cloudUser: cloudSignedIn ? user : null });
                 await loadStats();
-                Alert.alert('Done', 'All data has been deleted.');
+                Alert.alert('Done', 'All journal data has been deleted.');
               } catch {
                 logger.warn('settings.clearAll.failed');
                 Alert.alert('Error', 'Failed to clear data. Please try again.');
@@ -201,7 +189,7 @@ export default function SettingsScreen() {
         },
       ]
     );
-  }, [loadStats]);
+  }, [cloudEnabled, loadStats, user]);
 
   const topMood = useMemo(() => {
     if (totalEntries === 0) return null;
@@ -269,6 +257,26 @@ export default function SettingsScreen() {
     haptics.select();
     await openExternalUrl(url, label);
   }, []);
+
+  const handleSignOut = useCallback(() => {
+    Alert.alert(
+      'Sign out',
+      'Local copies of your journal will be cleared from this device. Cloud data stays safe.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Sign out',
+          style: 'destructive',
+          onPress: () => {
+            haptics.select();
+            void signOutUser().catch(() => {
+              Alert.alert('Could not sign out', 'Please try again.');
+            });
+          },
+        },
+      ]
+    );
+  }, [signOutUser]);
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
@@ -367,43 +375,6 @@ export default function SettingsScreen() {
           <TodoTodaySettingsRow enabled={todayTodoEnabled} onToggle={setTodayTodoEnabled} isLast />
         </GroupedSection>
 
-        <GroupedSection
-          header="Theme"
-          footer="Calendar rendering: dot shows a small mood indicator under the day. Full color fills the day cell."
-        >
-          <GroupedRow
-            symbol={{ name: 'color-palette-outline', wellColor: s.purple }}
-            label="Full color days"
-            showChevron={false}
-            right={(
-              <Switch
-                value={calendarMoodStyle === 'fill'}
-                onValueChange={async (next) => {
-                  haptics.toggle();
-                  const style: CalendarMoodStyle = next ? 'fill' : 'dot';
-                  setCalendarMoodStyleState(style);
-                  try {
-                    await setCalendarMoodStyle(style);
-                  } catch {
-                    logger.warn('settings.setCalendarMoodStyle.failed', { style });
-                    Alert.alert('Error', 'Failed to save setting. Please try again.');
-                    const fresh = await getSettings().catch(() => null);
-                    if (fresh) setCalendarMoodStyleState(fresh.calendarMoodStyle);
-                  }
-                }}
-                trackColor={switchTrack}
-                ios_backgroundColor={switchIosBg}
-                thumbColor={switchThumb}
-                accessibilityLabel="Use full color calendar days"
-                accessibilityHint="Switches calendar mood markers between dots and filled day cells"
-                accessibilityState={{ checked: calendarMoodStyle === 'fill' }}
-              />
-            )}
-            isFirst
-            isLast
-          />
-        </GroupedSection>
-
         <GroupedSection header="Mood Breakdown">
           {MOOD_GRADES.map((grade, index) => {
             const count = moodCounts[grade];
@@ -464,8 +435,20 @@ export default function SettingsScreen() {
             accessibilityLabel="Account and cloud sync"
             accessibilityHint="Opens account sign in and sync settings"
             isFirst
-            isLast
+            isLast={!(cloudEnabled && user)}
           />
+          {cloudEnabled && user ? (
+            <GroupedRow
+              symbol={{ name: 'log-out-outline', wellColor: s.orange }}
+              label="Sign out"
+              destructive
+              showChevron={false}
+              onPress={handleSignOut}
+              accessibilityLabel="Sign out"
+              accessibilityHint="Signs out and returns to the sign in screen"
+              isLast
+            />
+          ) : null}
         </GroupedSection>
 
         <GroupedSection
@@ -499,7 +482,7 @@ export default function SettingsScreen() {
 
         <GroupedSection
           header="Data"
-          footer="Export creates a JSON backup on this device. Import restores from a Kairo export file. Clear All Data permanently deletes mood, habit, goal, and reminder data."
+          footer="Export creates a JSON backup on this device. Import restores from a Kairo export file. Clear All Data permanently deletes journal content locally and in the cloud when signed in."
         >
           <GroupedRow
             symbol={{ name: 'share-outline', wellColor: s.blue }}

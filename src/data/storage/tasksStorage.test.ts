@@ -185,3 +185,20 @@ describe('tasksStorage foundation', () => {
     expect(Object.keys(record.tasksById).filter((id) => id.startsWith('recurrence:r1:'))).toHaveLength(2);
   });
 });
+
+describe('tasksStorage session peek', () => {
+  beforeEach(async () => {
+    (globalThis as any).__KAIRO_CHAOS__ = undefined;
+    jest.resetModules();
+    const mod: any = require('@react-native-async-storage/async-storage');
+    await (mod?.default ?? mod).clear();
+  });
+
+  it('peekDayTodosFromSessionCache is undefined before warm, then returns items after load', async () => {
+    const tasks = require('./tasksStorage') as typeof import('./tasksStorage');
+    expect(tasks.peekDayTodosFromSessionCache('2026-06-01')).toBeUndefined();
+    await tasks.addTaskForDate('2026-06-01', 'Walk');
+    const peeked = tasks.peekDayTodosFromSessionCache('2026-06-01');
+    expect(peeked?.map((t) => t.title)).toEqual(['Walk']);
+  });
+});

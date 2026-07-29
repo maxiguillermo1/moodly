@@ -3,4 +3,9 @@
  * @module storage/calendar
  */
 
-export { fetchMoodCalendarSnapshot } from '../data/storage/calendarSnapshot';
+export {
+  fetchMoodCalendarSnapshot,
+  getMoodCalendarSnapshotEpoch,
+  peekMoodCalendarSnapshotFromWarmCache,
+  warmMoodCalendarSnapshotCacheIfPrimed,
+} from '../data/storage/calendarSnapshot';

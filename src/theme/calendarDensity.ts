@@ -33,6 +33,7 @@ import { spacing as spacingToken } from './spacing';
  * Sub-pixel padding nudges for month stacks (full calendar timeline).
  * Extra top inset letterboxes each row: when a month sits near the vertical middle of the
  * viewport, the grid can extend below the visible area while peek fade transitions stay the same.
+ * Bottom padding is expanded for the active list viewport via {@link resolveMonthTimelineSpacing}.
  */
 export function getMonthTimelineSpacing(fontScale: number, windowWidth: number): {
   monthSectionTop: number;

@@ -7,7 +7,11 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { InteractionManager } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import type { MoodEntry } from '../types';
-import { getJournalEntriesSortedDescSnapshot } from '../storage';
+import {
+  getJournalEntriesSortedDescSnapshot,
+  getEntriesSessionEpoch,
+  peekJournalEntriesSortedDescFromSessionCache,
+} from '../storage';
 import { entriesSameForJournal, isLatestRequest, nextRequestId } from '../utils';
 import { logger } from '../security';
 import { perfProbe } from '../perf';
@@ -21,14 +25,30 @@ export type JournalEntriesLoadResult = {
   reload: () => Promise<void>;
 };
 
+function hydrateFromSessionPeek(
+  setEntriesDesc: React.Dispatch<React.SetStateAction<MoodEntry[]>>,
+  setJournalLoadCompleted: React.Dispatch<React.SetStateAction<boolean>>
+): boolean {
+  const peeked = peekJournalEntriesSortedDescFromSessionCache();
+  if (peeked === undefined) return false;
+  setEntriesDesc((prev) => (entriesSameForJournal(prev, peeked) ? prev : peeked));
+  setJournalLoadCompleted(true);
+  return true;
+}
+
 export function useJournalEntriesLoad(screen = 'JournalScreen'): JournalEntriesLoadResult {
-  const [entriesDesc, setEntriesDesc] = useState<MoodEntry[]>([]);
-  const [journalLoadCompleted, setJournalLoadCompleted] = useState(false);
+  const [entriesDesc, setEntriesDesc] = useState<MoodEntry[]>(() => {
+    return peekJournalEntriesSortedDescFromSessionCache() ?? [];
+  });
+  const [journalLoadCompleted, setJournalLoadCompleted] = useState(
+    () => peekJournalEntriesSortedDescFromSessionCache() !== undefined
+  );
   const mountedRef = useRef(true);
   const focusedRef = useRef(false);
   const reloadReqIdRef = useRef(0);
   const loadCountRef = useRef(0);
   const didFlushPerfReportRef = useRef(false);
+  const lastEntriesEpochRef = useRef(-1);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -38,6 +58,11 @@ export function useJournalEntriesLoad(screen = 'JournalScreen'): JournalEntriesL
   }, []);
 
   const reload = useCallback(async () => {
+    const epoch = getEntriesSessionEpoch();
+    if (lastEntriesEpochRef.current === epoch && loadCountRef.current > 0) {
+      return;
+    }
+
     const reqId = nextRequestId(reloadReqIdRef);
     const phase = loadCountRef.current === 0 ? 'cold' : 'warm';
     loadCountRef.current += 1;
@@ -54,6 +79,7 @@ export function useJournalEntriesLoad(screen = 'JournalScreen'): JournalEntriesL
     } finally {
       if (mountedRef.current && isLatestRequest(reloadReqIdRef, reqId)) {
         setJournalLoadCompleted(true);
+        lastEntriesEpochRef.current = epoch;
       }
     }
   }, []);
@@ -62,9 +88,28 @@ export function useJournalEntriesLoad(screen = 'JournalScreen'): JournalEntriesL
     useCallback(() => {
       focusedRef.current = true;
       if (perfProbe.enabled) didFlushPerfReportRef.current = false;
-      const task = InteractionManager.runAfterInteractions(() => {
+
+      const sessionPrimed = hydrateFromSessionPeek(setEntriesDesc, setJournalLoadCompleted);
+
+      const runReload = () => {
         void reload();
-      });
+      };
+
+      const epoch = getEntriesSessionEpoch();
+      const warmReturn = lastEntriesEpochRef.current === epoch && loadCountRef.current > 0;
+      if (warmReturn || sessionPrimed) {
+        queueMicrotask(runReload);
+        return () => {
+          focusedRef.current = false;
+          nextRequestId(reloadReqIdRef);
+          if (perfProbe.enabled && !didFlushPerfReportRef.current) {
+            didFlushPerfReportRef.current = true;
+            queueMicrotask(() => perfProbe.flushReport(`${screen}.blur`));
+          }
+        };
+      }
+
+      const task = InteractionManager.runAfterInteractions(runReload);
       return () => {
         task.cancel();
         focusedRef.current = false;

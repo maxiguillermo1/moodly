@@ -4,16 +4,20 @@
  */
 
 import * as AppleAuthentication from 'expo-apple-authentication';
+import * as Crypto from 'expo-crypto';
 import * as WebBrowser from 'expo-web-browser';
-import * as Linking from 'expo-linking';
 import type { Session } from '@supabase/supabase-js';
 import { Platform } from 'react-native';
 import { getAuthRedirectUri, getSupabaseConfig } from '../config';
 import { getSupabaseClient, isSupabaseConfigured } from '../supabase/client';
 import { clearSupabaseSessionStorage } from '../supabase/sessionStorage';
+import { createSessionFromOAuthCallbackUrl } from './oauthCallback';
+import { clearCachedAuthSession, setCachedAuthSession } from './authSessionCache';
 import type { SignInResult } from './types';
 
 WebBrowser.maybeCompleteAuthSession();
+
+let interactiveAuthInFlight: Promise<SignInResult> | null = null;
 
 function requireClient() {
   const client = getSupabaseClient();
@@ -23,12 +27,44 @@ function requireClient() {
   return client;
 }
 
+async function createAppleNonce(): Promise<{ raw: string; hashed: string }> {
+  const raw = Crypto.randomUUID();
+  const hashed = await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, raw, {
+    encoding: Crypto.CryptoEncoding.HEX,
+  });
+  return { raw, hashed };
+}
+
+async function saveAppleFullNameIfPresent(
+  credential: AppleAuthentication.AppleAuthenticationCredential
+): Promise<void> {
+  if (!credential.fullName) return;
+  const parts = [
+    credential.fullName.givenName,
+    credential.fullName.middleName,
+    credential.fullName.familyName,
+  ].filter(Boolean);
+  if (parts.length === 0) return;
+
+  const client = getSupabaseClient();
+  if (!client) return;
+
+  await client.auth.updateUser({
+    data: {
+      full_name: parts.join(' '),
+      given_name: credential.fullName.givenName ?? undefined,
+      family_name: credential.fullName.familyName ?? undefined,
+    },
+  });
+}
+
 export async function restoreAuthSession(): Promise<Session | null> {
   if (!isSupabaseConfigured()) return null;
   const client = getSupabaseClient();
   if (!client) return null;
   const { data, error } = await client.auth.getSession();
   if (error) return null;
+  setCachedAuthSession(data.session);
   return data.session;
 }
 
@@ -46,27 +82,32 @@ export async function signInWithEmail(email: string, password: string): Promise<
 export async function signUpWithEmail(email: string, password: string): Promise<SignInResult> {
   try {
     const client = requireClient();
-    const { error } = await client.auth.signUp({ email: email.trim(), password });
+    const { data, error } = await client.auth.signUp({ email: email.trim(), password });
     if (error) return { ok: false, message: error.message };
+    if (!data.session) {
+      return {
+        ok: false,
+        message: 'Check your email to confirm your account, then sign in.',
+      };
+    }
     return { ok: true };
   } catch (e) {
     return { ok: false, message: e instanceof Error ? e.message : 'Sign up failed' };
   }
 }
 
-export async function signInWithApple(): Promise<SignInResult> {
-  if (Platform.OS !== 'ios') {
-    return { ok: false, message: 'Sign in with Apple is available on iOS only.' };
-  }
+async function signInWithAppleNative(): Promise<SignInResult> {
   try {
     const available = await AppleAuthentication.isAvailableAsync();
     if (!available) return { ok: false, message: 'Sign in with Apple is not available on this device.' };
 
+    const nonce = await createAppleNonce();
     const credential = await AppleAuthentication.signInAsync({
       requestedScopes: [
         AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
         AppleAuthentication.AppleAuthenticationScope.EMAIL,
       ],
+      nonce: nonce.hashed,
     });
     if (!credential.identityToken) {
       return { ok: false, message: 'Apple sign in did not return an identity token.' };
@@ -76,8 +117,11 @@ export async function signInWithApple(): Promise<SignInResult> {
     const { error } = await client.auth.signInWithIdToken({
       provider: 'apple',
       token: credential.identityToken,
+      nonce: nonce.raw,
     });
     if (error) return { ok: false, message: error.message };
+
+    await saveAppleFullNameIfPresent(credential);
     return { ok: true };
   } catch (e: unknown) {
     if (e && typeof e === 'object' && 'code' in e && (e as { code: string }).code === 'ERR_REQUEST_CANCELED') {
@@ -87,7 +131,24 @@ export async function signInWithApple(): Promise<SignInResult> {
   }
 }
 
-async function signInWithOAuthProvider(provider: 'google'): Promise<SignInResult> {
+function oauthBrowserMessage(resultType: WebBrowser.WebBrowserAuthSessionResult['type']): string {
+  if (resultType === 'locked') {
+    return 'Finish signing in in your browser, then return to Kairo.';
+  }
+  return 'Sign in cancelled.';
+}
+
+async function runInteractiveAuth(op: () => Promise<SignInResult>): Promise<SignInResult> {
+  if (interactiveAuthInFlight) return interactiveAuthInFlight;
+  interactiveAuthInFlight = op();
+  try {
+    return await interactiveAuthInFlight;
+  } finally {
+    interactiveAuthInFlight = null;
+  }
+}
+
+async function signInWithOAuthProvider(provider: 'google' | 'apple'): Promise<SignInResult> {
   try {
     const client = requireClient();
     const redirectTo = getAuthRedirectUri();
@@ -103,26 +164,32 @@ async function signInWithOAuthProvider(provider: 'google'): Promise<SignInResult
 
     const result = await WebBrowser.openAuthSessionAsync(data.url, redirectTo);
     if (result.type !== 'success' || !result.url) {
-      return { ok: false, message: 'Sign in cancelled.' };
+      return { ok: false, message: oauthBrowserMessage(result.type) };
     }
 
-    const parsed = Linking.parse(result.url);
-    const code = typeof parsed.queryParams?.code === 'string' ? parsed.queryParams.code : null;
-    if (!code) return { ok: false, message: 'OAuth callback missing code.' };
-
-    const { error: exchangeError } = await client.auth.exchangeCodeForSession(code);
-    if (exchangeError) return { ok: false, message: exchangeError.message };
-    return { ok: true };
+    return createSessionFromOAuthCallbackUrl(client, result.url);
   } catch (e) {
     return { ok: false, message: e instanceof Error ? e.message : 'OAuth sign in failed' };
   }
+}
+
+export async function signInWithApple(): Promise<SignInResult> {
+  if (!getSupabaseConfig().enabled) {
+    return { ok: false, message: 'Cloud sync is not configured.' };
+  }
+  return runInteractiveAuth(async () => {
+    if (Platform.OS === 'ios') {
+      return signInWithAppleNative();
+    }
+    return signInWithOAuthProvider('apple');
+  });
 }
 
 export async function signInWithGoogle(): Promise<SignInResult> {
   if (!getSupabaseConfig().enabled) {
     return { ok: false, message: 'Cloud sync is not configured.' };
   }
-  return signInWithOAuthProvider('google');
+  return runInteractiveAuth(() => signInWithOAuthProvider('google'));
 }
 
 export async function signOut(): Promise<void> {
@@ -130,6 +197,7 @@ export async function signOut(): Promise<void> {
   if (client) {
     await client.auth.signOut();
   }
+  clearCachedAuthSession();
   await clearSupabaseSessionStorage();
 }
 
@@ -145,11 +213,28 @@ export async function deleteCloudAccount(): Promise<SignInResult> {
   }
 }
 
-export function onAuthStateChange(callback: (session: Session | null) => void): () => void {
+export type AuthChangeEvent =
+  | 'INITIAL_SESSION'
+  | 'SIGNED_IN'
+  | 'SIGNED_OUT'
+  | 'TOKEN_REFRESHED'
+  | 'USER_UPDATED'
+  | 'PASSWORD_RECOVERY'
+  | string;
+
+export function onAuthStateChange(
+  callback: (event: AuthChangeEvent, session: Session | null) => void
+): () => void {
   const client = getSupabaseClient();
   if (!client) return () => {};
-  const { data } = client.auth.onAuthStateChange((_event, session) => {
-    callback(session);
+  const { data } = client.auth.onAuthStateChange((event, session) => {
+    callback(event, session);
   });
   return () => data.subscription.unsubscribe();
+}
+
+/** @internal Jest only */
+export function resetAuthServiceSessionStateForTests(): void {
+  interactiveAuthInFlight = null;
+  clearCachedAuthSession();
 }

@@ -162,9 +162,17 @@ function ensureEntriesByMonthCache(entries: MoodEntriesRecord): EntriesByMonthKe
   return grouped;
 }
 
+let entriesSessionEpoch = 0;
+
+/** Bumps when the in-memory entries cache identity changes (writes + cold load). */
+export function getEntriesSessionEpoch(): number {
+  return entriesSessionEpoch;
+}
+
 function setEntriesCache(next: MoodEntriesRecord) {
   entriesCache = next;
   entriesCountCache = Object.keys(next).length;
+  entriesSessionEpoch += 1;
 }
 
 function invalidateDerivedCaches() {
@@ -507,6 +515,16 @@ export async function getCalendarEntriesByMonthIndexSnapshot(): Promise<EntriesB
 }
 
 /**
+ * Sync read when `entriesCache` is already warm (startup warm / prior tab load).
+ * Returns `undefined` when the cache is not ready — caller should fall back to async snapshot.
+ */
+export function peekCalendarEntriesByMonthIndexFromSessionCache(): EntriesByMonthKey | undefined {
+  if (!entriesCache) return undefined;
+  lastAllEntriesSource = 'sessionCache';
+  return ensureEntriesByMonthCache(entriesCache);
+}
+
+/**
  * Get a single entry by date
  * @param date - Date string in YYYY-MM-DD format
  */
@@ -665,6 +683,16 @@ export async function getEntriesSortedDesc(): Promise<MoodEntry[]> {
 }
 
 /**
+ * Sync read when `entriesCache` is already warm (startup warm / prior tab load).
+ * Returns `undefined` when the cache is not ready — caller should fall back to async snapshot.
+ */
+export function peekJournalEntriesSortedDescFromSessionCache(): MoodEntry[] | undefined {
+  if (!entriesCache) return undefined;
+  lastAllEntriesSource = 'sessionCache';
+  return ensureEntriesSortedDescCache(entriesCache);
+}
+
+/**
  * Journal hot path: stable sorted-array identity until entries change (read-only).
  * Callers must not mutate returned rows; use `getEntriesSortedDesc` when a defensive copy is required.
  */
@@ -690,6 +718,15 @@ export async function getMoodStats(): Promise<{ totalEntries: number; moodCounts
  */
 export async function primeEntriesSessionCache(): Promise<void> {
   await loadEntriesCacheIfNeeded();
+}
+
+/**
+ * Warm journal sorted list when raw entries are already in RAM (no disk I/O).
+ * Safe to call from post-interaction idle hooks after `primeEntriesSessionCache`.
+ */
+export function warmJournalSortedDescCacheIfPrimed(): void {
+  if (!entriesCache) return;
+  ensureEntriesSortedDescCache(entriesCache);
 }
 
 /**
@@ -804,5 +841,6 @@ export function invalidateMoodEntriesSessionCache(): void {
   monthDateKeysIndexCache = null;
   yearIndexCache = null;
   entriesCountCache = null;
+  entriesSessionEpoch = 0;
 }
 

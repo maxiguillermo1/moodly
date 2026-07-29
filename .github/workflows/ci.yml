@@ -17,6 +17,7 @@ jobs:
     timeout-minutes: 20
     env:
       TZ: America/Los_Angeles
+      NODE_ENV: development
 
     steps:
       - name: Checkout

@@ -7,6 +7,7 @@ import type { HabitId } from '../../../lib/constants/habitsCatalog';
 import { isHabitId } from '../../../lib/constants/habitsCatalog';
 import { isValidISODateKey } from '../../model/entry';
 import type { KairoSqliteDatabase } from './databaseTypes';
+import { runInKairoSqliteTransaction } from './sqliteWriteLock';
 
 export type HabitSelectionsSqliteRecord = Record<string, HabitId[]>;
 
@@ -31,7 +32,7 @@ export async function importHabitSelectionsToSqlite(
   selections: HabitSelectionsSqliteRecord
 ): Promise<number> {
   let count = 0;
-  await db.withTransactionAsync(async () => {
+  await runInKairoSqliteTransaction(db, async () => {
     await clearHabitSelectionsSqlite(db);
     for (const [date, ids] of Object.entries(selections)) {
       if (!isValidISODateKey(date)) continue;

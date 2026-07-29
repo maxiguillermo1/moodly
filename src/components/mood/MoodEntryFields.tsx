@@ -25,7 +25,7 @@ export type MoodEntryFieldsProps = {
   footer?: React.ReactNode;
 };
 
-export function MoodEntryFields({
+export const MoodEntryFields = React.memo(function MoodEntryFields({
   selectedMood,
   onSelectMood,
   note,
@@ -100,4 +100,4 @@ export function MoodEntryFields({
       {footer}
     </>
   );
-}
+});

@@ -5,8 +5,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { InteractionManager, type LayoutChangeEvent, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
-import Animated from 'react-native-reanimated';
-import { FlashList } from '@shopify/flash-list';
+import Animated, { type SharedValue } from 'react-native-reanimated';
+import { FlashList, type FlashListRef } from '@shopify/flash-list';
 import {
   buildMonthWindow,
   computeMonthTimelineRowHeights,
@@ -15,9 +15,15 @@ import {
   CALENDAR_MONTH_WINDOW_NEAR_EDGE,
   computeMonthWindowExtension,
   monthWindowOffsetsKey,
+  resolveMonthTimelineSpacing,
+  resolveCardCenteredTimelineScrollOffset,
+  CALENDAR_MONTH_TIMELINE_LIST_CONTENT_PADDING_BOTTOM,
+  TIMELINE_DRAG_COMMIT_VY_PMS,
+  TIMELINE_VIEWABILITY_CONFIG,
+  scrollDragReleaseWillDecelerate,
 } from '../utils';
 import { buildFullGridMetrics } from '../components/calendar/fullGridLayout';
-import { getMonthTimelineSpacing, spacing } from '../theme';
+import { spacing } from '../theme';
 import { logger } from '../security';
 import { perfProbe } from '../perf';
 import { haptics } from '../system/haptics';
@@ -32,7 +38,10 @@ export type CalendarMonthTimelineScrollConfig = {
   deferredInteractionRef: React.MutableRefObject<{ cancel: () => void } | null>;
   initialVisibleMonth: VisibleMonth;
   windowWidth: number;
+  listViewportHeight: number;
   fontScale: number;
+  /** Keeps large-title collapse in sync after programmatic scroll. */
+  scrollY?: SharedValue<number>;
   screen?: string;
   tabBarOnScrollBeginDrag: () => void;
   tabBarOnScrollEndDrag: (e: NativeSyntheticEvent<NativeScrollEvent>) => void;
@@ -45,7 +54,7 @@ export type CalendarMonthTimelineScrollResult = {
   monthsData: MonthItem[];
   timelineKey: string;
   initialMonthIndex: number;
-  monthListRef: React.MutableRefObject<any>;
+  monthListRef: React.RefObject<FlashListRef<MonthItem> | null>;
   listReady: boolean;
   viewabilityConfig: { itemVisiblePercentThreshold: number };
   onViewableItemsChanged: (info: {
@@ -59,6 +68,7 @@ export type CalendarMonthTimelineScrollResult = {
   AnimatedFlashList: React.ComponentType<any>;
   keyExtractor: (item: MonthItem) => string;
   fullGridMetrics: ReturnType<typeof buildFullGridMetrics>;
+  monthTimelineSpacing: ReturnType<typeof resolveMonthTimelineSpacing>;
   onCalendarCardInnerLayout: (e: LayoutChangeEvent) => void;
   timelineRowHeights: number[];
   overrideItemLayout: (layout: { size?: number }, item: MonthItem, index: number) => void;
@@ -73,7 +83,9 @@ export function useCalendarMonthTimelineScroll({
   deferredInteractionRef,
   initialVisibleMonth,
   windowWidth,
+  listViewportHeight,
   fontScale,
+  scrollY,
   screen = 'CalendarScreen',
   tabBarOnScrollBeginDrag,
   tabBarOnScrollEndDrag,
@@ -87,7 +99,7 @@ export function useCalendarMonthTimelineScroll({
   const [listReady, setListReady] = useState(false);
   const listReadyRef = useRef(false);
   const recenterIndexRef = useRef<number | null>(null);
-  const monthListRef = useRef<any>(null);
+  const monthListRef = useRef<FlashListRef<MonthItem>>(null);
   const lastVisibleMonthKeyRef = useRef<string | null>(null);
   const pendingMonthRef = useRef<VisibleMonth | null>(null);
   const isUserScrollingRef = useRef(false);
@@ -96,7 +108,15 @@ export function useCalendarMonthTimelineScroll({
   const layoutCoalesceRafRef = useRef<number | null>(null);
   const pendingMeasuredInnerWRef = useRef<number | null>(null);
 
-  const monthPad = useMemo(() => getMonthTimelineSpacing(fontScale, windowWidth), [fontScale, windowWidth]);
+  const monthPad = useMemo(
+    () =>
+      resolveMonthTimelineSpacing({
+        fontScale,
+        windowWidth,
+        listViewportHeight,
+      }),
+    [fontScale, listViewportHeight, windowWidth]
+  );
 
   const monthsData: MonthItem[] = useMemo(() => {
     const startMs = perfProbe.enabled ? perfProbe.nowMs() : 0;
@@ -141,26 +161,7 @@ export function useCalendarMonthTimelineScroll({
     [reduceMotion]
   );
 
-  const maybeRecenterAfterWindowChange = useCallback(() => {
-    if (!listReadyRef.current || !isFocusedRef.current) return;
-    const idx = recenterIndexRef.current;
-    if (idx == null) return;
-    recenterIndexRef.current = null;
-    deferredInteractionRef.current?.cancel();
-    const task = InteractionManager.runAfterInteractions(() => {
-      if (!isFocusedRef.current) return;
-      if (perfProbe.enabled) perfProbe.setCulpritPhase(`${screen}.recenter`);
-      monthListRef.current?.scrollToIndex({ index: idx, animated: false });
-      perfProbe.enabled && perfProbe.clearCulpritAfterFrames(2);
-    });
-    deferredInteractionRef.current = task;
-  }, [deferredInteractionRef, isFocusedRef, screen]);
-
-  useEffect(() => {
-    maybeRecenterAfterWindowChange();
-  }, [listReady, maybeRecenterAfterWindowChange, monthsData.length]);
-
-  const viewabilityConfig = useMemo(() => ({ itemVisiblePercentThreshold: 20 }), []);
+  const viewabilityConfig = useMemo(() => TIMELINE_VIEWABILITY_CONFIG, []);
 
   const onViewableItemsChanged = useCallback(
     ({ viewableItems }: { viewableItems: Array<{ item: MonthItem; index: number | null }> }) => {
@@ -294,10 +295,14 @@ export function useCalendarMonthTimelineScroll({
 
   const onScrollEndDrag = useCallback(
     (e: NativeSyntheticEvent<NativeScrollEvent>) => {
-      isUserScrollingRef.current = false;
-      interactionQueue.setUserScrolling(false);
-      flushPendingMonth();
+      const vy = e.nativeEvent.velocity?.y;
+      const willDecelerate = scrollDragReleaseWillDecelerate(vy, TIMELINE_DRAG_COMMIT_VY_PMS);
       tabBarOnScrollEndDrag(e);
+      if (willDecelerate) {
+        // Keep layout coalescing + scroll-end commits deferred until momentum settles.
+        return;
+      }
+      flushPendingMonth();
     },
     [flushPendingMonth, tabBarOnScrollEndDrag]
   );
@@ -343,6 +348,63 @@ export function useCalendarMonthTimelineScroll({
     [fullGridMetrics, monthPad.monthCardPadding, monthPad.monthSectionBottom, monthPad.monthSectionTop, monthsData]
   );
 
+  const scrollToCardCenteredMonth = useCallback(
+    (index: number) => {
+      if (!listReadyRef.current || !isFocusedRef.current || listViewportHeight <= 0) return;
+      if (index < 0 || index >= monthsData.length) return;
+      const offset = resolveCardCenteredTimelineScrollOffset({
+        monthsData,
+        heights: timelineRowHeights,
+        index,
+        viewportHeight: listViewportHeight,
+        contentPaddingBottom: CALENDAR_MONTH_TIMELINE_LIST_CONTENT_PADDING_BOTTOM,
+        grid: fullGridMetrics,
+        monthCardPadding: monthPad.monthCardPadding,
+        monthSectionTopPad: monthPad.monthSectionTop,
+        monthSectionBottomPad: monthPad.monthSectionBottom,
+      });
+
+      monthListRef.current?.scrollToOffset({
+        offset,
+        animated: false,
+        skipFirstItemOffset: false,
+      });
+      if (scrollY) {
+        scrollY.value = offset;
+      }
+    },
+    [
+      fullGridMetrics,
+      isFocusedRef,
+      listViewportHeight,
+      monthPad.monthCardPadding,
+      monthPad.monthSectionBottom,
+      monthPad.monthSectionTop,
+      monthsData,
+      scrollY,
+      timelineRowHeights,
+    ]
+  );
+
+  const maybeRecenterAfterWindowChange = useCallback(() => {
+    if (!listReadyRef.current || !isFocusedRef.current) return;
+    const idx = recenterIndexRef.current;
+    if (idx == null) return;
+    recenterIndexRef.current = null;
+    deferredInteractionRef.current?.cancel();
+    const task = InteractionManager.runAfterInteractions(() => {
+      if (!isFocusedRef.current) return;
+      if (perfProbe.enabled) perfProbe.setCulpritPhase(`${screen}.recenter`);
+      scrollToCardCenteredMonth(idx);
+      perfProbe.enabled && perfProbe.clearCulpritAfterFrames(2);
+    });
+    deferredInteractionRef.current = task;
+  }, [deferredInteractionRef, isFocusedRef, screen, scrollToCardCenteredMonth]);
+
+  useEffect(() => {
+    maybeRecenterAfterWindowChange();
+  }, [listReady, maybeRecenterAfterWindowChange, monthsData.length]);
+
   const overrideItemLayout = useCallback(
     (layout: { size?: number }, _item: MonthItem, index: number) => {
       layout.size = timelineRowHeights[index] ?? 420;
@@ -367,6 +429,7 @@ export function useCalendarMonthTimelineScroll({
     AnimatedFlashList,
     keyExtractor,
     fullGridMetrics,
+    monthTimelineSpacing: monthPad,
     onCalendarCardInnerLayout,
     timelineRowHeights,
     overrideItemLayout,

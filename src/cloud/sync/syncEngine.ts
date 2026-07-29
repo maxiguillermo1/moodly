@@ -5,6 +5,8 @@
 
 import type { Session, User } from '@supabase/supabase-js';
 import { logger } from '../../lib/security/logger';
+import { restoreAuthSession } from '../auth/authService';
+import { getCachedAuthSession } from '../auth/authSessionCache';
 import { isSupabaseConfigured } from '../supabase/client';
 import { pullCloudDataToLocal, type CloudPullApplier } from './cloudPull';
 import { pushOutboxToCloud } from './cloudPush';
@@ -39,7 +41,12 @@ function scheduleRetry(): void {
   if (retryTimer) return;
   retryTimer = setTimeout(() => {
     retryTimer = null;
-    void runSyncCycle(null);
+    const cached = getCachedAuthSession();
+    if (cached) {
+      void runSyncCycle(cached);
+      return;
+    }
+    void restoreAuthSession().then((session) => runSyncCycle(session));
   }, RETRY_MS);
 }
 

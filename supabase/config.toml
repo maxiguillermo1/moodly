@@ -1,0 +1,29 @@
+# Kairo Supabase project — linked via `supabase link --project-ref zmdmfjneqxrromayqhzw`
+project_id = "zmdmfjneqxrromayqhzw"
+
+[db]
+major_version = 17
+
+[auth]
+site_url = "kairo://"
+additional_redirect_urls = ["kairo://auth/callback"]
+
+[auth.email]
+enable_signup = true
+enable_confirmations = false
+
+# Apple / Google — enable in Supabase Dashboard after creating OAuth credentials:
+# Dashboard → Authentication → Providers → Apple / Google
+# Redirect URL: kairo://auth/callback
+# Or run: npm run configure:oauth (requires SUPABASE_ACCESS_TOKEN + OAuth env vars)
+
+[auth.external.apple]
+enabled = true
+# Native iOS: bundle IDs in Client IDs (com.maxiguillermo.kairo, host.exp.Exponent for Expo Go)
+# OAuth (Android): set Services ID + secret via Dashboard or APPLE_AUTH_SERVICES_ID in .env
+
+[auth.external.google]
+enabled = false
+skip_nonce_check = true
+# client_id = "WEB_CLIENT_ID,IOS_CLIENT_ID,ANDROID_CLIENT_ID"
+# secret = "env(SUPABASE_AUTH_EXTERNAL_GOOGLE_CLIENT_SECRET)"

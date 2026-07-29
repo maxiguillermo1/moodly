@@ -6,6 +6,7 @@
 import type { MoodEntriesRecord, MoodEntry, MoodGrade } from '../../../types';
 import { isValidISODateKey, VALID_MOOD_SET } from '../../model/entry';
 import type { KairoSqliteDatabase } from './databaseTypes';
+import { runInKairoSqliteTransaction } from './sqliteWriteLock';
 
 type MoodEntryRow = {
   date: string;
@@ -68,7 +69,32 @@ export async function importMoodEntriesToSqlite(
   record: MoodEntriesRecord
 ): Promise<number> {
   let imported = 0;
-  await db.withTransactionAsync(async () => {
+  await runInKairoSqliteTransaction(db, async () => {
+    for (const entry of Object.values(record)) {
+      if (!entry) continue;
+      const normalized = rowToEntry({
+        date: entry.date,
+        mood: entry.mood,
+        note: entry.note,
+        created_at_ms: entry.createdAt,
+        updated_at_ms: entry.updatedAt,
+      });
+      if (!normalized) continue;
+      await upsertMoodEntrySqlite(db, normalized);
+      imported += 1;
+    }
+  });
+  return imported;
+}
+
+/** Atomically replace all mood rows (cloud pull / setAllEntries). */
+export async function replaceAllMoodEntriesInSqlite(
+  db: KairoSqliteDatabase,
+  record: MoodEntriesRecord
+): Promise<number> {
+  let imported = 0;
+  await runInKairoSqliteTransaction(db, async () => {
+    await clearMoodEntriesSqlite(db);
     for (const entry of Object.values(record)) {
       if (!entry) continue;
       const normalized = rowToEntry({

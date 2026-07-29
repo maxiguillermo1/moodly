@@ -9,6 +9,7 @@ import { DAY_TODO_MAX_ITEMS_PER_DAY } from '../../types';
 import { logger } from '../../lib/security/logger';
 import { isValidISODateKey } from '../model/entry';
 import { assertLocalPersistenceWritable, ensureLocalPersistenceReady } from '../persistence/bootstrap';
+import { notifyTaskDayChanged, notifyTasksRecordChanged } from '../sync/syncBridge';
 import { storage } from './asyncStorage';
 import { createDayTask, dayTodoItemToTask, nextRecurrenceDate, taskReminderForDay, taskToDayTodoItem } from '../../lib/todos/taskModel';
 
@@ -145,6 +146,8 @@ async function persistDayShardData(date: string, items: readonly DayTodoItem[]):
 async function persistDayShard(date: string, items: readonly DayTodoItem[]): Promise<void> {
   await persistDayShardData(date, items);
   await ensureDateInDayIndex(date);
+  const synced = dayShardCache.get(date);
+  if (synced) notifyTaskDayChanged(date, synced);
 }
 
 function normalizeSubtask(raw: unknown, fallbackSort: number, createdAt: number): TaskSubtask | null {
@@ -540,6 +543,7 @@ async function persistRecord(record: TasksRecord): Promise<void> {
   cachedDayIndexRecord = null;
   cachedTaskIdsByDate = null;
   cache = safeNext;
+  notifyTasksRecordChanged(safeNext);
 }
 
 function taskIdsByDate(record: TasksRecord): Map<string, string[]> {
@@ -656,6 +660,36 @@ export async function generateDueTaskRecurrences(
     if (processedTemplates > 0) await persistRecord(record);
     return { processedTemplates, generatedOccurrences };
   });
+}
+
+
+/** Session write generation — stable across tab switches until tasks mutate. */
+export function getTasksCacheGeneration(): number {
+  return cacheGeneration;
+}
+
+/**
+ * Sync read from warmed RAM (day shard or loaded tasks record).
+ * `undefined` = store not primed yet; `[]` = primed with no items for this day.
+ */
+export function peekDayTodosFromSessionCache(date: string): DayTodoItem[] | undefined {
+  if (!isValidISODateKey(date)) return [];
+  const cached = dayShardCache.get(date);
+  if (cached) return cached.map(cloneDayItem);
+  if (cache) {
+    const items = dayItemsFromRecord(cache, date);
+    if (items.length > 0) dayShardCache.set(date, items);
+    return items.map(cloneDayItem);
+  }
+  return undefined;
+}
+
+/** Preload one day shard into RAM when the tasks record is already warm. */
+export function warmDayTodosCacheIfPrimed(date: string): void {
+  if (!isValidISODateKey(date) || !cache) return;
+  if (dayShardCache.has(date)) return;
+  const items = dayItemsFromRecord(cache, date);
+  if (items.length > 0) dayShardCache.set(date, items);
 }
 
 export async function getTasksForDate(date: string): Promise<DayTodoItem[]> {
@@ -777,6 +811,11 @@ export function invalidateTasksSessionCache(): void {
 /** Cloud sync: read tasks metadata record snapshot. */
 export async function getTasksRecordSnapshot(): Promise<TasksRecord> {
   return cloneRecord(await getAllTasksRecord());
+}
+
+/** Cloud sync: local calendar day keys with reminder shards. */
+export async function getTaskDayIndexSnapshot(): Promise<string[]> {
+  return [...(await getDayIndex())];
 }
 
 /** Cloud sync: replace tasks metadata (during pull). */

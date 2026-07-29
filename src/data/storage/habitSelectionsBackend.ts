@@ -11,6 +11,7 @@ import {
   persistHabitSelectionsToSqlite,
 } from '../persistence/sqlite/habitSelectionsStore';
 import { resolveHabitSelectionsBackend } from '../persistence/sqlite/habitsStorageBackend';
+import { withKairoSqliteWriteLock } from '../persistence/sqlite/sqliteWriteLock';
 import { storage } from './asyncStorage';
 import type { HabitSelectionsRecord } from './habitSelectionsStorage';
 
@@ -42,7 +43,9 @@ export async function persistHabitSelectionsJsonToDisk(json: string, selections:
 export async function clearHabitSelectionsOnDisk(): Promise<void> {
   if (await usesSqlite()) {
     const db = await ensureKairoSqliteReady();
-    await clearHabitSelectionsSqlite(db);
+    await withKairoSqliteWriteLock(async () => {
+      await clearHabitSelectionsSqlite(db);
+    });
     return;
   }
   await storage.removeItem(HABIT_SELECTIONS_STORAGE_KEY);
@@ -52,7 +55,9 @@ export async function quarantineRawHabitSelectionsJson(rawJson: string, backupKe
   await storage.setItem(backupKey, rawJson);
   if (await usesSqlite()) {
     const db = await ensureKairoSqliteReady();
-    await clearHabitSelectionsSqlite(db);
+    await withKairoSqliteWriteLock(async () => {
+      await clearHabitSelectionsSqlite(db);
+    });
     return;
   }
   await storage.setItem(HABIT_SELECTIONS_STORAGE_KEY, JSON.stringify({ v: 3, selections: {}, toggleTotals: {} }));

@@ -161,9 +161,18 @@ Reminders use **in-app** time cues only — no `expo-notifications`.
 
 ## Authentication & accounts
 
-**Not applicable.** Kairo has **no login**, **no tokens**, and **no Kairo cloud account**.  
+**Optional.** Kairo works fully offline without an account. When `EXPO_PUBLIC_SUPABASE_URL` and `EXPO_PUBLIC_SUPABASE_ANON_KEY` are set at build time:
 
-**Data deletion (store compliance):** Settings → **Clear All Data** erases local mood/habit/goal/reminder stores (equivalent to “delete my data” for a local-only app).
+- Users may sign in via Settings → **Account** (Apple, Google, or email)
+- Session tokens persist in **Expo SecureStore**
+- Journal data syncs to **Supabase Postgres** with RLS
+
+Setup: [`SUPABASE.md`](./SUPABASE.md). Apply schema from `supabase/migrations/` before enabling auth in production.
+
+**Data deletion (store compliance):**
+
+- **Local only:** Settings → **Clear All Data**
+- **Cloud account:** Settings → Account → **Delete account** (RPC `delete_own_account`)
 
 ---
 

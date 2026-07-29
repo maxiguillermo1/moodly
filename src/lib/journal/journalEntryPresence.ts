@@ -27,6 +27,14 @@ export type JournalEntryPresence = {
   weekdaySet: ReadonlySet<number>;
 };
 
+export const EMPTY_JOURNAL_ENTRY_PRESENCE: JournalEntryPresence = {
+  moodsWithEntries: [],
+  weekdaysWithEntries: [],
+  monthKeysWithEntries: [],
+  monthKeysSet: new Set(),
+  weekdaySet: new Set(),
+};
+
 /**
  * O(n) scan — replaces repeated `build*Sections` + `.some` / `.filter` on header taps.
  * `entries` should already be newest-first (storage snapshot); order does not affect sets.

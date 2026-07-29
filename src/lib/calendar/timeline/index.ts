@@ -10,6 +10,7 @@ export * from './windowExtendPlan';
 export * from './flashListLayout';
 export * from './timelineMonthRowMetrics';
 export * from './computeCardCenteredTimelineScrollOffset';
+export * from './resolveMonthTimelineSpacing';
 export * from './scrollGesture';
 export * from './moodEntriesLookup';
 export * from './monthListExtraData';

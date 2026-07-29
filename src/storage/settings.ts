@@ -11,4 +11,6 @@ export {
   setTodayGoalsEnabled,
   setTodayTodoEnabled,
   bumpTodayExtensionStackOrder,
+  setCloudBackupPromptDismissed,
+  setLocalOnlyMode,
 } from '../data/storage/settingsStorage';

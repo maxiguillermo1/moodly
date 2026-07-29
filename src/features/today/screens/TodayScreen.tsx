@@ -155,7 +155,7 @@ export default function TodayScreen() {
       return () => {
         clearSaveMessageTimeout();
       };
-    }, [clearSaveMessageTimeout, load, today])
+    }, [clearSaveMessageTimeout, load])
   );
 
   useEffect(() => {
@@ -174,8 +174,6 @@ export default function TodayScreen() {
 
   const scrollBody = (
     <>
-      <ScreenHeader title="Today" contentPaddingHorizontal={todayGutter} />
-
       <View style={styles.sheet}>
         <View style={styles.sheetHeader}>
           <Text style={styles.sheetTitle} maxFontSizeMultiplier={1.32}>
@@ -226,6 +224,7 @@ export default function TodayScreen() {
       keyboardShouldPersistTaps="handled"
       keyboardDismissMode="interactive"
       showsVerticalScrollIndicator={false}
+      contentInsetAdjustmentBehavior="never"
       automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}
       onScrollBeginDrag={onScrollBeginDrag}
       onScrollEndDrag={onScrollEndDrag}
@@ -238,6 +237,7 @@ export default function TodayScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
+      <ScreenHeader title="Today" contentPaddingHorizontal={todayGutter} />
       {Platform.OS === 'ios' ? scroll : <KeyboardAvoidingView style={styles.flex} behavior="height">{scroll}</KeyboardAvoidingView>}
     </SafeAreaView>
   );

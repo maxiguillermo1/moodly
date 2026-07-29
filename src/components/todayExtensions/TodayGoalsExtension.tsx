@@ -13,7 +13,7 @@ import { useExtensionsPolicy } from '../../theme/ExtensionsPolicyContext';
 import { useDayExtensionsHost } from '../../extensions/DayExtensionsHostContext';
 import { Touchable } from '../../ui/Touchable';
 import { haptics } from '../../system/haptics';
-import { getTodayGoalSummaries, type GoalSummary } from '../../storage';
+import { getTodayGoalSummaries, peekTodayGoalSummariesFromSessionCache, type GoalSummary } from '../../storage';
 
 export type TodayGoalsExtensionProps = {
   /** Local calendar day key passed to Goals when opened from a day editor. */
@@ -32,21 +32,40 @@ export function TodayGoalsExtension({
   const { todayGoalsEnabled } = useExtensionsPolicy();
   const { onBeforeDetailNavigate } = useDayExtensionsHost();
   const { system: s } = useAppTheme();
-  const [goals, setGoals] = useState<GoalSummary[]>([]);
   const stacked = layout === 'stack';
+  const [goals, setGoals] = useState<GoalSummary[]>(() => peekTodayGoalSummariesFromSessionCache(layout === 'stack' ? 2 : 3) ?? []);
 
   useEffect(() => {
     let cancelled = false;
     if (!todayGoalsEnabled) return;
-    const task = InteractionManager.runAfterInteractions(() => {
-      void getTodayGoalSummaries(stacked ? 2 : 3)
+
+    const limit = stacked ? 2 : 3;
+    const peeked = peekTodayGoalSummariesFromSessionCache(limit);
+    if (peeked) {
+      setGoals((prev) => {
+        if (prev.length === peeked.length && prev.every((g, i) => g.id === peeked[i]?.id)) return prev;
+        return peeked;
+      });
+    }
+
+    const runFetch = () => {
+      void getTodayGoalSummaries(limit)
         .then((next) => {
           if (!cancelled) setGoals(next);
         })
         .catch(() => {
           if (!cancelled) setGoals([]);
         });
-    });
+    };
+
+    if (peeked !== undefined) {
+      queueMicrotask(runFetch);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    const task = InteractionManager.runAfterInteractions(runFetch);
     return () => {
       cancelled = true;
       task.cancel();

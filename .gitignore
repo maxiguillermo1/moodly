@@ -27,6 +27,22 @@ android/
 .env.test.local
 .env.production.local
 
+# Supabase CLI local link state
+supabase/.temp/
+
+# Agent skills (local install via npx skills add)
+.agents/
+skills-lock.json
+
+# Local dev runtime (kairo CLI logs/pids)
+.runtime/
+
+# Bundled Expo Go app (large binary; install via Expo instead)
+Expo-Go-*.tar.app/
+
+# Cursor local MCP config
+.cursor/
+
 # Editor
 .vscode/
 .idea/

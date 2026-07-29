@@ -8,12 +8,32 @@
  */
 
 import { logger } from '../../lib/security/logger';
-import { primeEntriesSessionCache, getEntriesSessionCacheDiagnostics } from './moodStorage';
+import {
+  primeEntriesSessionCache,
+  warmJournalSortedDescCacheIfPrimed,
+  getEntriesSessionCacheDiagnostics,
+} from './moodStorage';
+import { warmMoodCalendarSnapshotCacheIfPrimed } from './calendarSnapshot';
 import { getSettings } from './settingsStorage';
+import { getGoals } from './goalsStorage';
+import { getTrackedHabitIds } from './habitTrackingStorage';
+import { getHabitSelectionsRecordSnapshot } from './habitSelectionsStorage';
+import { warmDayTodosCacheIfPrimed } from './tasksStorage';
+import { getToday } from '../../lib/utils/date';
 
 export async function warmSessionStore(): Promise<void> {
-  // Light warm: raw entries + settings only. Derived calendar/journal indexes build when those tabs open.
-  await Promise.all([primeEntriesSessionCache(), getSettings()]);
+  const today = getToday();
+  // Light warm: entries, settings, goals, habits, tasks. Derived views prebuilt in RAM so tab switches are instant.
+  await Promise.all([
+    primeEntriesSessionCache(),
+    getSettings(),
+    getGoals(),
+    getTrackedHabitIds(),
+    getHabitSelectionsRecordSnapshot(),
+  ]);
+  warmJournalSortedDescCacheIfPrimed();
+  warmMoodCalendarSnapshotCacheIfPrimed();
+  warmDayTodosCacheIfPrimed(today);
 }
 
 export function logSessionStoreDiagnostics(opts?: { totalMs?: number }): void {

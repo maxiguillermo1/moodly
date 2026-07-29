@@ -10,6 +10,7 @@ import {
   deriveCurrentValueFromHistory,
   goalLoggedDayCount,
   goalProgressPercent,
+  goalsDisplaySame,
   mergeGoalHistoryByDate,
 } from './goalMath';
 
@@ -203,5 +204,21 @@ describe('large merged history', () => {
     );
     expect(Date.now() - t0).toBeLessThan(5000);
     expect(m.length).toBeLessThanOrEqual(28);
+  });
+});
+
+describe('goalsDisplaySame', () => {
+  it('returns true when display order and identity fields match', () => {
+    const a = baseGoal({ id: 'a', updatedAt: 10, status: 'active' });
+    const b = baseGoal({ id: 'a', updatedAt: 10, status: 'active', title: 'Different title' });
+    expect(goalsDisplaySame([a], [b])).toBe(true);
+  });
+
+  it('returns false when length, id, updatedAt, or status differ', () => {
+    const a = baseGoal({ id: 'a', updatedAt: 10 });
+    const b = baseGoal({ id: 'b', updatedAt: 10 });
+    expect(goalsDisplaySame([a], [b])).toBe(false);
+    expect(goalsDisplaySame([a], [baseGoal({ id: 'a', updatedAt: 11 })])).toBe(false);
+    expect(goalsDisplaySame([], [a])).toBe(false);
   });
 });

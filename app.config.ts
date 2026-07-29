@@ -53,6 +53,7 @@ const config: ExpoConfig = {
     bundleIdentifier: 'com.maxiguillermo.kairo',
     buildNumber: '1',
     supportsTablet: true,
+    usesAppleSignIn: true,
     infoPlist: {
       CFBundleDisplayName: IS_DEV_CLIENT ? 'Kairo Dev' : 'Kairo',
       ITSAppUsesNonExemptEncryption: false,
@@ -73,8 +74,7 @@ const config: ExpoConfig = {
   extra: {
     appVariant: APP_VARIANT,
     eas: {
-      // Set after `eas init` — do not commit guessed UUIDs.
-      // projectId: 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx',
+      projectId: 'c85f5eeb-f78c-42d4-81b5-bb72a6774809',
     },
   },
 };
