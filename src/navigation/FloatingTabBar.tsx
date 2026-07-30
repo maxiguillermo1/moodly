@@ -313,8 +313,6 @@ function FloatingTabBarInner({ state, navigation, descriptors, insets }: BottomT
     (route: (typeof state.routes)[number], index: number, isFocused: boolean) => {
       if (isFocused) return;
 
-      recordTabPress(route.name);
-
       const event = navigation.emit({
         type: 'tabPress',
         target: route.key,
@@ -322,6 +320,8 @@ function FloatingTabBarInner({ state, navigation, descriptors, insets }: BottomT
       });
 
       if (event.defaultPrevented) return;
+
+      recordTabPress(route.name);
 
       // Optimistic pill slide — instant feedback; useLayoutEffect syncs when index changes.
       movePillToIndex(index, !a11y.reduceMotion);
