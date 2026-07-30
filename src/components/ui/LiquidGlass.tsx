@@ -131,12 +131,18 @@ export const LiquidGlass = React.memo(function LiquidGlass({
     <View pointerEvents="box-none" style={[containerStyle, style]}>
       {showBlur ? (
         <>
-          <BlurViewAny tint={resolvedTint} intensity={blurIntensity} style={StyleSheet.absoluteFill} />
+          <BlurViewAny
+            tint={resolvedTint}
+            intensity={blurIntensity}
+            style={StyleSheet.absoluteFill}
+            pointerEvents="none"
+          />
           {secondaryBlurIntensity > 0 ? (
             <BlurViewAny
               tint={resolvedTint}
               intensity={secondaryBlurIntensity}
               style={StyleSheet.absoluteFill}
+              pointerEvents="none"
             />
           ) : null}
         </>

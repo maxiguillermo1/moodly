@@ -4,7 +4,6 @@
  */
 
 import React from 'react';
-import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
@@ -15,14 +14,7 @@ import { useAppTheme } from '../theme';
 import { useAuth } from '../hooks/useAuth';
 import AccountLoginScreen from '@features/account/screens/AccountLoginScreen';
 
-import type { RootStackParamList } from './types';
-
-// Type definitions
-export type MainTabParamList = {
-  Calendar: undefined;
-  Today: undefined;
-  Journal: undefined;
-};
+import type { RootStackParamList, MainTabParamList } from './types';
 
 const Tab = createBottomTabNavigator<MainTabParamList>();
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -39,23 +31,36 @@ function MainTabs() {
         screenOptions={{
           headerShown: false,
           tabBarHideOnKeyboard: true,
-          /** No cross-fade/shift between scenes — instant switch. */
+          tabBarStyle: {
+            position: 'absolute',
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'transparent',
+            borderTopWidth: 0,
+            height: 0,
+            elevation: 0,
+            zIndex: 0,
+          },
+          sceneStyle: {
+            backgroundColor: 'transparent',
+          },
           animation: 'none',
-          /** Lazy mount: eager-mounting all tabs + native `activityState` caused blank/black first paint on some builds. */
           lazy: true,
-          /** Keep tab roots live; FlashList thaw hitches were the reason freeze was disabled per-tab. */
-          freezeOnBlur: false,
+          freezeOnBlur: true,
         }}
         initialRouteName="Today"
       >
         <Tab.Screen
           name="Calendar"
           getComponent={() => require('./CalendarStack').CalendarStack}
+          options={{ freezeOnBlur: false }}
         />
         <Tab.Screen name="Today" component={TodayScreen} />
         <Tab.Screen
           name="Journal"
           getComponent={() => require('@features/journal/screens/JournalScreen').default}
+          options={{ freezeOnBlur: false }}
         />
       </Tab.Navigator>
     </TabBarAutoHideProvider>
@@ -130,36 +135,15 @@ function MainStackNavigator() {
   );
 }
 
-function AuthBootstrapLoading({ label = 'Loading account' }: { label?: string }): React.ReactElement {
-  const { groupedCanvas, system } = useAppTheme();
-  return (
-    <View style={[authGateStyles.loading, { backgroundColor: groupedCanvas }]}>
-      <ActivityIndicator color={system.blue} accessibilityLabel={label} />
-    </View>
-  );
-}
-
-const authGateStyles = StyleSheet.create({
-  loading: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-});
-
-/** Shows login gate when cloud is enabled and user is signed out; otherwise main app. */
+/**
+ * Local shell renders immediately. Login gate only after auth SDK resolves session
+ * (never blocks cold start on network, settings load, or cloud restore).
+ */
 export default function RootNavigator() {
-  const { cloudEnabled, initialized, restoring, user, localOnlyMode, settingsLoaded } = useAuth();
+  const { cloudEnabled, initialized, user, localOnlyMode } = useAuth();
 
-  if (cloudEnabled && !settingsLoaded) {
-    return <AuthBootstrapLoading label="Loading Kairo" />;
-  }
-
-  if (cloudEnabled && !user && !localOnlyMode) {
-    if (!initialized) {
-      return <AuthBootstrapLoading label="Loading sign in" />;
-    }
+  if (cloudEnabled && initialized && !user && !localOnlyMode) {
     return <AccountLoginScreen />;
-  }
-
-  if (cloudEnabled && user && restoring) {
-    return <AuthBootstrapLoading label="Setting up your account" />;
   }
 
   return <MainStackNavigator />;

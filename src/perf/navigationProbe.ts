@@ -12,20 +12,17 @@
 
 import { createNavigationContainerRef } from '@react-navigation/native';
 
-import { perfProbe } from './probe';
+import { recordNavReady, recordNavStateChange } from './navigationMetrics';
 
 export const navigationRef = createNavigationContainerRef();
 
 export const perfNavigation = {
   ref: navigationRef,
   onReady(): void {
-    perfProbe.onNavReady();
+    recordNavReady();
   },
   onStateChange(): void {
-    // When called from NavigationContainer, state is accessible via ref.
-    if (!perfProbe.enabled) return;
     const state = navigationRef.getRootState?.();
-    perfProbe.onNavStateChange(state);
+    recordNavStateChange(state);
   },
 };
-

@@ -22,5 +22,5 @@ export * from '../lib/calendar';
 export * from '../lib/todos';
 export * from '../lib/goals';
 export * from '../lib/journal';
-export { nearestTabFromPillCenter } from '../lib/utils/nearestTabFromPill';
+// nearestTabFromPillCenter removed from public API — legacy layout helper; see tabBarSelectionLayout.
 

@@ -24,8 +24,8 @@ describe('authSessionPolicy', () => {
     expect(shouldEnqueueFullLocalSnapshot('TOKEN_REFRESHED')).toBe(false);
   });
 
-  it('blocks UI only during fresh sign-in restore', () => {
-    expect(shouldBlockUiDuringRestore('SIGNED_IN')).toBe(true);
+  it('never blocks UI during restore (sync runs in background)', () => {
+    expect(shouldBlockUiDuringRestore('SIGNED_IN')).toBe(false);
     expect(shouldBlockUiDuringRestore('INITIAL_SESSION')).toBe(false);
     expect(shouldBlockUiDuringRestore('TOKEN_REFRESHED')).toBe(false);
   });

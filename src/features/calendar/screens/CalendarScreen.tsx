@@ -12,7 +12,7 @@ import {
   Dimensions,
   type LayoutChangeEvent,
 } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useTopSafeInset } from '@/hooks/useTopSafeInset';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import Animated, {
   Extrapolate,
@@ -60,7 +60,7 @@ export default function CalendarScreen() {
   usePerfScreen('CalendarScreen', { listIds: ['list.calendarMonthTimeline'] });
 
   const appTheme = useAppTheme();
-  const insets = useSafeAreaInsets();
+  const topInset = useTopSafeInset();
   const sys = appTheme.system;
   const windowWidth = appTheme.windowWidth;
   const moodGradeColorStyle = appTheme.moodGradeColorStyle;
@@ -118,8 +118,8 @@ export default function CalendarScreen() {
   const estimatedListViewportHeight = useMemo(() => {
     const windowH =
       appTheme.windowHeight > 0 ? appTheme.windowHeight : Dimensions.get('window').height;
-    return Math.max(0, windowH - insets.top - CALENDAR_MONTH_TIMELINE_HEADER_CHROME);
-  }, [appTheme.windowHeight, insets.top]);
+    return Math.max(0, windowH - topInset - CALENDAR_MONTH_TIMELINE_HEADER_CHROME);
+  }, [appTheme.windowHeight, topInset]);
   const [measuredListViewportHeight, setMeasuredListViewportHeight] = useState(0);
   const listViewportHeight =
     measuredListViewportHeight > 0 ? measuredListViewportHeight : estimatedListViewportHeight;
@@ -432,7 +432,7 @@ export default function CalendarScreen() {
   );
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <View style={[styles.container, { paddingTop: topInset }]}>
       {/* iOS Calendar-style top bar */}
       <View style={styles.topBar}>
         <CapsuleButton
@@ -525,6 +525,6 @@ export default function CalendarScreen() {
           void handleSave();
         }}
       />
-    </SafeAreaView>
+    </View>
   );
 }

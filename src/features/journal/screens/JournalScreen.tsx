@@ -15,7 +15,7 @@ import {
   type SectionListRenderItemInfo,
 } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useTopSafeInset } from '@/hooks/useTopSafeInset';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { MoodEntry, MoodGrade } from '@/types';
 import { ScreenHeader, screenHeaderPrimaryTabPaddingX } from '@/components';
@@ -71,6 +71,7 @@ const JOURNAL_LIST_IMPL: 'flatlist' | 'flashlist' = 'flashlist';
 
 export default function JournalScreen() {
   usePerfScreen('Journal', { listIds: ['list.journal'] });
+  const topInset = useTopSafeInset();
   const {
     showTabBar,
     onScrollBeginDrag,
@@ -759,7 +760,7 @@ export default function JournalScreen() {
   );
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <View style={[styles.container, { paddingTop: topInset }]}>
       <ScreenHeader title="Journal" contentPaddingHorizontal={screenHeaderPrimaryTabPaddingX} />
 
       <PerfProfiler id="list.journal">
@@ -839,6 +840,6 @@ export default function JournalScreen() {
         onCancel={handleCloseEdit}
         onSave={handleSaveEdit}
       />
-    </SafeAreaView>
+    </View>
   );
 }

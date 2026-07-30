@@ -4,6 +4,7 @@
  */
 
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { InteractionManager } from 'react-native';
 import type { Session, User } from '@supabase/supabase-js';
 import { logger } from '../../lib/security/logger';
 import { isSupabaseConfigured } from '../supabase/client';
@@ -30,7 +31,7 @@ import { registerKairoCloudPullApplier } from '../../data/sync/cloudPullApplier'
 import { clearLocalUserDataOnLogout } from '../../data/sync/cloudLogout';
 import { setSyncStatus } from '../sync/syncStatusStore';
 import { getSettings, peekSettingsCache, setLocalOnlyMode } from '../../data/storage/settingsStorage';
-import { primeAppStorage } from '../../storage/prime';
+import { primeAppStorageCritical } from '../../storage/prime';
 
 type AuthContextValue = AuthState & {
   cloudEnabled: boolean;
@@ -69,9 +70,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
   const [localOnlyMode, setLocalOnlyModeState] = useState(
     () => peekSettingsCache()?.localOnlyMode === true
   );
-  const [settingsLoaded, setSettingsLoaded] = useState(
-    () => !cloudEnabled || peekSettingsCache() !== null
-  );
+  const [settingsLoaded, setSettingsLoaded] = useState(true);
   const [state, setState] = useState<AuthState>({
     initialized: !cloudEnabled,
     restoring: false,
@@ -91,7 +90,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
     if (!cloudEnabled) return;
 
     let mounted = true;
-    void primeAppStorage()
+    void primeAppStorageCritical()
       .then(() => getSettings())
       .then((settings) => {
         if (!mounted) return;
@@ -177,7 +176,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
         }
         if (shouldRunCloudRestore(event)) {
           const blockUi = shouldBlockUiDuringRestore(event);
-          await runRestoreForSession(session, event, blockUi);
+          InteractionManager.runAfterInteractions(() => {
+            void runRestoreForSession(session, event, blockUi);
+          });
         }
         return;
       }

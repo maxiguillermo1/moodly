@@ -17,12 +17,14 @@ import { AccountAuthForm } from '../components/AccountAuthForm';
 import { useAuth } from '@/hooks/useAuth';
 import { spacing, useAppTheme } from '@/theme';
 import { haptics } from '@/system/haptics';
+import { useFirstScreenSplashReady } from '@/hooks/useFirstScreenSplashReady';
 
 export default function AccountLoginScreen(): React.ReactElement {
   const { groupedCanvas, system: s } = useAppTheme();
   const { initialized, signInEmail, signUpEmail, signInApple, signInGoogle, continueOffline } =
     useAuth();
   const [continuingOffline, setContinuingOffline] = useState(false);
+  const onSplashReady = useFirstScreenSplashReady('AccountLogin');
 
   const styles = useMemo(
     () =>
@@ -47,14 +49,18 @@ export default function AccountLoginScreen(): React.ReactElement {
 
   if (!initialized) {
     return (
-      <SafeAreaView style={[styles.container, styles.loading]} edges={['top', 'bottom']}>
+      <SafeAreaView
+        style={[styles.container, styles.loading]}
+        edges={['top', 'bottom']}
+        onLayout={onSplashReady}
+      >
         <ActivityIndicator color={s.blue} accessibilityLabel="Loading welcome screen" />
       </SafeAreaView>
     );
   }
 
   return (
-    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+    <SafeAreaView style={styles.container} edges={['top', 'bottom']} onLayout={onSplashReady}>
       <ScreenHeader title="Welcome" showSettings={false} />
       <KeyboardAvoidingView
         style={styles.container}

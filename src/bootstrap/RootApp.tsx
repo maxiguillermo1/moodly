@@ -17,21 +17,22 @@ import {
   DarkTheme,
   DefaultTheme,
 } from '@react-navigation/native';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { SafeAreaProvider, initialWindowMetrics } from 'react-native-safe-area-context';
 import { InteractionManager, StyleSheet, View } from 'react-native';
 import * as SplashScreen from 'expo-splash-screen';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { RootNavigator } from '../navigation';
-import { primeAppStorage } from '../storage/prime';
+import { primeAppStorageCritical, warmAppStorageSession } from '../storage/prime';
 import { perfNavigation, perfProbe } from '../perf';
 import { installAccessibilityObservers } from '../system/accessibility';
 import { AppThemeProvider, useAppTheme } from '../theme';
 import { AppErrorBoundary } from './AppErrorBoundary';
 import { AuthProvider } from '../cloud/auth/AuthContext';
+import { markNavigationReady } from './splashScreen';
 
-/** Start migrations + session RAM as early as possible (coalesced with Auth + Today peek paths). */
-void primeAppStorage().catch(() => {});
+/** Migrations only at module scope — never block first paint on full-history warm. */
+void primeAppStorageCritical().catch(() => {});
 
 const gestureRootStyle = StyleSheet.create({ root: { flex: 1 } }).root;
 
@@ -69,7 +70,7 @@ function AppNavigation(): React.ReactElement {
 
   const onNavReady = useCallback(() => {
     perfNavigation.onReady();
-    void SplashScreen.hideAsync().catch(() => {});
+    markNavigationReady();
   }, []);
 
   return (
@@ -92,63 +93,57 @@ const styles = StyleSheet.create({
 });
 
 export function RootApp() {
-  const hideSplash = useCallback(() => {
-    void SplashScreen.hideAsync().catch(() => {});
-  }, []);
-
   useEffect(() => {
-    // Install once; no UI changes.
     installAccessibilityObservers();
   }, []);
 
   useEffect(() => {
     if (typeof __DEV__ === 'undefined' || !__DEV__) return;
-    // Dev-only debug harness (no UI changes). Trigger from Metro console:
-    //   globalThis.KairoDebug.list()
-    //   globalThis.KairoDebug.run('rapidMonthTaps')
     const dbg = require('../dev/debugScenarios') as typeof import('../dev/debugScenarios');
     const fullDemoSeed = require('../data/storage/fullDemoSeed') as typeof import('../data/storage/fullDemoSeed');
     (globalThis as any).KairoDebug = {
       list: dbg.listDebugScenarios,
       run: dbg.runDebugScenario,
       runAll: dbg.runAllDebugScenarios,
-      // Deterministic fault injection config for storage (dev-only).
       setChaos(config: any) {
         (globalThis as any).__KAIRO_CHAOS__ = config;
       },
     };
     (globalThis as any).KairoSeed = {
-      /** Wipe local mood/goals/tasks/habits (not settings) and re-seed 2020→today. */
       rebuild: () => fullDemoSeed.runFullDemoRebuild(),
+    };
+    const vf = require('../dev/visualFixtures') as typeof import('../dev/visualFixtures');
+    (globalThis as any).KairoVisualFixtures = {
+      list: vf.listVisualFixtures,
+      active: vf.activeVisualFixture,
+      describe: vf.describeVisualFixture,
+      enabled: vf.isVisualFixtureMode,
     };
     return () => {
       try {
         delete (globalThis as any).KairoDebug;
         delete (globalThis as any).KairoSeed;
+        delete (globalThis as any).KairoVisualFixtures;
       } catch {
         (globalThis as any).KairoDebug = undefined;
         (globalThis as any).KairoSeed = undefined;
+        (globalThis as any).KairoVisualFixtures = undefined;
       }
     };
   }, []);
 
   useEffect(() => {
-    void primeAppStorage()
-      .then(() => {
-        InteractionManager.runAfterInteractions(() => {
-          try {
-            require('../navigation/CalendarStack');
-            require('@features/journal/screens/JournalScreen');
-          } catch {
-            /* best-effort preload */
-          }
-        });
-      })
-      .catch(() => {});
-
-    if (typeof __DEV__ === 'undefined' || !__DEV__) return;
     const task = InteractionManager.runAfterInteractions(() => {
-      perfProbe.logFirstInteractionReady({ stage: 'RootApp.afterInteractions' });
+      void warmAppStorageSession().catch(() => {});
+      try {
+        require('../navigation/CalendarStack');
+        require('@features/journal/screens/JournalScreen');
+      } catch {
+        /* best-effort module preload — no navigation.preload() */
+      }
+      if (typeof __DEV__ !== 'undefined' && __DEV__) {
+        perfProbe.logFirstInteractionReady({ stage: 'RootApp.afterInteractions' });
+      }
     });
     return () => task.cancel();
   }, []);
@@ -157,8 +152,8 @@ export function RootApp() {
     <AppErrorBoundary>
       <AuthProvider>
         <AppThemeProvider>
-          <GestureHandlerRootView style={gestureRootStyle} onLayout={hideSplash}>
-            <SafeAreaProvider>
+          <GestureHandlerRootView style={gestureRootStyle}>
+            <SafeAreaProvider initialMetrics={initialWindowMetrics ?? undefined}>
               <AppNavigation />
             </SafeAreaProvider>
           </GestureHandlerRootView>
@@ -167,4 +162,3 @@ export function RootApp() {
     </AppErrorBoundary>
   );
 }
-

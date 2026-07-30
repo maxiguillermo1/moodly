@@ -1,63 +1,66 @@
 /**
- * @fileoverview Floating bottom tab bar — Expo Go–style compact pill; Bloom pink only during bar motion transitions.
+ * @fileoverview Floating bottom tab bar — liquid-glass pill (v3 rewrite).
  * @module navigation/FloatingTabBar
+ *
+ * Design: centered glass shell, gray selection stadium, icon + label tabs,
+ * pink bloom on scroll/keyboard motion, auto-hide on scroll.
+ *
+ * Architecture (intentionally minimal):
+ * - React Navigation `state.index` is the only selected-tab truth.
+ * - Tab presses use the same dispatch pattern as the default BottomTabBar.
+ * - Plain RN Pressable for taps (Reanimated pressables were dropping touches on iOS).
+ * - Pill position follows `state.index` only (no inferring tab from pill geometry).
  */
 
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { View, StyleSheet, Platform, Pressable, Keyboard, InteractionManager, Text, type LayoutChangeEvent } from 'react-native';
+import {
+  View,
+  StyleSheet,
+  Platform,
+  Keyboard,
+  Text,
+  type LayoutChangeEvent,
+} from 'react-native';
+import { PlatformPressable } from '@react-navigation/elements';
 import { LinearGradient } from 'expo-linear-gradient';
 import Animated, {
   cancelAnimation,
   Easing,
   interpolate,
+  runOnJS,
   useAnimatedReaction,
   useAnimatedStyle,
   useSharedValue,
-  withSequence,
   withSpring,
   withTiming,
-  type SharedValue,
 } from 'react-native-reanimated';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
+import { BottomTabBarHeightCallbackContext } from '@react-navigation/bottom-tabs';
 import { CommonActions } from '@react-navigation/native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { spacing, sizing, borderRadius, typography, useAppTheme } from '../theme';
 import { LiquidGlass } from '../components';
 import { useTabBarAutoHideOptional } from './TabBarAutoHideContext';
-import { perfProbe } from '../perf';
-import { DEFAULT_HIT_SLOP } from '../system/accessibility';
+import { recordNavDispatch, recordTabPress } from '../perf/navigationMetrics';
 import { haptics } from '../system/haptics';
-import { logger } from '../security';
-import { nearestTabFromPillCenter } from '../utils';
 import {
   computeAllTabSelectionLayouts,
-  TAB_SELECTION_SLOT_GAP,
   TAB_SELECTION_SYM_W,
-  TAB_SELECTION_TRACK_PAD_H,
 } from './tabBarSelectionLayout';
 
-/** Slightly roomier pill; wider ratio widens slots → more space between icon centers (same nudge). */
 const OUTER_WIDTH_RATIO = 0.54;
 const OUTER_PAD_V = 6;
 const OUTER_PAD_H = 6;
-const TRACK_PAD_H = TAB_SELECTION_TRACK_PAD_H;
-/** No gap between slot columns — icons as close as equal flex allows. */
-const SLOT_GAP = TAB_SELECTION_SLOT_GAP;
 
 const ICON_SIZE = 18;
 const PILL_W = TAB_SELECTION_SYM_W;
-/** Vertical gap between icon and label (px). */
 const TAB_LABEL_GAP = 3;
 const TAB_LABEL_LINE_H = Math.ceil(Number(typography.caption2.lineHeight ?? 12));
 const TAB_STACK_H = ICON_SIZE + TAB_LABEL_GAP + TAB_LABEL_LINE_H;
 const TAB_ROW_MIN_H = Math.max(sizing.minTouchTarget, TAB_STACK_H + 12);
-/** Selection uses full row height so stadium ends match the bar’s inner vertical bounds. */
 const SELECTION_H = TAB_ROW_MIN_H;
 const SELECTION_STADIUM_R = SELECTION_H / 2;
-/** Stadium “pill” needs width ≥ height for proper semicircle caps. */
 const MIN_STADIUM_W = SELECTION_H;
-const TAB_BAR_VISUAL_HEIGHT = OUTER_PAD_V * 2 + TAB_ROW_MIN_H + 2;
-const TAB_BAR_HIDE_OVERFLOW = 28;
 
 const TAB_ICONS_OUTLINE: Record<string, keyof typeof Ionicons.glyphMap> = {
   Calendar: 'calendar-outline',
@@ -77,150 +80,88 @@ const TAB_LABELS: Record<string, string> = {
   Journal: 'Journal',
 };
 
-/** Selection pill: softer spring + tight rest thresholds for smooth settle (UI-thread only). */
 const PILL_SPRING = {
-  stiffness: 96,
-  damping: 58,
-  mass: 1.42,
-  overshootClamping: false,
-  restDisplacementThreshold: 0.22,
-  restSpeedThreshold: 0.22,
+  stiffness: 520,
+  damping: 38,
+  mass: 0.55,
+  overshootClamping: true,
+  restDisplacementThreshold: 0.25,
+  restSpeedThreshold: 0.25,
 } as const;
-/** Width eases slightly after x — same family, a touch softer to reduce cross-axis “fight”. */
-const PILL_SPRING_WIDTH = {
-  stiffness: 76,
-  damping: 52,
-  mass: 1.36,
-  overshootClamping: false,
-  restDisplacementThreshold: 0.36,
-  restSpeedThreshold: 0.32,
-} as const;
-const PRESS_TIMING = { duration: 90, easing: Easing.out(Easing.cubic) } as const;
-const PRESS_SPRING = { damping: 18, stiffness: 400, mass: 0.72 } as const;
 
-const AnimatedText = Animated.createAnimatedComponent(Text);
-const AnimatedIonicons = Animated.createAnimatedComponent(Ionicons);
+const PILL_SPRING_WIDTH = {
+  stiffness: 440,
+  damping: 34,
+  mass: 0.55,
+  overshootClamping: true,
+  restDisplacementThreshold: 0.3,
+  restSpeedThreshold: 0.3,
+} as const;
 
 type TabCellProps = {
-  routeKey: string;
   routeName: string;
-  tabIndex: number;
   isFocused: boolean;
-  visualTabSV: SharedValue<number>;
-  navigation: BottomTabBarProps['navigation'];
   inactiveColor: string;
   activeColor: string;
-  onTabSelectIntent: (index: number) => void;
+  onPress: () => void;
+  onLongPress: () => void;
 };
 
 const TabCell = React.memo(function TabCell({
-  routeKey,
   routeName,
-  tabIndex,
   isFocused,
-  visualTabSV,
-  navigation,
   inactiveColor,
   activeColor,
-  onTabSelectIntent,
+  onPress,
+  onLongPress,
 }: TabCellProps) {
-  const scale = useSharedValue(1);
-
-  const onPress = useCallback(() => {
-    const event = navigation.emit({
-      type: 'tabPress',
-      target: routeKey,
-      canPreventDefault: true,
-    });
-    if (!isFocused && !event.defaultPrevented) {
-      onTabSelectIntent(tabIndex);
-      navigation.navigate(routeName as never);
-      haptics.tab();
-      perfProbe.onMainTabPress(routeName);
-    }
-  }, [isFocused, navigation, onTabSelectIntent, routeKey, routeName, tabIndex]);
-
-  const onPressIn = useCallback(() => {
-    scale.value = withTiming(0.94, PRESS_TIMING);
-  }, [scale]);
-
-  const onPressOut = useCallback(() => {
-    scale.value = withSpring(1, PRESS_SPRING);
-  }, [scale]);
-
-  const pressStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: scale.value }],
-  }), [scale]);
-
-  const filledIconOpacity = useAnimatedStyle(() => ({
-    opacity: visualTabSV.value === tabIndex ? 1 : 0,
-  }), [visualTabSV, tabIndex]);
-
-  const outlineIconOpacity = useAnimatedStyle(() => ({
-    opacity: visualTabSV.value === tabIndex ? 0 : 1,
-  }), [visualTabSV, tabIndex]);
-
-  const labelVisualStyle = useAnimatedStyle(() => {
-    const on = visualTabSV.value === tabIndex;
-    return {
-      color: on ? activeColor : inactiveColor,
-      fontWeight: on ? '700' : '500',
-    };
-  }, [visualTabSV, tabIndex, activeColor, inactiveColor]);
-
   const iconFilledName = TAB_ICONS_FILLED[routeName] ?? TAB_ICONS_FILLED.Today;
   const iconOutlineName = TAB_ICONS_OUTLINE[routeName] ?? TAB_ICONS_OUTLINE.Today;
-
-  const a11y = `${TAB_LABELS[routeName] ?? routeName} tab`;
+  const label = TAB_LABELS[routeName] ?? routeName;
 
   return (
-    <Pressable
+    <PlatformPressable
       accessibilityRole="tab"
-      accessibilityLabel={a11y}
-      accessibilityHint={isFocused ? 'Current tab' : `Switches to ${TAB_LABELS[routeName] ?? routeName}`}
+      accessibilityLabel={`${label} tab`}
+      accessibilityHint={isFocused ? 'Current tab' : `Switches to ${label}`}
       accessibilityState={{ selected: isFocused }}
       onPress={onPress}
-      onPressIn={onPressIn}
-      onPressOut={onPressOut}
-      hitSlop={DEFAULT_HIT_SLOP}
+      onLongPress={onLongPress}
+      pressOpacity={0.72}
       style={styles.tabCellPressable}
+      hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
     >
-      <Animated.View style={[styles.tabCellInner, pressStyle]}>
-        <View style={styles.tabIconStack} pointerEvents="none">
-          <AnimatedIonicons
-            name={iconFilledName}
-            size={ICON_SIZE}
-            color={activeColor}
-            style={[styles.tabIconLayer, styles.tabIconFocused, filledIconOpacity]}
-            accessibilityElementsHidden
-            importantForAccessibility="no"
-          />
-          <AnimatedIonicons
-            name={iconOutlineName}
-            size={ICON_SIZE}
-            color={inactiveColor}
-            style={[styles.tabIconLayer, styles.tabIconInactive, outlineIconOpacity]}
-            accessibilityElementsHidden
-            importantForAccessibility="no"
-          />
-        </View>
-        <AnimatedText
-          style={[styles.tabLabel, labelVisualStyle]}
+      <View style={styles.tabCellInner} pointerEvents="none">
+        <Ionicons
+          name={isFocused ? iconFilledName : iconOutlineName}
+          size={ICON_SIZE}
+          color={isFocused ? activeColor : inactiveColor}
+          style={isFocused ? styles.tabIconFocused : styles.tabIconInactive}
+        />
+        <Text
+          style={[
+            styles.tabLabel,
+            {
+              color: isFocused ? activeColor : inactiveColor,
+              fontWeight: isFocused ? '700' : '500',
+            },
+          ]}
           allowFontScaling
           maxFontSizeMultiplier={1.22}
           numberOfLines={1}
-          accessible={false}
         >
-          {TAB_LABELS[routeName] ?? routeName}
-        </AnimatedText>
-      </Animated.View>
-    </Pressable>
+          {label}
+        </Text>
+      </View>
+    </PlatformPressable>
   );
 });
 
 function FloatingTabBarInner({ state, navigation, descriptors, insets }: BottomTabBarProps) {
   const { system: sys, a11y, windowWidth, isDark } = useAppTheme();
   const tabBarAutoHide = useTabBarAutoHideOptional();
+  const onTabBarHeightChange = React.useContext(BottomTabBarHeightCallbackContext);
+  const [touchEnabled, setTouchEnabled] = useState(true);
 
   const scrollHiddenProgress = tabBarAutoHide?.tabBarHiddenProgress ?? null;
   const keyboardHiddenProgress = useSharedValue(0);
@@ -228,7 +169,6 @@ function FloatingTabBarInner({ state, navigation, descriptors, insets }: BottomT
   const focusedRoute = state.routes[state.index];
   const tabBarHideOnKeyboard = descriptors[focusedRoute?.key]?.options.tabBarHideOnKeyboard ?? true;
 
-  /** Inactive: soft gray. Active: black (light) / white (dark) on selection pill + heavier glyph weight. */
   const inactiveColor = sys.secondaryLabel;
   const activeColor = isDark ? 'rgba(255, 255, 255, 0.96)' : sys.label;
 
@@ -278,195 +218,144 @@ function FloatingTabBarInner({ state, navigation, descriptors, insets }: BottomT
       });
     };
 
-    const subShow = Keyboard.addListener(showEvt as any, openKb);
-    const subHide = Keyboard.addListener(hideEvt as any, closeKb);
+    const subShow = Keyboard.addListener(showEvt as 'keyboardWillShow', openKb);
+    const subHide = Keyboard.addListener(hideEvt as 'keyboardWillHide', closeKb);
     return () => {
       subShow.remove();
       subHide.remove();
     };
   }, [a11y.reduceMotion, keyboardHiddenProgress, tabBarHideOnKeyboard]);
 
-  const tabsPreloadedRef = useRef(false);
-  useEffect(() => {
-    if (tabsPreloadedRef.current) return;
-    const preloadInactiveTabs = () => {
-      if (tabsPreloadedRef.current) return;
-      try {
-        const tabState = navigation.getState();
-        const routes = tabState?.routes;
-        if (!routes?.length) return;
-        const focused = routes[tabState.index ?? 0]?.name;
-        for (const route of routes) {
-          if (route.name === focused) continue;
-          navigation.dispatch(CommonActions.preload(route.name));
-          if (route.name === 'Journal') {
-            try {
-              const { warmJournalSortedDescCacheIfPrimed } = require('../data/storage/moodStorage') as typeof import('../data/storage/moodStorage');
-              warmJournalSortedDescCacheIfPrimed();
-            } catch {
-              /* best-effort */
-            }
-          }
-          if (route.name === 'Calendar') {
-            try {
-              const { warmMoodCalendarSnapshotCacheIfPrimed } = require('../data/storage/calendarSnapshot') as typeof import('../data/storage/calendarSnapshot');
-              warmMoodCalendarSnapshotCacheIfPrimed();
-            } catch {
-              /* best-effort */
-            }
-          }
-          if (route.name === 'Today') {
-            try {
-              const { getToday } = require('../lib/utils/date') as typeof import('../lib/utils/date');
-              const today = getToday();
-              const { warmDayTodosCacheIfPrimed } = require('../data/storage/tasksStorage') as typeof import('../data/storage/tasksStorage');
-              warmDayTodosCacheIfPrimed(today);
-            } catch {
-              /* best-effort */
-            }
-          }
-          logger.perf('nav.tab.preload', { phase: 'warm', source: 'ui', tab: route.name });
-        }
-        tabsPreloadedRef.current = true;
-      } catch {
-        logger.warn('nav.tab.preload.failed', { tab: 'all' });
+  const setTouchEnabledStable = useCallback((enabled: boolean) => {
+    setTouchEnabled((prev) => (prev === enabled ? prev : enabled));
+  }, []);
+
+  useAnimatedReaction(
+    () => {
+      const kbP = keyboardHiddenProgress.value;
+      const scrollP = scrollHiddenProgress ? scrollHiddenProgress.value : 0;
+      return scrollP < 0.02 && kbP < 0.02;
+    },
+    (enabled, prev) => {
+      if (enabled !== prev) {
+        runOnJS(setTouchEnabledStable)(enabled);
       }
-    };
-    queueMicrotask(preloadInactiveTabs);
-    const task = InteractionManager.runAfterInteractions(preloadInactiveTabs);
-    return () => task.cancel();
-  }, [navigation]);
+    },
+    [keyboardHiddenProgress, scrollHiddenProgress, setTouchEnabledStable]
+  );
 
   const outerWidth = useMemo(() => {
     const side = spacing[3];
-    return Math.min(windowWidth * OUTER_WIDTH_RATIO, Math.max(0, windowWidth - side * 2));
+    const w = windowWidth > 0 ? windowWidth : 390;
+    return Math.min(w * OUTER_WIDTH_RATIO, Math.max(0, w - side * 2));
   }, [windowWidth]);
 
   const bottomOffset = Math.max(spacing[2], spacing[2] + insets.bottom);
-  const hideSlidePx = TAB_BAR_VISUAL_HEIGHT + bottomOffset + TAB_BAR_HIDE_OVERFLOW;
 
   const [trackInnerW, setTrackInnerW] = useState(0);
   const pillX = useSharedValue(0);
   const pillW = useSharedValue(PILL_W);
-  const pillVisualOpacity = useSharedValue(1);
-  const prevTabIndexRef = useRef<number | null>(null);
-  const trackInnerWSV = useSharedValue(0);
-  const nTabsSV = useSharedValue(state.routes.length);
-  const visualTabSV = useSharedValue(state.index);
+  const lastSyncedIndexRef = useRef<number | null>(null);
 
+  const activeIndex = state.index;
   const nTabs = state.routes.length;
+  const measuredTrackW = trackInnerW > 0 ? trackInnerW : Math.max(0, outerWidth - OUTER_PAD_H * 2);
 
   const selectionLayouts = useMemo(
-    () => (trackInnerW > 0 && nTabs > 0 ? computeAllTabSelectionLayouts(trackInnerW, nTabs, MIN_STADIUM_W) : null),
-    [trackInnerW, nTabs]
+    () => (measuredTrackW > 0 && nTabs > 0 ? computeAllTabSelectionLayouts(measuredTrackW, nTabs, MIN_STADIUM_W) : null),
+    [measuredTrackW, nTabs]
   );
-  const selectionLayoutKey = selectionLayouts ? `${trackInnerW}:${nTabs}` : '';
-  const selectionLayoutKeyRef = useRef('');
 
-  const animatePillToIndex = useCallback(
-    (index: number) => {
-      if (!selectionLayouts || index < 0 || index >= selectionLayouts.length) return;
-      const { x, w } = selectionLayouts[index]!;
-      const layoutChanged = selectionLayoutKeyRef.current !== selectionLayoutKey;
-      selectionLayoutKeyRef.current = selectionLayoutKey;
-
-      const prev = prevTabIndexRef.current;
-      const indexChanged = prev !== null && prev !== index;
-      const isFirstPosition = prev === null;
-      if (prev === index && !layoutChanged) return;
-      prevTabIndexRef.current = index;
-
-      if (a11y.reduceMotion || isFirstPosition || layoutChanged) {
-        cancelAnimation(pillX);
-        cancelAnimation(pillW);
-        cancelAnimation(pillVisualOpacity);
-        pillX.value = x;
-        pillW.value = w;
-        pillVisualOpacity.value = 1;
-        visualTabSV.value = index;
-        return;
-      }
+  const movePillToIndex = useCallback(
+    (index: number, animated: boolean) => {
+      if (!selectionLayouts?.length) return;
+      const safeIndex = Math.max(0, Math.min(index, selectionLayouts.length - 1));
+      const { x, w } = selectionLayouts[safeIndex]!;
 
       cancelAnimation(pillX);
       cancelAnimation(pillW);
-      pillX.value = withSpring(x, PILL_SPRING);
-      pillW.value = withSpring(w, PILL_SPRING_WIDTH);
-      visualTabSV.value = index;
 
-      if (indexChanged) {
-        cancelAnimation(pillVisualOpacity);
-        pillVisualOpacity.value = withSequence(
-          withTiming(0.88, {
-            duration: 88,
-            easing: Easing.bezier(0.4, 0, 0.2, 1),
-          }),
-          withTiming(1, {
-            duration: 280,
-            easing: Easing.bezier(0.17, 1, 0.2, 1),
-          })
-        );
+      if (animated && !a11y.reduceMotion) {
+        pillX.value = withSpring(x, PILL_SPRING);
+        pillW.value = withSpring(w, PILL_SPRING_WIDTH);
+      } else {
+        pillX.value = x;
+        pillW.value = w;
       }
+      lastSyncedIndexRef.current = safeIndex;
     },
-    [
-      a11y.reduceMotion,
-      pillVisualOpacity,
-      pillW,
-      pillX,
-      selectionLayoutKey,
-      selectionLayouts,
-      visualTabSV,
-    ]
-  );
-
-  const onTabSelectIntent = useCallback(
-    (index: number) => {
-      animatePillToIndex(index);
-    },
-    [animatePillToIndex]
+    [a11y.reduceMotion, pillW, pillX, selectionLayouts]
   );
 
   useLayoutEffect(() => {
-    animatePillToIndex(state.index);
-  }, [animatePillToIndex, state.index]);
-
-  useEffect(() => {
-    trackInnerWSV.value = trackInnerW;
-    nTabsSV.value = nTabs;
-  }, [trackInnerW, nTabs, trackInnerWSV, nTabsSV]);
-
-  useAnimatedReaction(
-    () => ({
-      px: pillX.value,
-      pw: pillW.value,
-      tw: trackInnerWSV.value,
-      n: nTabsSV.value,
-    }),
-    (c) => {
-      const best = nearestTabFromPillCenter(c.px, c.pw, c.tw, c.n, TRACK_PAD_H, SLOT_GAP);
-      if (best !== visualTabSV.value) {
-        visualTabSV.value = best;
-      }
-    }
-  );
+    if (!selectionLayouts?.length) return;
+    if (lastSyncedIndexRef.current === activeIndex) return;
+    const shouldAnimate = lastSyncedIndexRef.current !== null && !a11y.reduceMotion;
+    movePillToIndex(activeIndex, shouldAnimate);
+  }, [activeIndex, a11y.reduceMotion, movePillToIndex, selectionLayouts]);
 
   const onTrackLayout = useCallback((e: LayoutChangeEvent) => {
     const w = e.nativeEvent.layout.width;
-    if (w > 0) setTrackInnerW(Math.round(w * 1000) / 1000);
+    if (w <= 0) return;
+    const rounded = Math.round(w * 1000) / 1000;
+    setTrackInnerW((prev) => (prev === rounded ? prev : rounded));
   }, []);
+
+  const onShellLayout = useCallback(
+    (e: LayoutChangeEvent) => {
+      const h = e.nativeEvent.layout.height;
+      if (h > 0) onTabBarHeightChange?.(h);
+    },
+    [onTabBarHeightChange]
+  );
+
+  const handleTabPress = useCallback(
+    (route: (typeof state.routes)[number], index: number, isFocused: boolean) => {
+      if (isFocused) return;
+
+      recordTabPress(route.name);
+
+      const event = navigation.emit({
+        type: 'tabPress',
+        target: route.key,
+        canPreventDefault: true,
+      });
+
+      if (event.defaultPrevented) return;
+
+      // Optimistic pill slide — instant feedback; useLayoutEffect syncs when index changes.
+      movePillToIndex(index, !a11y.reduceMotion);
+
+      navigation.dispatch({
+        ...CommonActions.navigate(route),
+        target: state.key,
+      });
+
+      recordNavDispatch(route.name);
+      queueMicrotask(() => haptics.tab());
+    },
+    [a11y.reduceMotion, movePillToIndex, navigation, state.key]
+  );
+
+  const handleTabLongPress = useCallback(
+    (route: (typeof state.routes)[number]) => {
+      navigation.emit({
+        type: 'tabLongPress',
+        target: route.key,
+      });
+    },
+    [navigation]
+  );
 
   const pillStyle = useAnimatedStyle(() => ({
     width: pillW.value,
-    opacity: pillVisualOpacity.value,
     transform: [{ translateX: pillX.value }],
-  }), []);
+  }));
 
   const reduceMotion = a11y.reduceMotion;
 
-  /** Bloom tint only while tab bar motion is in progress (scroll hide/show, keyboard hide). */
   const trackBloomOpacityStyle = useAnimatedStyle(() => {
-    if (reduceMotion) {
-      return { opacity: 0 };
-    }
+    if (reduceMotion) return { opacity: 0 };
     const kbP = keyboardHiddenProgress.value;
     const p = scrollHiddenProgress;
     const scrollP = p ? p.value : 0;
@@ -487,35 +376,27 @@ function FloatingTabBarInner({ state, navigation, descriptors, insets }: BottomT
     const scrollP = p ? p.value : 0;
     const scrollOpacity = interpolate(scrollP, [0, 1], [1, 0]);
     const kbOpacity = interpolate(kbP, [0, 1], [1, 0]);
-    const scrollY = interpolate(scrollP, [0, 1], [0, hideSlidePx]);
-    const kbY = interpolate(kbP, [0, 1], [0, hideSlidePx * 0.88]);
 
+    // Opacity-only hide: translateY on the pressable tree breaks iOS hit-testing.
     return {
       opacity: scrollOpacity * kbOpacity,
-      transform: [{ translateY: scrollY + kbY }],
     };
-  }, [a11y.reduceMotion, hideSlidePx, scrollHiddenProgress, keyboardHiddenProgress]);
+  }, [a11y.reduceMotion, scrollHiddenProgress, keyboardHiddenProgress]);
 
-  const blurIntensity = a11y.reduceTransparency ? 0 : Platform.OS === 'android' ? 100 : 100;
-
-  const selectionStadiumStyle = useMemo(
-    () => ({
-      height: SELECTION_H,
-      borderTopLeftRadius: SELECTION_STADIUM_R,
-      borderBottomLeftRadius: SELECTION_STADIUM_R,
-      borderTopRightRadius: SELECTION_STADIUM_R,
-      borderBottomRightRadius: SELECTION_STADIUM_R,
-    }),
-    []
-  );
+  const blurIntensity = a11y.reduceTransparency ? 0 : 100;
 
   return (
-    <Animated.View
-      style={[styles.container, { bottom: bottomOffset }, tabBarMotionStyle]}
-      accessibilityRole="tablist"
+    <View
+      style={[styles.container, { bottom: bottomOffset }]}
       pointerEvents="box-none"
+      onLayout={onShellLayout}
     >
-      <LiquidGlass
+      <Animated.View
+        style={tabBarMotionStyle}
+        accessibilityRole="tablist"
+        pointerEvents={touchEnabled ? 'box-none' : 'none'}
+      >
+        <LiquidGlass
         style={[styles.outerShell, { width: outerWidth, paddingVertical: OUTER_PAD_V, paddingHorizontal: OUTER_PAD_H }]}
         radius={borderRadius.full}
         intensity={blurIntensity}
@@ -523,7 +404,11 @@ function FloatingTabBarInner({ state, navigation, descriptors, insets }: BottomT
         shadow
         border
       >
-        <View style={styles.track} onLayout={onTrackLayout}>
+        <View
+          style={styles.track}
+          onLayout={onTrackLayout}
+          pointerEvents={touchEnabled ? 'auto' : 'none'}
+        >
           <Animated.View style={[styles.trackBloom, trackBloomOpacityStyle]} pointerEvents="none">
             <LinearGradient
               colors={[...trackBloomGradient.colors]}
@@ -539,37 +424,35 @@ function FloatingTabBarInner({ state, navigation, descriptors, insets }: BottomT
             style={[
               styles.selectionPill,
               pillStyle,
-              selectionStadiumStyle,
               {
-                top: 0,
+                height: SELECTION_H,
+                borderRadius: SELECTION_STADIUM_R,
                 backgroundColor: selectionPillBg,
                 shadowColor: selectionPillShadow,
               },
             ]}
           />
 
-          <View style={styles.tabRow}>
+          <View style={styles.tabRow} collapsable={false}>
             {state.routes.map((route, index) => {
-              const isFocused = state.index === index;
+              const isFocused = activeIndex === index;
               return (
                 <TabCell
                   key={route.key}
-                  routeKey={route.key}
                   routeName={route.name}
-                  tabIndex={index}
                   isFocused={isFocused}
-                  visualTabSV={visualTabSV}
-                  navigation={navigation}
                   inactiveColor={inactiveColor}
                   activeColor={activeColor}
-                  onTabSelectIntent={onTabSelectIntent}
+                  onPress={() => handleTabPress(route, index, isFocused)}
+                  onLongPress={() => handleTabLongPress(route)}
                 />
               );
             })}
           </View>
         </View>
       </LiquidGlass>
-    </Animated.View>
+      </Animated.View>
+    </View>
   );
 }
 
@@ -581,6 +464,8 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     alignItems: 'center',
+    zIndex: 1000,
+    elevation: 1000,
   },
   outerShell: {
     alignSelf: 'center',
@@ -588,6 +473,7 @@ const styles = StyleSheet.create({
   },
   track: {
     position: 'relative',
+    width: '100%',
     minHeight: TAB_ROW_MIN_H,
     justifyContent: 'center',
   },
@@ -598,6 +484,7 @@ const styles = StyleSheet.create({
   selectionPill: {
     position: 'absolute',
     left: 0,
+    top: 0,
     zIndex: 1,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.12,
@@ -613,15 +500,7 @@ const styles = StyleSheet.create({
   },
   tabCellPressable: {
     flex: 1,
-  },
-  tabIconStack: {
-    width: ICON_SIZE + 8,
-    height: ICON_SIZE,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  tabIconLayer: {
-    position: 'absolute',
+    zIndex: 3,
   },
   tabCellInner: {
     flex: 1,

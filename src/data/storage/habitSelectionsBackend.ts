@@ -13,7 +13,7 @@ import {
 import { resolveHabitSelectionsBackend } from '../persistence/sqlite/habitsStorageBackend';
 import { withKairoSqliteWriteLock } from '../persistence/sqlite/sqliteWriteLock';
 import { storage } from './asyncStorage';
-import type { HabitSelectionsRecord } from './habitSelectionsStorage';
+import type { HabitSelectionsRecord } from './habitSelectionsTypes';
 
 export const HABIT_SELECTIONS_STORAGE_KEY = 'kairo.habitSelections';
 

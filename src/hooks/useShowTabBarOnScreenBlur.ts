@@ -13,6 +13,8 @@ import { interactionQueue } from '../system/interactionQueue';
 export function useShowTabBarOnScreenBlur(showTabBar: () => void) {
   useFocusEffect(
     useCallback(() => {
+      // Always restore the bar when landing on a tab (scroll-hide is per-screen).
+      showTabBar();
       return () => {
         interactionQueue.reset();
         showTabBar();

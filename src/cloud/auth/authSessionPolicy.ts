@@ -14,6 +14,7 @@ export function shouldEnqueueFullLocalSnapshot(event: AuthChangeEvent): boolean 
   return event === 'SIGNED_IN';
 }
 
-export function shouldBlockUiDuringRestore(event: AuthChangeEvent): boolean {
-  return event === 'SIGNED_IN';
+export function shouldBlockUiDuringRestore(_event: AuthChangeEvent): boolean {
+  // Never block the local shell on network restore — sync runs in background.
+  return false;
 }

@@ -36,12 +36,14 @@ import {
   quarantineRawHabitSelectionsJson,
 } from './habitSelectionsBackend';
 import { notifyHabitSelectionsChanged } from '../sync/syncBridge';
+import type { HabitSelectionsRecord } from './habitSelectionsTypes';
+
+export type { HabitSelectionsRecord } from './habitSelectionsTypes';
 
 const STORAGE_KEY = 'kairo.habitSelections';
 const STORAGE_VERSION = 3;
 const CORRUPT_PREFIX = `${STORAGE_KEY}.corrupt.`;
 
-export type HabitSelectionsRecord = Record<string, HabitId[]>;
 /** Per habit: how many distinct local days that habit is marked on in `selections`. */
 export type HabitMarkedDayCountsRecord = Partial<Record<HabitId, number>>;
 

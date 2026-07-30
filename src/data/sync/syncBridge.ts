@@ -12,7 +12,7 @@ import type { AppSettings } from '../../types/settings.types';
 import type { HabitId } from '../../lib/constants/habitsCatalog';
 import type { TasksRecord } from '../../types/todo.types';
 import type { DayTodoItem } from '../../types/todo.types';
-import type { HabitSelectionsRecord } from '../storage/habitSelectionsStorage';
+import type { HabitSelectionsRecord } from '../storage/habitSelectionsTypes';
 import { isCloudPullActive, runSyncCycle } from '../../cloud/sync/syncEngine';
 import { enqueueSyncOperation } from '../../cloud/sync/syncOutbox';
 import { restoreAuthSession } from '../../cloud/auth/authService';

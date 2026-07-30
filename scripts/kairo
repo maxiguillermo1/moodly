@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Kairo — global dev launcher (`kairo` command)
-# Clean restart: stop stale Metro/Expo, boot last iOS Simulator, launch app.
+# Default: full fresh restart — stop Metro/Expo Go, clear bundler caches,
+# sync deps if lockfile changed, start Metro with --clear, relaunch simulator.
 set -euo pipefail
 
 APP_ROOT="/Users/astrofy/Desktop/Kairo"
@@ -8,6 +9,7 @@ RUNTIME_DIR="${APP_ROOT}/.runtime"
 PID_DIR="${RUNTIME_DIR}/pids"
 LOG_DIR="${RUNTIME_DIR}/logs"
 STATE_FILE="${RUNTIME_DIR}/state.json"
+LOCK_FILE="${RUNTIME_DIR}/kairo.lock"
 PID_FILE="${PID_DIR}/metro.pid"
 METRO_LOG="${LOG_DIR}/metro.log"
 DEFAULT_PORT="${KAIRO_METRO_PORT:-8081}"
@@ -20,6 +22,35 @@ info()  { echo "$(color '0;36')▸$(reset) $*"; }
 ok()    { echo "$(color '0;32')✓$(reset) $*"; }
 warn()  { echo "$(color '0;33')!$(reset) $*"; }
 err()   { echo "$(color '0;31')✗$(reset) $*" >&2; }
+
+acquire_lock() {
+  ensure_runtime_dirs
+  if [[ -f "$LOCK_FILE" ]]; then
+    local lock_pid
+    lock_pid="$(tr -d '[:space:]' < "$LOCK_FILE" 2>/dev/null || true)"
+    if [[ -n "$lock_pid" ]] && kill -0 "$lock_pid" 2>/dev/null; then
+      err "Another kairo launcher is running (PID ${lock_pid}). Stop it first or remove stale lock: ${LOCK_FILE}"
+      exit 1
+    fi
+    rm -f "$LOCK_FILE"
+  fi
+  echo "$$" > "$LOCK_FILE"
+}
+
+release_lock() {
+  rm -f "$LOCK_FILE" 2>/dev/null || true
+}
+
+trap release_lock EXIT
+
+check_disk_space() {
+  local avail_kb
+  avail_kb="$(df -k / | awk 'NR==2 {print $4}')"
+  if [[ -n "$avail_kb" && "$avail_kb" -lt 1048576 ]]; then
+    warn "Low disk space (< 1 GiB free). Builds and simulator may fail."
+    warn "Largest dev caches: DerivedData, CoreSimulator, ~/.npm, ~/.expo"
+  fi
+}
 
 ensure_runtime_dirs() {
   mkdir -p "$PID_DIR" "$LOG_DIR"
@@ -170,16 +201,31 @@ open_app_on_simulator() {
 
   # Launch Expo Go first so deep links have a handler (avoids simctl openurl timeouts).
   xcrun simctl launch "$udid" "$EXPO_GO_BUNDLE" >/dev/null 2>&1 || true
-  sleep 3
+  sleep 2
 
-  while (( attempt < 5 )); do
+  while (( attempt < 6 )); do
     if xcrun simctl openurl "$udid" "$url" 2>/dev/null; then
       return 0
     fi
     attempt=$((attempt + 1))
-    sleep 1.5
+    sleep 1.25
   done
   return 1
+}
+
+reload_expo_on_simulator() {
+  local udid="$1"
+  [[ -n "$udid" ]] || return 0
+  # Shake-menu reload via AppleScript is flaky; deep-link again after Metro is warm.
+  local port="${DEFAULT_PORT}"
+  local host="127.0.0.1"
+  local lan=""
+  lan="$(resolve_lan_ipv4 || true)"
+  if [[ -n "$lan" ]]; then
+    host="$lan"
+  fi
+  local url="exp://${host}:${port}"
+  xcrun simctl openurl "$udid" "$url" 2>/dev/null || true
 }
 
 ensure_project_ready() {
@@ -189,8 +235,46 @@ ensure_project_ready() {
   fi
   if [[ ! -d "${APP_ROOT}/node_modules" ]]; then
     info "Installing dependencies (first run)..."
-    (cd "$APP_ROOT" && npm install) >> "$METRO_LOG" 2>&1
+    (cd "$APP_ROOT" && npm install --no-audit --no-fund) >> "$METRO_LOG" 2>&1
+    return
   fi
+  # Keep installs current when package-lock.json changes (no full reinstall every launch).
+  if [[ -f "${APP_ROOT}/package-lock.json" ]] \
+    && [[ "${APP_ROOT}/package-lock.json" -nt "${APP_ROOT}/node_modules" ]]; then
+    info "package-lock.json changed — syncing dependencies..."
+    (cd "$APP_ROOT" && npm install --no-audit --no-fund) >> "$METRO_LOG" 2>&1
+  fi
+}
+
+clear_dev_caches() {
+  info "Clearing Metro / Expo dev caches..."
+  rm -rf "${APP_ROOT}/.expo/web-cache" 2>/dev/null || true
+  rm -rf "${APP_ROOT}/.metro-cache" 2>/dev/null || true
+  rm -rf "${APP_ROOT}/node_modules/.cache/metro" 2>/dev/null || true
+  rm -rf "${APP_ROOT}/node_modules/.cache/babel-loader" 2>/dev/null || true
+  rm -rf "${APP_ROOT}/node_modules/.cache/@expo" 2>/dev/null || true
+  rm -f "${APP_ROOT}/.metro/devices.json" 2>/dev/null || true
+  local tmp="${TMPDIR:-/tmp}"
+  rm -rf "${tmp}"/metro-* 2>/dev/null || true
+  rm -rf "${tmp}"/haste-map-* 2>/dev/null || true
+  rm -rf "${tmp}"/react-* 2>/dev/null || true
+  if command -v watchman >/dev/null 2>&1; then
+    (watchman watch-del-all >/dev/null 2>&1) || true
+  fi
+}
+
+rotate_metro_log() {
+  ensure_runtime_dirs
+  if [[ -f "$METRO_LOG" ]]; then
+    mv -f "$METRO_LOG" "${METRO_LOG}.prev" 2>/dev/null || true
+  fi
+  : > "$METRO_LOG"
+}
+
+terminate_expo_on_simulator() {
+  local udid="$1"
+  [[ -n "$udid" ]] || return 0
+  xcrun simctl terminate "$udid" "$EXPO_GO_BUNDLE" 2>/dev/null || true
 }
 
 kill_pid_tree() {
@@ -276,13 +360,19 @@ wait_for_metro() {
 }
 
 launch_metro_background() {
+  local fresh="${1:-false}"
   ensure_runtime_dirs
   : >> "$METRO_LOG"
+
+  local clear_flag=""
+  if [[ "$fresh" == "true" ]]; then
+    clear_flag="-c"
+  fi
 
   # nohup + disown keeps Metro alive after the launcher exits (macOS has no setsid).
   # Invoke expo-start directly — skip npm wrapper for a stable child PID.
   nohup env -u CI EXPO_NO_METRO_LAZY=1 \
-    bash -c "cd \"${APP_ROOT}\" && exec node scripts/expo-start.mjs start --lan" \
+    bash -c "cd \"${APP_ROOT}\" && exec node scripts/expo-start.mjs start --lan ${clear_flag}" \
     >> "$METRO_LOG" 2>&1 < /dev/null &
 
   disown 2>/dev/null || true
@@ -303,6 +393,7 @@ launch_metro_background() {
 }
 
 cmd_start() {
+  local fresh="${1:-false}"
   ensure_project_ready
   ensure_runtime_dirs
 
@@ -313,7 +404,8 @@ cmd_start() {
     exit 1
   fi
 
-  if metro_http_ok; then
+  # Fast path only for explicit `kairo start` — default `kairo` always passes fresh=true.
+  if [[ "$fresh" != "true" ]] && metro_http_ok; then
     local pid=""
     pid="$(find_metro_pid 2>/dev/null || true)"
     ok "Metro already running${pid:+ (PID ${pid})}"
@@ -324,7 +416,8 @@ cmd_start() {
     return 0
   fi
 
-  if pid="$(find_metro_pid 2>/dev/null || true)" && [[ -n "$pid" ]]; then
+  if [[ "$fresh" != "true" ]] \
+    && pid="$(find_metro_pid 2>/dev/null || true)" && [[ -n "$pid" ]]; then
     warn "Metro process found (PID ${pid}) but /status not ready — waiting..."
     if wait_for_metro 40; then
       ok "Metro healthy (PID ${pid})"
@@ -338,10 +431,14 @@ cmd_start() {
     sleep 0.35
   fi
 
-  info "Starting Kairo (Metro + iOS Simulator)..."
+  if [[ "$fresh" == "true" ]]; then
+    info "Fresh start (Metro --clear + clean Expo Go launch)..."
+  else
+    info "Starting Kairo (Metro + iOS Simulator)..."
+  fi
   boot_simulator "$udid" || warn "Simulator boot slow — continuing"
 
-  if ! metro_pid="$(launch_metro_background)"; then
+  if ! metro_pid="$(launch_metro_background "$fresh")"; then
     err "Metro failed to start. Check: kairo logs"
     tail -n 30 "$METRO_LOG" >&2 || true
     write_state "error" "ios" "" "down" "$udid"
@@ -360,6 +457,11 @@ cmd_start() {
   # Give Metro a moment to accept bundle requests before deep-linking Expo Go.
   sleep 1
 
+  if [[ "$fresh" == "true" ]]; then
+    terminate_expo_on_simulator "$udid"
+    sleep 0.5
+  fi
+
   info "Opening Kairo on simulator..."
   open_app_on_simulator "$udid" || warn "Could not deep-link — open Expo Go manually or press i in Metro"
 
@@ -373,14 +475,39 @@ cmd_start() {
   echo "  Simulator:  $(simulator_name "$udid" | sed 's/ (.*//')"
   echo "  Logs:       ${METRO_LOG}"
   echo "  Stop:       kairo stop"
+  if [[ "$fresh" == "true" ]]; then
+    echo "  Tip:        Cmd+R in simulator reloads JS after code changes"
+  fi
   echo "═══════════════════════════════════════════════════════"
   echo ""
 }
 
 cmd_restart() {
+  local udid=""
+  udid="$(resolve_simulator_udid || true)"
+
+  info "Full fresh restart..."
   cmd_stop
-  sleep 0.35
-  cmd_start
+  if [[ -n "$udid" ]]; then
+    terminate_expo_on_simulator "$udid"
+  fi
+  if [[ "${KAIRO_SKIP_CACHE_CLEAR:-}" != "1" ]]; then
+    clear_dev_caches
+  else
+    warn "KAIRO_SKIP_CACHE_CLEAR=1 — skipping cache wipe"
+  fi
+  rotate_metro_log
+  sleep 0.5
+  # Boot simulator early so Expo Go is ready when Metro comes up.
+  if [[ -n "$udid" ]]; then
+    boot_simulator "$udid" || warn "Simulator boot slow — continuing"
+  fi
+  cmd_start true
+  if [[ -n "$udid" ]]; then
+    sleep 2
+    info "Reloading Expo Go bundle..."
+    reload_expo_on_simulator "$udid"
+  fi
 }
 
 cmd_status() {
@@ -433,12 +560,60 @@ cmd_logs() {
 }
 
 cmd_validate() {
-  info "Running quality gates (typecheck, lint, tests)…"
-  (unset NODE_ENV; cd "$APP_ROOT" && npm run validate) || {
+  info "Running quality gates (typecheck, lint, tests, circular deps, secrets)…"
+  (unset NODE_ENV; cd "$APP_ROOT" && npm run validate:release) || {
     err "validate failed"
     exit 1
   }
   ok "All quality gates passed"
+}
+
+cmd_clean() {
+  info "Deep dev cache cleanup (explicit — not a runtime perf fix)…"
+  cmd_stop
+  clear_dev_caches
+  rotate_metro_log
+  ok "Caches cleared. Run: kairo"
+}
+
+cmd_perf() {
+  info "Starting Kairo with performance probes (EXPO_PUBLIC_KAIRO_PERF_PROBE=1)…"
+  export EXPO_PUBLIC_KAIRO_PERF_PROBE=1
+  cmd_restart
+  echo ""
+  echo "After exercising tab switches, run: npm run perf:report"
+}
+
+cmd_test() {
+  info "Running unit tests…"
+  (cd "$APP_ROOT" && npm test -- --runInBand) || exit 1
+  ok "Tests passed"
+}
+
+cmd_ios() {
+  info "Starting Expo iOS (development)…"
+  ensure_project_ready
+  (cd "$APP_ROOT" && npm run start:ios)
+}
+
+cmd_preview() {
+  info "EAS preview build (internal distribution)…"
+  (cd "$APP_ROOT" && npx eas-cli build --platform ios --profile preview --non-interactive) || exit 1
+}
+
+cmd_release() {
+  info "Local release validation (no App Store submit)…"
+  (cd "$APP_ROOT" && npm run validate:ios-release) || exit 1
+  ok "Release validation passed"
+}
+
+check_disk_space() {
+  local avail_kb
+  avail_kb="$(df -k / | awk 'NR==2 {print $4}')"
+  if [[ -n "$avail_kb" && "$avail_kb" -lt 2097152 ]]; then
+    warn "Low disk space (< 2 GiB free on /). Builds may fail."
+    warn "Largest dev caches: DerivedData, CoreSimulator, ~/.npm, ~/.expo"
+  fi
 }
 
 usage() {
@@ -446,30 +621,47 @@ usage() {
 Kairo — launch the Expo dev server and iOS Simulator
 
 Usage:
-  kairo              Clean restart (stop + start) — default
-  kairo start        Start Metro if needed; open simulator
-  kairo restart      Stop any running instance, then start fresh
+  kairo              Full fresh restart (default): stop Metro, clear all bundler caches,
+                     watchman reset, Metro --clear, terminate Expo Go, boot simulator,
+                     relaunch + reload bundle
+  kairo start        Lightweight start — reuse healthy Metro if already running
+  kairo restart      Same as bare `kairo` (full fresh restart)
   kairo stop         Stop Metro and Kairo bundler workers
   kairo status       Show Metro / simulator status
   kairo logs         Tail Metro log (kairo logs -f to follow)
+  kairo clean        Explicit deep cache cleanup (no Metro restart)
   kairo validate     Run typecheck + lint + tests (fast quality gate)
+  kairo test         Run Jest test suite
+  kairo perf         Fresh restart with EXPO_PUBLIC_KAIRO_PERF_PROBE=1
+  kairo ios          expo run:ios (native dev client)
+  kairo preview      EAS preview/internal iOS build
+  kairo release      Local release validation (validate:ios-release, no submit)
 
 Environment:
-  KAIRO_METRO_PORT   Metro port (default: 8081)
+  KAIRO_METRO_PORT        Metro port (default: 8081)
+  KAIRO_SKIP_CACHE_CLEAR  Set to 1 to skip cache wipe on fresh restart
+  EXPO_PUBLIC_KAIRO_PERF_PROBE  Set to 1 for perf markers (also: kairo perf)
 EOF
 }
 
 main() {
   local cmd="${1:-}"
+  trap release_lock EXIT
   case "$cmd" in
     -h|--help|help) usage ;;
     stop)           cmd_stop ;;
-    start)          cmd_start ;;
-    restart)        cmd_restart ;;
+    start)          acquire_lock; cmd_start false ;;
+    restart)        acquire_lock; cmd_restart ;;
     status)         cmd_status ;;
     logs)           shift || true; cmd_logs "${1:-false}" ;;
+    clean)          acquire_lock; cmd_clean ;;
     validate)       cmd_validate ;;
-    "")             cmd_restart ;;
+    test)           cmd_test ;;
+    perf)           acquire_lock; cmd_perf ;;
+    ios)            cmd_ios ;;
+    preview)        cmd_preview ;;
+    release)        cmd_release ;;
+    "")             acquire_lock; cmd_restart ;;
     *)
       err "Unknown command: $cmd"
       usage

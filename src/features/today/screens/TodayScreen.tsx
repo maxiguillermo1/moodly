@@ -13,12 +13,13 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { useMoodEntry } from '@/hooks/useMoodEntry';
 import { useScrollDrivenTabBarVisibility } from '@/hooks/useScrollDrivenTabBarVisibility';
 import { useShowTabBarOnScreenBlur } from '@/hooks/useShowTabBarOnScreenBlur';
 import { useTodayKey } from '@/hooks/useTodayKey';
+import { useTopSafeInset } from '@/hooks/useTopSafeInset';
+import { useFirstScreenSplashReady } from '@/hooks/useFirstScreenSplashReady';
 import {
   ScreenHeader,
   MoodEntryFields,
@@ -34,6 +35,8 @@ import { announceForAccessibility } from '@/system/accessibility';
 
 export default function TodayScreen() {
   usePerfScreen('Today');
+  const topInset = useTopSafeInset();
+  const onSplashReady = useFirstScreenSplashReady('Today');
   const {
     showTabBar,
     onScrollBeginDrag,
@@ -236,9 +239,9 @@ export default function TodayScreen() {
   );
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <View style={[styles.container, { paddingTop: topInset }]} onLayout={onSplashReady}>
       <ScreenHeader title="Today" contentPaddingHorizontal={todayGutter} />
       {Platform.OS === 'ios' ? scroll : <KeyboardAvoidingView style={styles.flex} behavior="height">{scroll}</KeyboardAvoidingView>}
-    </SafeAreaView>
+    </View>
   );
 }

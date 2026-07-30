@@ -11,3 +11,9 @@ export type RootStackParamList = {
   Goals: { date?: string } | undefined;
   Todo: { date?: string } | undefined;
 };
+
+export type MainTabParamList = {
+  Calendar: undefined;
+  Today: undefined;
+  Journal: undefined;
+};
