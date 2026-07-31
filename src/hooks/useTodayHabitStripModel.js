@@ -51,7 +51,10 @@ export function useTodayHabitStripModel(date) {
             const nextSelected = new Set(peeked);
             setSelected((prev) => (habitIdSetsEqual(prev, nextSelected) ? prev : nextSelected));
             selectedRef.current = nextSelected;
+            return;
         }
+        setSelected(new Set());
+        selectedRef.current = new Set();
     }, [date]);
     useEffect(() => {
         return () => {

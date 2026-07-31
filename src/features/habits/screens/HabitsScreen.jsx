@@ -9,7 +9,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { ScreenHeader, HabitListRow, HabitListRowSeparator } from '@/components';
-import { getToday, HABIT_CATALOG, HABIT_IDS } from '@/utils';
+import { HABIT_CATALOG, HABIT_IDS } from '@/utils';
+import { useTodayKey } from '@/hooks/useTodayKey';
 import { getHabitSelectionsForDate, getHabitMarkedDayCounts, getHabitSelectionsCacheGeneration, toggleHabitForDate, getTrackedHabitIds, getHabitTrackingCacheGeneration, setTrackedHabitIds, } from '@/storage';
 import { borderRadius, spacing, typography, useAppTheme } from '@/theme';
 import { Touchable } from '@/ui/Touchable';
@@ -23,7 +24,7 @@ export default function HabitsScreen() {
     usePerfScreen('Habits');
     const navigation = useNavigation();
     const { groupedCanvas, system: s, isDark } = useAppTheme();
-    const day = getToday();
+    const { todayKey: day } = useTodayKey();
     const [selected, setSelected] = useState(() => new Set());
     const [markedDayCounts, setMarkedDayCounts] = useState(() => new Map());
     const [tracked, setTracked] = useState(() => new Set(HABIT_IDS));

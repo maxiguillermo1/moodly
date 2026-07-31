@@ -33,7 +33,7 @@ describe('useMoodEntry', () => {
         }));
     });
     it('load hydrates mood and note from getEntry', async () => {
-        mockGetEntry.mockResolvedValueOnce({
+        mockGetEntry.mockResolvedValue({
             date: day,
             mood: 'A',
             note: 'hello',
@@ -41,9 +41,6 @@ describe('useMoodEntry', () => {
             updatedAt: 2,
         });
         const { result } = renderHook(() => useMoodEntry({ date: day }));
-        await act(async () => {
-            await result.current.load();
-        });
         await waitFor(() => {
             expect(result.current.mood).toBe('A');
             expect(result.current.note).toBe('hello');

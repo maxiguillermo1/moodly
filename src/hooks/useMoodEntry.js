@@ -37,13 +37,6 @@ export function useMoodEntry(options = {}) {
             mountedRef.current = false;
         };
     }, []);
-    useEffect(() => {
-        nextRequestId(loadReqIdRef);
-        const peeked = peekEntryFromSessionCache(date);
-        if (peeked !== undefined) {
-            applyEntrySnapshot(peeked, setMood, setNote, setIsExisting);
-        }
-    }, [date]);
     const load = useCallback(async () => {
         const reqId = nextRequestId(loadReqIdRef);
         try {
@@ -61,6 +54,15 @@ export function useMoodEntry(options = {}) {
             logger.warn('today.loadEntry.failed', { dateKey: date });
         }
     }, [date]);
+    useEffect(() => {
+        nextRequestId(loadReqIdRef);
+        const peeked = peekEntryFromSessionCache(date);
+        if (peeked !== undefined) {
+            applyEntrySnapshot(peeked, setMood, setNote, setIsExisting);
+            return;
+        }
+        void load();
+    }, [date, load]);
     const save = useCallback(async () => {
         if (!mood)
             return false;

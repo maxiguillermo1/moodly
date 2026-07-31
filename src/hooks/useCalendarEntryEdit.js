@@ -54,6 +54,7 @@ export function useCalendarEntryEdit({ initialSelectedDate, mountedRef, entriesR
         if (isSavingRef.current)
             return;
         isSavingRef.current = true;
+        mountedRef.current && setIsSaving(true);
         const next = createEntry(selectedDate, editMood, editNote);
         mountedRef.current &&
             setEntriesByMonthKey((prev) => {
@@ -82,6 +83,7 @@ export function useCalendarEntryEdit({ initialSelectedDate, mountedRef, entriesR
         })
             .finally(() => {
             isSavingRef.current = false;
+            mountedRef.current && setIsSaving(false);
         });
     }, [editMood, editNote, entriesRevisionRef, mountedRef, onEntriesMutated, reduceMotion, selectedDate, setEntriesByMonthKey]);
     return {
