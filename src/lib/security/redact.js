@@ -20,6 +20,13 @@ const SENSITIVE_KEYS = new Set([
     'payload',
     'data',
     'value',
+    'token',
+    'access_token',
+    'refresh_token',
+    'session',
+    'authorization',
+    'password',
+    'email',
 ]);
 const IS_DEV = typeof __DEV__ !== 'undefined' && __DEV__;
 function isPlainObject(v) {
@@ -44,7 +51,7 @@ function clampString(s, maxLen) {
 }
 function redactKey(k) {
     const key = k.toLowerCase();
-    if (SENSITIVE_KEYS.has(key) || key.includes('note') || key.includes('entry'))
+    if (SENSITIVE_KEYS.has(key) || key.includes('note') || key.includes('entry') || key.includes('token') || key.includes('password') || key.includes('secret'))
         return true;
     if (!IS_DEV && (key === 'key' || key === 'id' || key === 'date' || key === 'datekey' || key === 'daykey'))
         return true;

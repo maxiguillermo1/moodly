@@ -3,12 +3,22 @@
  * @module cloud/supabase/sessionStorage
  */
 import * as SecureStore from 'expo-secure-store';
+import { getSupabaseAuthStorageKey } from '../config';
 import { logger } from '../../lib/security/logger';
-const STORAGE_KEY = 'kairo.supabase.auth.session';
+
+const LEGACY_STORAGE_KEY = 'kairo.supabase.auth.session';
+
+function resolveStorageKey(key) {
+    if (key === 'supabase.auth.token' || key === LEGACY_STORAGE_KEY) {
+        return getSupabaseAuthStorageKey();
+    }
+    return key;
+}
+
 export const supabaseSecureStorage = {
     async getItem(key) {
         try {
-            return await SecureStore.getItemAsync(key === 'supabase.auth.token' ? STORAGE_KEY : key);
+            return await SecureStore.getItemAsync(resolveStorageKey(key));
         }
         catch (e) {
             logger.warn('auth.secureStore.read_failed', { op: 'getItem', error: e });
@@ -17,26 +27,32 @@ export const supabaseSecureStorage = {
     },
     async setItem(key, value) {
         try {
-            await SecureStore.setItemAsync(key === 'supabase.auth.token' ? STORAGE_KEY : key, value);
+            await SecureStore.setItemAsync(resolveStorageKey(key), value);
         }
         catch (e) {
             logger.warn('auth.secureStore.write_failed', { op: 'setItem', error: e });
         }
     },
     async removeItem(key) {
+        const resolved = resolveStorageKey(key);
         try {
-            await SecureStore.deleteItemAsync(key === 'supabase.auth.token' ? STORAGE_KEY : key);
+            await SecureStore.deleteItemAsync(resolved);
         }
         catch (e) {
             logger.warn('auth.secureStore.write_failed', { op: 'removeItem', error: e });
+            throw e;
         }
     },
 };
+
 export async function clearSupabaseSessionStorage() {
-    try {
-        await SecureStore.deleteItemAsync(STORAGE_KEY);
-    }
-    catch (e) {
-        logger.warn('auth.secureStore.write_failed', { op: 'clearSession', error: e });
+    const keys = new Set([getSupabaseAuthStorageKey(), LEGACY_STORAGE_KEY, 'supabase.auth.token']);
+    for (const key of keys) {
+        try {
+            await SecureStore.deleteItemAsync(key);
+        }
+        catch (e) {
+            logger.warn('auth.secureStore.write_failed', { op: 'clearSession', key, error: e });
+        }
     }
 }

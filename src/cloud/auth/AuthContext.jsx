@@ -40,6 +40,7 @@ export function AuthProvider({ children }) {
     });
     const hadSessionRef = useRef(false);
     const restoredUserIdRef = useRef(null);
+    const activeUserIdRef = useRef(null);
     const sessionRef = useRef(null);
     const localOnlyModeRef = useRef(false);
     useEffect(() => {
@@ -100,7 +101,7 @@ export function AuthProvider({ children }) {
                 }
             }
         };
-        const unsubscribe = onAuthStateChange(async (event, session) => {
+        const handleAuthEvent = async (event, session) => {
             if (!mounted)
                 return;
             sessionRef.current = session;
@@ -120,6 +121,18 @@ export function AuthProvider({ children }) {
                 };
             });
             if (session) {
+                const nextUserId = session.user.id;
+                const prevUserId = activeUserIdRef.current;
+                if (prevUserId && prevUserId !== nextUserId) {
+                    restoredUserIdRef.current = null;
+                    try {
+                        await handleSignedOut();
+                    }
+                    catch (e) {
+                        logger.warn('auth.accountSwitch.cleanup.failed', { error: e });
+                    }
+                }
+                activeUserIdRef.current = nextUserId;
                 hadSessionRef.current = true;
                 if (localOnlyModeRef.current) {
                     void setLocalOnlyMode(false).then(() => {
@@ -135,6 +148,7 @@ export function AuthProvider({ children }) {
             }
             if (wasSignedIn) {
                 hadSessionRef.current = false;
+                activeUserIdRef.current = null;
                 restoredUserIdRef.current = null;
                 sessionRef.current = null;
                 setCachedAuthSession(null);
@@ -146,6 +160,9 @@ export function AuthProvider({ children }) {
                     logger.warn('auth.signOutCleanup.failed', { error: e });
                 }
             }
+        };
+        const unsubscribe = onAuthStateChange((event, session) => {
+            void handleAuthEvent(event, session);
         });
         return () => {
             mounted = false;
@@ -159,6 +176,7 @@ export function AuthProvider({ children }) {
     const signOutUser = useCallback(async () => {
         try {
             await signOut();
+            await handleSignedOut();
         }
         catch (e) {
             logger.warn('auth.signOut.failed', { error: e });

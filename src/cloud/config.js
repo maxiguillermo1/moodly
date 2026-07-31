@@ -16,8 +16,20 @@ export function getSupabaseConfig() {
         enabled: Boolean(url && anonKey),
     };
 }
-/** OAuth redirect scheme — must match app.config.ts `scheme`. */
-export const KAIRO_AUTH_REDIRECT_SCHEME = 'kairo';
+/** Returns the Supabase Auth storage key (matches @supabase/supabase-js default). */
+export function getSupabaseAuthStorageKey() {
+    const { url } = getSupabaseConfig();
+    if (!url) {
+        return 'kairo.supabase.auth.session';
+    }
+    try {
+        const projectRef = new URL(url).hostname.split('.')[0];
+        return `sb-${projectRef}-auth-token`;
+    }
+    catch {
+        return 'kairo.supabase.auth.session';
+    }
+}
 export function getAuthRedirectUri() {
     return `${KAIRO_AUTH_REDIRECT_SCHEME}://auth/callback`;
 }
