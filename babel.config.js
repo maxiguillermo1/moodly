@@ -13,7 +13,7 @@ module.exports = function (api) {
             '@repositories': './src/data/repositories',
             '@shared': './src',
           },
-          extensions: ['.ios.js', '.android.js', '.js', '.jsx', '.json', '.tsx', '.ts'],
+          extensions: ['.ios.js', '.android.js', '.js', '.jsx', '.json'],
         },
       ],
       // Required by Reanimated v2+ (must be last).

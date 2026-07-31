@@ -129,7 +129,7 @@ Full tree: [docs/PROJECT_STRUCTURE.md](docs/PROJECT_STRUCTURE.md) · Plain-Engli
 ## Quality gates
 
 ```bash
-npm run validate              # typecheck + lint + test
+npm run validate              # lint + test
 npm run validate:release      # full CI gate (before native/config changes)
 ```
 

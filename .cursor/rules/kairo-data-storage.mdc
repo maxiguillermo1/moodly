@@ -1,6 +1,6 @@
 ---
 description: Kairo persistence — tasks day shards, goals, migrations, tests
-globs: src/data/**/*.ts
+globs: src/data/**/*.js
 alwaysApply: false
 ---
 
@@ -9,4 +9,4 @@ alwaysApply: false
 - **Reminders hot path**: day rows live in **`kairo.tasks.day.<YYYY-MM-DD>`** + **`kairo.tasks.dayIndex`**. **`kairo.tasks`** holds `TasksRecord` (metadata, recurrence, history, migration marker). **`kairo.dayTodos`** is legacy migration input only.
 - **Goals**: **`kairo.goals`** (`GoalsRecord` **v2**); **`history` is source of truth** — `progress.currentValue` is reconciled from history on load/save via `canonicalizeGoalModel`. Same calendar day: **one row** (latest `createdAt` wins on merge; logging **replaces** that day’s value). **`addGoalProgress`** is **no-op** when note+value unchanged (idempotent). Only **`active`** goals accept progress; **`archived`** and **`completed`** reject writes. Use **`getGoalSummaries` / `getTodayGoalSummaries`** for previews — not full `getGoals()` clones.
 - **Writes**: persist-first, serialized per store; validate on load; quarantine corrupt JSON; never log note content.
-- After changes: **`npm run test:storage-stress`** and relevant `*.test.ts` beside the module. See **`src/data/DATA_CONTRACT.md`** and **`docs/DATA_ARCHITECTURE.md`**.
+- After changes: **`npm run test:storage-stress`** and relevant `*.test.js` beside the module. See **`src/data/DATA_CONTRACT.md`** and **`docs/DATA_ARCHITECTURE.md`**.

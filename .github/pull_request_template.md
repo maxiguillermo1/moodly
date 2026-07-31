@@ -5,7 +5,6 @@
 ## Quality gates (required)
 
 - [ ] `npm run lint`
-- [ ] `npm run typecheck`
 - [ ] `npm test`
 - [ ] `npm run doctor` and `npm run export:bundles-check` when changing Metro/bundler-critical deps or native entry wiring
 

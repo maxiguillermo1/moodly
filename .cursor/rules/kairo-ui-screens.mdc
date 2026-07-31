@@ -1,6 +1,6 @@
 ---
 description: Kairo UI — theme, a11y, tab bar, Reminders/Goals surfaces
-globs: src/{screens,features,components,extensions}/**/*.tsx
+globs: src/{screens,features,components,extensions}/**/*.jsx
 alwaysApply: false
 ---
 

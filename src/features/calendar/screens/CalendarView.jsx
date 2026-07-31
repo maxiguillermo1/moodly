@@ -1,0 +1,228 @@
+import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
+/**
+ * @fileoverview CalendarView - Year grid view (separate screen for performance)
+ * @module features/calendar/screens/CalendarView
+ */
+import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
+import { FlatList } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useNavigation, useRoute } from '@react-navigation/native';
+import { ScreenHeader, YearOverviewPage, screenHeaderPrimaryTabPaddingX } from '@/components';
+import { perfProbe } from '@/perf';
+import { logger } from '@/security';
+import { PerfProfiler, usePerfScreen } from '@/perf';
+import { spacing, typography, useAppTheme, getCalendarTextLimits } from '@/theme';
+import { useTodayKey } from '@/hooks/useTodayKey';
+import { useCoalescedEpoch } from '@/hooks/useCoalescedEpoch';
+import { createFrameCoalescer } from '@/utils';
+import { useMoodCalendarSnapshotLoad } from '@/hooks/useMoodCalendarSnapshotLoad';
+import { afterNextFrame } from '@/utils';
+import { interactionQueue } from '@/system/interactionQueue';
+import { announceForAccessibility } from '@/system/accessibility';
+// -----------------------------------------------------------------------------
+// Hidden decisions / tuning constants (keep stable unless intentionally revisiting UX/perf tradeoffs)
+// -----------------------------------------------------------------------------
+const YEARS_AROUND_INITIAL = 100; // 100 years back + 100 years forward (+ current)
+const YEARS_COUNT = YEARS_AROUND_INITIAL * 2 + 1;
+// Visual tuning constants used only to compute padding/centering; does not change navigation/UI structure.
+const HEADER_VISUAL_HEIGHT_ESTIMATE = 88; // iOS large-title header approx height
+const MINI_GRID_HEIGHT_ESTIMATE = 520; // ~ 3×4 mini-month grid height
+const GRID_SHIFT_DOWN_PX = 24; // positive moves grid down; tuned for iPhone 15 Pro
+export default function CalendarView() {
+    usePerfScreen('CalendarView', { listIds: ['list.calendarYearPager'] });
+    const { windowWidth, windowHeight, fontScale, system: sys, moodGradeColorStyle, isDark } = useAppTheme();
+    const insets = useSafeAreaInsets();
+    const navigation = useNavigation();
+    const route = useRoute();
+    const navigationRef = useRef(navigation);
+    navigationRef.current = navigation;
+    const scrollRetryTimeoutRef = useRef(null);
+    useEffect(() => {
+        return () => {
+            if (scrollRetryTimeoutRef.current)
+                clearTimeout(scrollRetryTimeoutRef.current);
+            scrollRetryTimeoutRef.current = null;
+        };
+    }, []);
+    /**
+     * Stabilize the initial year so we don't "boot" in the wrong year and then
+     * flicker when params arrive late.
+     */
+    const initialYearRef = useRef(typeof route.params?.year === 'number' ? route.params.year : new Date().getFullYear());
+    const [yearBase, setYearBase] = useState(() => initialYearRef.current);
+    const { todayKey } = useTodayKey();
+    /** Coalesced bump so FlashList refreshes recycled mini-month rows only when data/today/theme actually move. */
+    const [yearListEpoch, scheduleYearRecycleBump] = useCoalescedEpoch();
+    const { entriesByMonthKey, calendarMoodStyle, entriesRevisionRef, isFocusedRef, mountedRef, } = useMoodCalendarSnapshotLoad({
+        screen: 'CalendarView',
+        loadPerfEvent: 'calendar.yearView.load',
+        todayKey,
+        onTodayKeyChangeWhileFocused: scheduleYearRecycleBump,
+        onSnapshotMutated: scheduleYearRecycleBump,
+        perfFlushReportTag: 'CalendarView.blur',
+        perfFlushViaMicrotask: true,
+    });
+    const yearPagerRef = useRef(null);
+    const [pagerReady, setPagerReady] = useState(false);
+    /** Last route param year we aligned the pager to (avoid re-scroll on every focus when unchanged). */
+    const appliedRouteYearRef = useRef(undefined);
+    const momentumStartMsRef = useRef(null);
+    useEffect(() => {
+        if (!perfProbe.enabled)
+            return;
+        logger.perf('calendar.yearView.mount', { phase: 'warm', source: 'ui', screen: 'CalendarView' });
+        return () => {
+            logger.perf('calendar.yearView.unmount', { phase: 'warm', source: 'ui', screen: 'CalendarView' });
+        };
+    }, []);
+    const miniMonthTitleStyle = useMemo(() => ({
+        ...typography.caption2,
+        color: sys.secondaryLabel,
+        fontWeight: '700',
+        marginBottom: 2,
+    }), [sys.secondaryLabel]);
+    const calLimits = useMemo(() => getCalendarTextLimits(fontScale, windowWidth), [fontScale, windowWidth]);
+    const [yearsStart, setYearsStart] = useState(() => initialYearRef.current - YEARS_AROUND_INITIAL);
+    const years = useMemo(() => Array.from({ length: YEARS_COUNT }, (_, i) => yearsStart + i), [yearsStart]);
+    const initialYearIndex = useMemo(() => {
+        const idx = yearBase - yearsStart;
+        return Math.min(Math.max(idx, 0), YEARS_COUNT - 1);
+    }, [yearBase, yearsStart]);
+    const bottomOverlaySpace = insets.bottom + spacing[8] + 72;
+    const openSettings = useCallback(() => {
+        navigation.getParent()?.getParent()?.navigate('Settings');
+    }, [navigation]);
+    const yearToIndex = useCallback((y) => {
+        const idx = y - yearsStart;
+        return Math.min(Math.max(idx, 0), YEARS_COUNT - 1);
+    }, [yearsStart]);
+    // Jump when `route.params.year` changes, but only after layout so scrollToIndex is reliable.
+    useEffect(() => {
+        const y = route.params?.year;
+        if (typeof y !== 'number' || !Number.isFinite(y))
+            return;
+        if (!pagerReady)
+            return;
+        if (appliedRouteYearRef.current === y)
+            return;
+        appliedRouteYearRef.current = y;
+        if (y < yearsStart || y > yearsStart + YEARS_COUNT - 1) {
+            setYearsStart(y - YEARS_AROUND_INITIAL);
+            setYearBase(y);
+            return afterNextFrame(() => {
+                if (!mountedRef.current || !isFocusedRef.current)
+                    return;
+                yearPagerRef.current?.scrollToIndex({ index: YEARS_AROUND_INITIAL, animated: false });
+            });
+        }
+        const idx = yearToIndex(y);
+        setYearBase(y);
+        return afterNextFrame(() => {
+            if (!mountedRef.current || !isFocusedRef.current)
+                return;
+            yearPagerRef.current?.scrollToIndex({ index: idx, animated: false });
+        });
+    }, [pagerReady, route.params?.year, yearToIndex, yearsStart]);
+    const usable = windowHeight - insets.top - HEADER_VISUAL_HEIGHT_ESTIMATE - bottomOverlaySpace;
+    const gridPadBase = Math.max(0, Math.floor((usable - MINI_GRID_HEIGHT_ESTIMATE) / 2));
+    const gridPadTop = gridPadBase + GRID_SHIFT_DOWN_PX;
+    const gridPadBottom = Math.max(0, gridPadBase - GRID_SHIFT_DOWN_PX);
+    const monthIndices = useMemo(() => Array.from({ length: 12 }, (_, i) => i), []);
+    const layout = useMemo(() => {
+        const horizontalPadding = spacing[4] * 2;
+        const colGap = spacing[2];
+        const available = windowWidth - horizontalPadding;
+        const cardWidth = Math.floor((available - colGap * 2) / 3);
+        return { horizontalPadding, colGap, cardWidth };
+    }, [windowWidth]);
+    const yearPageStyle = useMemo(() => ({ width: windowWidth, paddingBottom: bottomOverlaySpace }), [bottomOverlaySpace, windowWidth]);
+    const gridWrapperPadStyle = useMemo(() => ({ paddingTop: gridPadTop, paddingBottom: gridPadBottom }), [gridPadBottom, gridPadTop]);
+    const gridHorizontalPadStyle = useMemo(() => ({ paddingHorizontal: spacing[4] }), []);
+    const openMonthCoalescerRef = useRef(createFrameCoalescer((value) => {
+        if (!mountedRef.current || !isFocusedRef.current)
+            return;
+        navigationRef.current.navigate('CalendarScreen', { year: value.y, month: value.mIdx });
+    }));
+    useEffect(() => {
+        const coalescer = openMonthCoalescerRef.current;
+        return () => coalescer.cancel();
+    }, []);
+    const openMonth = useCallback((y, mIdx) => {
+        openMonthCoalescerRef.current.enqueue({ y, mIdx });
+    }, []);
+    const keyExtractor = useCallback((y) => String(y), []);
+    const onMomentumScrollEnd = useCallback((e) => {
+        interactionQueue.setMomentum(false);
+        interactionQueue.setUserScrolling(false);
+        if (perfProbe.enabled)
+            perfProbe.setCulpritPhase('CalendarView.pageSettle');
+        perfProbe.enabled && perfProbe.breadcrumb('CalendarView.scrollEnd');
+        const startMs = momentumStartMsRef.current;
+        momentumStartMsRef.current = null;
+        const idx = Math.round(e.nativeEvent.contentOffset.x / windowWidth);
+        const newYear = years[idx] ?? yearBase;
+        if (newYear !== yearBase) {
+            setYearBase(newYear);
+            announceForAccessibility(`${newYear}`);
+        }
+        if (perfProbe.enabled) {
+            logger.perf('calendar.yearView.page', { phase: 'warm', source: 'ui', y: newYear, index: idx });
+            if (typeof startMs === 'number') {
+                perfProbe.measureSince('calendar.yearView.momentumEnd', startMs, { phase: 'warm', source: 'ui' });
+            }
+            perfProbe.clearCulpritAfterFrames(2);
+        }
+    }, [windowWidth, yearBase, years]);
+    const onMomentumScrollBegin = useCallback(() => {
+        interactionQueue.setUserScrolling(true);
+        interactionQueue.setMomentum(true);
+        if (!perfProbe.enabled)
+            return;
+        momentumStartMsRef.current = perfProbe.nowMs();
+        perfProbe.setCulpritPhase('CalendarView.scroll');
+        perfProbe.breadcrumb('CalendarView.scrollBegin');
+    }, []);
+    const miniMonthWidthStyle = useMemo(() => ({ width: layout.cardWidth }), [layout.cardWidth]);
+    const miniMonthMarginRightStyle = useMemo(() => ({ marginRight: layout.colGap }), [layout.colGap]);
+    const miniMonthMarginZeroStyle = useMemo(() => ({ marginRight: 0 }), []);
+    const renderYearPage = useCallback(({ item: y }) => {
+        return (_jsx(YearOverviewPage, { y: y, yearPageStyle: yearPageStyle, gridWrapperPadStyle: gridWrapperPadStyle, gridHorizontalPadStyle: gridHorizontalPadStyle, monthIndices: monthIndices, miniMonthWidthStyle: miniMonthWidthStyle, miniMonthMarginRightStyle: miniMonthMarginRightStyle, miniMonthMarginZeroStyle: miniMonthMarginZeroStyle, entriesByMonthKey: entriesByMonthKey, entriesRevision: entriesRevisionRef.current, yearRecycleEpoch: yearListEpoch, calendarMoodStyle: calendarMoodStyle, todayKey: todayKey, moodGradeColorStyle: moodGradeColorStyle, isDark: isDark, monthTitleStyle: miniMonthTitleStyle, miniMonthTitleMaxFontMult: calLimits.miniMonthTitle, onOpenMonth: openMonth }));
+    }, [
+        calendarMoodStyle,
+        calLimits.miniMonthTitle,
+        entriesByMonthKey,
+        gridHorizontalPadStyle,
+        gridWrapperPadStyle,
+        isDark,
+        miniMonthMarginRightStyle,
+        miniMonthMarginZeroStyle,
+        miniMonthTitleStyle,
+        miniMonthWidthStyle,
+        monthIndices,
+        moodGradeColorStyle,
+        openMonth,
+        todayKey,
+        yearListEpoch,
+        yearPageStyle,
+    ]);
+    const yearPagerExtraData = useMemo(() => ({
+        entriesByMonthKey,
+        todayKey,
+        calendarMoodStyle,
+        yearListEpoch,
+        entriesRevision: entriesRevisionRef.current,
+        moodGradeColorStyle,
+        isDark,
+    }), [entriesByMonthKey, todayKey, calendarMoodStyle, yearListEpoch, moodGradeColorStyle, isDark]);
+    const screenStyle = useMemo(() => ({ flex: 1, backgroundColor: sys.background }), [sys.background]);
+    return (_jsxs(SafeAreaView, { style: screenStyle, edges: ['top'], children: [_jsx(ScreenHeader, { title: String(yearBase), showSettings: true, onPressSettings: openSettings, contentPaddingHorizontal: screenHeaderPrimaryTabPaddingX }), _jsx(PerfProfiler, { id: "list.calendarYearPager", children: _jsx(FlatList, { ref: yearPagerRef, style: screenStyle, data: years, keyExtractor: keyExtractor, horizontal: true, pagingEnabled: true, accessibilityLabel: "Year calendar pages", accessibilityHint: "Swipe left or right to move between years", showsHorizontalScrollIndicator: false, initialScrollIndex: initialYearIndex, getItemLayout: (_, index) => ({ length: windowWidth, offset: windowWidth * index, index }), onLayout: () => setPagerReady(true), removeClippedSubviews: true, initialNumToRender: 1, windowSize: 2, maxToRenderPerBatch: 1, updateCellsBatchingPeriod: 50, onScrollToIndexFailed: (info) => {
+                        if (scrollRetryTimeoutRef.current)
+                            clearTimeout(scrollRetryTimeoutRef.current);
+                        scrollRetryTimeoutRef.current = setTimeout(() => {
+                            scrollRetryTimeoutRef.current = null;
+                            if (!mountedRef.current || !isFocusedRef.current)
+                                return;
+                            yearPagerRef.current?.scrollToIndex({ index: info.index, animated: false });
+                        }, 50);
+                    }, onMomentumScrollBegin: onMomentumScrollBegin, onMomentumScrollEnd: onMomentumScrollEnd, renderItem: renderYearPage, extraData: yearPagerExtraData }, String(yearsStart)) })] }));
+}

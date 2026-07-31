@@ -12,20 +12,20 @@
     "android": "node scripts/expo-start.mjs start --android",
     "ios": "node scripts/expo-start.mjs start --ios",
     "web": "expo start --web",
-    "lint": "eslint . --ext .ts,.tsx",
-    "typecheck": "tsc --noEmit",
+    "lint": "eslint . --ext .js,.jsx",
     "test": "NODE_ENV=test TZ=America/Los_Angeles jest",
-    "test:soak": "NODE_ENV=test KAIRO_SOAK_RUN=1 TZ=America/Los_Angeles node --expose-gc ./node_modules/jest/bin/jest.js --runTestsByPath src/qa/soak/soak.test.ts --runInBand --testTimeout=2147483647",
-    "test:storage-stress": "NODE_ENV=test TZ=America/Los_Angeles jest --runTestsByPath src/data/storage/moodStorage.test.ts src/data/storage/dayTodosStorage.test.ts src/data/storage/tasksStorage.test.ts src/data/storage/goalsStorage.test.ts src/data/persistence/persistence.test.ts src/data/persistence/sqlite/moodEntriesSqlite.test.ts src/data/persistence/sqlite/habitsGoalsSqlite.test.ts src/data/repositories/userDataExportRepository.test.ts src/qa/entriesScaleHarness.test.ts",
+    "test:soak": "NODE_ENV=test KAIRO_SOAK_RUN=1 TZ=America/Los_Angeles node --expose-gc ./node_modules/jest/bin/jest.js --runTestsByPath src/qa/soak/soak.test.js --runInBand --testTimeout=2147483647",
+    "test:storage-stress": "NODE_ENV=test TZ=America/Los_Angeles jest --runTestsByPath src/data/storage/moodStorage.test.js src/data/storage/dayTodosStorage.test.js src/data/storage/tasksStorage.test.js src/data/storage/goalsStorage.test.js src/data/persistence/persistence.test.js src/data/persistence/sqlite/moodEntriesSqlite.test.js src/data/persistence/sqlite/habitsGoalsSqlite.test.js src/data/repositories/userDataExportRepository.test.js src/qa/entriesScaleHarness.test.js",
     "doctor": "npx expo-doctor",
     "export:ios-check": "npx expo export -p ios --output-dir .tmp-expo-export -c",
     "export:bundles-check": "npx expo export -p all --output-dir .tmp-expo-export -c",
-    "validate": "NODE_ENV=development npm run typecheck && NODE_ENV=development npm run lint && npm run test",
-    "validate:ios-release": "NODE_ENV=development npm run typecheck && NODE_ENV=development npm run lint && npm run test && npm run test:storage-stress && npm run doctor && npm run export:ios-check && npm audit --omit=dev --audit-level=moderate",
+    "validate": "NODE_ENV=development npm run lint && npm run test",
+    "validate:ios-release": "NODE_ENV=development npm run lint && npm run test && npm run test:storage-stress && npm run doctor && npm run export:ios-check && npm audit --omit=dev --audit-level=moderate",
     "validate:release": "NODE_ENV=development npm run validate && npm run test:storage-stress && npm run doctor && npm run export:bundles-check",
     "verify:supabase": "node scripts/verify-supabase.mjs",
     "configure:oauth": "node scripts/configure-oauth-providers.mjs",
     "check:secrets": "node scripts/check-secrets-not-committed.mjs",
+    "prebuild:ios": "npx expo prebuild --platform ios --clean",
     "build:ios:production": "eas build --platform ios --profile production",
     "build:android:production": "eas build --platform android --profile production",
     "build:all:production": "eas build --platform all --profile production",
@@ -69,24 +69,19 @@
   "devDependencies": {
     "@babel/core": "^7.25.2",
     "@testing-library/react-native": "^13.3.3",
-    "@types/jest": "^29.5.14",
-    "@types/react": "~19.1.0",
-    "@typescript-eslint/eslint-plugin": "^8.18.0",
-    "@typescript-eslint/parser": "^8.18.0",
     "babel-plugin-module-resolver": "^5.0.3",
     "babel-preset-expo": "~54.0.9",
     "eslint": "^9.17.0",
     "eslint-plugin-react-hooks": "^5.1.0",
     "jest": "^29.7.0",
     "jest-expo": "~54.0.4",
-    "react-test-renderer": "^19.1.0",
-    "typescript": "^5.3.0"
+    "react-test-renderer": "^19.1.0"
   },
   "jest": {
     "preset": "jest-expo",
     "watchman": false,
     "setupFilesAfterEnv": [
-      "<rootDir>/jest.setup.ts"
+      "<rootDir>/jest.setup.js"
     ],
     "moduleNameMapper": {
       "^@/(.*)$": "<rootDir>/src/$1",

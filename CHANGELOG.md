@@ -22,7 +22,8 @@ Engineering milestone log: [docs/summary.md](docs/summary.md).
 
 ## Recent highlights
 
-- **v0.6.0** — `insightsRepository`, reflection engine, gentle observational insights; production polish and deployment readiness (EAS, `app.config.ts`, legal links).
+- **v0.6.0** — Full JavaScript migration (385 modules); `app.config.js`; iOS export gate green; EAS production profile ready for TestFlight.
+- **v0.6.0** — `insightsRepository`, reflection engine, gentle observational insights; production polish and deployment readiness (EAS, `app.config.js`, legal links).
 - **v0.5.0** — Performance and frame stability, Daily Activity read model, navigation fluidity, data safety, accessibility.
 
 See [docs/CHANGELOG.md](docs/CHANGELOG.md) for complete per-release notes.

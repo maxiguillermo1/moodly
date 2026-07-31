@@ -1,8 +1,5 @@
-// ESLint v9+ flat config (required; .eslintrc.* is ignored by default).
-// Keep this minimal and focused on correctness + perf footguns (hooks).
+// ESLint v9+ flat config — JavaScript + React Native (post TypeScript migration).
 
-const tsParser = require('@typescript-eslint/parser');
-const tsPlugin = require('@typescript-eslint/eslint-plugin');
 const reactHooks = require('eslint-plugin-react-hooks');
 
 /** @type {import('eslint').Linter.FlatConfig[]} */
@@ -18,28 +15,21 @@ module.exports = [
     ],
   },
   {
-    files: ['**/*.{ts,tsx,js,jsx}'],
+    files: ['**/*.{js,jsx}'],
     languageOptions: {
-      parser: tsParser,
+      ecmaVersion: 'latest',
+      sourceType: 'module',
       parserOptions: {
-        ecmaVersion: 'latest',
-        sourceType: 'module',
         ecmaFeatures: { jsx: true },
       },
     },
     plugins: {
-      '@typescript-eslint': tsPlugin,
       'react-hooks': reactHooks,
     },
     rules: {
-      // Hooks correctness is non-negotiable.
       ...(reactHooks.configs?.recommended?.rules ?? {}),
-      // High-signal hygiene (but avoid “nit” rules like banning `any` in an RN app).
-      'no-unused-vars': 'off',
-      '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
-      // Strong signal for perf + correctness; can be disabled locally with intent.
+      'no-unused-vars': ['error', { argsIgnorePattern: '^_', varsIgnorePattern: '^React$' }],
       'react-hooks/exhaustive-deps': 'warn',
-      // Baseline correctness (common to strict TS/RN codebases).
       eqeqeq: ['error', 'always', { null: 'ignore' }],
       'no-var': 'error',
       'prefer-const': ['error', { destructuring: 'all' }],
@@ -51,14 +41,14 @@ module.exports = [
   {
     // UI layer must never touch persistence directly.
     files: [
-      'src/screens/**/*.{ts,tsx,js,jsx}',
-      'src/features/**/*.{ts,tsx,js,jsx}',
-      'src/components/**/*.{ts,tsx,js,jsx}',
-      'src/hooks/**/*.{ts,tsx,js,jsx}',
-      'src/theme/**/*.{ts,tsx,js,jsx}',
-      'src/bootstrap/**/*.{ts,tsx,js,jsx}',
-      'src/navigation/**/*.{ts,tsx,js,jsx}',
-      'src/extensions/**/*.{ts,tsx,js,jsx}',
+      'src/screens/**/*.{js,jsx}',
+      'src/features/**/*.{js,jsx}',
+      'src/components/**/*.{js,jsx}',
+      'src/hooks/**/*.{js,jsx}',
+      'src/theme/**/*.{js,jsx}',
+      'src/bootstrap/**/*.{js,jsx}',
+      'src/navigation/**/*.{js,jsx}',
+      'src/extensions/**/*.{js,jsx}',
     ],
     rules: {
       // UI should never log directly; use security logger (redacted + prod-safe).
@@ -96,7 +86,7 @@ module.exports = [
   },
   {
     // Domain must remain pure (no React, no UI, no storage).
-    files: ['src/domain/**/*.{ts,tsx,js,jsx}'],
+    files: ['src/domain/**/*.{js,jsx}'],
     rules: {
       'no-restricted-imports': [
         'error',
@@ -140,7 +130,7 @@ module.exports = [
   },
   {
     // Logic must remain pure (beginner-friendly replacement for `domain`).
-    files: ['src/logic/**/*.{ts,tsx,js,jsx}', 'src/insights/**/*.{ts,tsx,js,jsx}', 'src/utils/**/*.{ts,tsx,js,jsx}'],
+    files: ['src/logic/**/*.{js,jsx}', 'src/insights/**/*.{js,jsx}', 'src/utils/**/*.{js,jsx}'],
     rules: {
       'no-restricted-imports': [
         'error',
@@ -183,7 +173,7 @@ module.exports = [
   },
   {
     // Data layer must not import UI or navigation (prevents hidden coupling).
-    files: ['src/data/**/*.{ts,tsx,js,jsx}'],
+    files: ['src/data/**/*.{js,jsx}'],
     rules: {
       'no-restricted-imports': [
         'error',
@@ -200,7 +190,7 @@ module.exports = [
   },
   {
     // Storage layer must not import UI or navigation.
-    files: ['src/storage/**/*.{ts,tsx,js,jsx}'],
+    files: ['src/storage/**/*.{js,jsx}'],
     rules: {
       'no-restricted-imports': [
         'error',
@@ -218,7 +208,7 @@ module.exports = [
   {
     // Date-key safety: prevent accidental UTC date-key derivation via `toISOString().slice(...)`.
     // This is a common footgun that breaks local-day semantics near midnight/DST.
-    files: ['src/**/*.{ts,tsx,js,jsx}'],
+    files: ['src/**/*.{js,jsx}'],
     rules: {
       'no-restricted-syntax': [
         'error',
@@ -233,7 +223,7 @@ module.exports = [
   },
   {
     // Hook unit tests may import AsyncStorage + storage test helpers (not product hooks).
-    files: ['src/hooks/**/*.test.{ts,tsx,js,jsx}'],
+    files: ['src/hooks/**/*.test.{js,jsx}'],
     rules: {
       'no-restricted-imports': 'off',
       'no-console': 'off',

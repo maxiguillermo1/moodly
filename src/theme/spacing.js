@@ -1,0 +1,49 @@
+/**
+ * @fileoverview iOS-style spacing and sizing
+ * @module theme/spacing
+ */
+export const spacing = {
+    0: 0,
+    1: 4,
+    2: 8,
+    3: 12,
+    4: 16,
+    5: 20,
+    6: 24,
+    8: 32,
+    10: 40,
+    12: 48,
+    16: 64,
+};
+/** iOS-style border radius */
+export const borderRadius = {
+    none: 0,
+    sm: 6,
+    md: 10,
+    lg: 14,
+    xl: 20,
+    xxl: 28,
+    full: 9999,
+};
+/** iOS standard sizing */
+export const sizing = {
+    // Navigation
+    navBarHeight: 70,
+    tabBarPadding: 34,
+    floatingNavHeight: 64,
+    floatingNavWidth: 200,
+    // iOS "capsule" controls (Calendar-style)
+    // Visual height is ~36pt, but we keep touch targets >= 44 via hitSlop in components.
+    capsuleHeight: 36,
+    capsuleRadius: 18,
+    // List items
+    rowHeight: 44,
+    rowHeightLarge: 56,
+    // Icons
+    iconSm: 20,
+    iconMd: 24,
+    iconLg: 28,
+    settingsIcon: 22,
+    // Touch targets
+    minTouchTarget: 44,
+};

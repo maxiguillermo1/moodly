@@ -433,7 +433,7 @@ cmd_logs() {
 }
 
 cmd_validate() {
-  info "Running quality gates (typecheck, lint, tests)…"
+  info "Running quality gates (lint, tests)…"
   (unset NODE_ENV; cd "$APP_ROOT" && npm run validate) || {
     err "validate failed"
     exit 1
@@ -452,7 +452,7 @@ Usage:
   kairo stop         Stop Metro and Kairo bundler workers
   kairo status       Show Metro / simulator status
   kairo logs         Tail Metro log (kairo logs -f to follow)
-  kairo validate     Run typecheck + lint + tests (fast quality gate)
+  kairo validate     Run lint + tests (fast quality gate)
 
 Environment:
   KAIRO_METRO_PORT   Metro port (default: 8081)
