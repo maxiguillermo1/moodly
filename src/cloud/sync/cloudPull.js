@@ -81,6 +81,16 @@ export async function pullCloudDataToLocal(user, applier) {
         throw goalResult.error;
     if (progressResult.error)
         throw progressResult.error;
+    if (trackedResult.error)
+        throw trackedResult.error;
+    if (settingsResult.error)
+        throw settingsResult.error;
+    if (tasksResult.error)
+        throw tasksResult.error;
+    if (dayResult.error)
+        throw dayResult.error;
+    if (insightsResult.error)
+        throw insightsResult.error;
     const cloudMoods = parseCloudMoods(moodResult.data);
     const localMoods = await applier.getLocalMoodEntries();
     await applier.applyMoodEntries(mergeMoodEntries(localMoods, cloudMoods));

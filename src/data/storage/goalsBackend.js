@@ -32,6 +32,7 @@ export async function clearGoalsOnDisk() {
     if (await usesSqlite()) {
         const db = await ensureKairoSqliteReady();
         await clearGoalsSqlite(db);
+        await storage.removeItem(GOALS_STORAGE_KEY);
         return;
     }
     await storage.removeItem(GOALS_STORAGE_KEY);

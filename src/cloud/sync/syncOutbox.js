@@ -3,12 +3,38 @@
  * @module cloud/sync/syncOutbox
  */
 import { storage } from '../../data/storage/asyncStorage';
+import { logger } from '../../lib/security/logger';
+
 const OUTBOX_KEY = 'kairo.sync.outbox';
+const OUTBOX_CORRUPT_PREFIX = 'kairo.sync.outbox.corrupt.';
+
 let memoryOutbox = null;
 let loadPromise = null;
+let writeTail = Promise.resolve();
+
 function newOpId() {
     return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
+
+async function quarantineCorruptOutbox(raw) {
+    const backupKey = `${OUTBOX_CORRUPT_PREFIX}${Date.now()}`;
+    try {
+        if (raw) {
+            await storage.setItem(backupKey, raw);
+        }
+    }
+    catch (e) {
+        logger.warn('sync.outbox.quarantine_failed', { error: e });
+    }
+    memoryOutbox = [];
+    try {
+        await storage.removeItem(OUTBOX_KEY);
+    }
+    catch {
+        /* best effort */
+    }
+}
+
 async function loadOutbox() {
     if (memoryOutbox)
         return memoryOutbox;
@@ -23,10 +49,15 @@ async function loadOutbox() {
             }
             const parsed = JSON.parse(raw);
             memoryOutbox = Array.isArray(parsed) ? parsed : [];
+            if (!Array.isArray(parsed)) {
+                await quarantineCorruptOutbox(raw);
+            }
             return memoryOutbox;
         }
-        catch {
-            memoryOutbox = [];
+        catch (e) {
+            logger.warn('sync.outbox.corrupt', { error: e });
+            const raw = await storage.getItem(OUTBOX_KEY).catch(() => null);
+            await quarantineCorruptOutbox(raw);
             return memoryOutbox;
         }
         finally {
@@ -35,10 +66,18 @@ async function loadOutbox() {
     })();
     return loadPromise;
 }
+
+function withOutboxWriteLock(fn) {
+    const run = writeTail.then(fn, fn);
+    writeTail = run.catch(() => undefined);
+    return run;
+}
+
 async function persistOutbox(ops) {
     memoryOutbox = ops;
     await storage.setItem(OUTBOX_KEY, JSON.stringify(ops));
 }
+
 /** Coalesce mood ops for the same date — keep latest upsert/delete. */
 function coalesceOps(ops) {
     const moodByDate = new Map();
@@ -75,6 +114,7 @@ function coalesceOps(ops) {
         ...daySnapshots.values(),
     ];
 }
+
 function toSyncOperation(op) {
     return {
         ...op,
@@ -82,30 +122,43 @@ function toSyncOperation(op) {
         enqueuedAtMs: op.enqueuedAtMs ?? Date.now(),
     };
 }
+
 export async function enqueueSyncOperation(op) {
     await enqueueSyncOperationsBatch([op]);
 }
+
 /** One outbox load + persist for many ops (avoids O(n) disk writes on first sign-in snapshot). */
 export async function enqueueSyncOperationsBatch(batch) {
     if (batch.length === 0)
         return;
-    const full = batch.map(toSyncOperation);
-    const current = await loadOutbox();
-    const next = coalesceOps([...current, ...full]);
-    await persistOutbox(next);
+    await withOutboxWriteLock(async () => {
+        const full = batch.map(toSyncOperation);
+        const current = await loadOutbox();
+        const next = coalesceOps([...current, ...full]);
+        await persistOutbox(next);
+    });
 }
+
 export async function peekOutbox() {
     return loadOutbox();
 }
+
 export async function replaceOutbox(ops) {
-    await persistOutbox(coalesceOps(ops));
+    await withOutboxWriteLock(async () => {
+        await persistOutbox(coalesceOps(ops));
+    });
 }
+
 export async function clearOutbox() {
-    memoryOutbox = [];
-    await storage.removeItem(OUTBOX_KEY);
+    await withOutboxWriteLock(async () => {
+        memoryOutbox = [];
+        await storage.removeItem(OUTBOX_KEY);
+    });
 }
+
 /** @internal Jest */
 export function resetSyncOutboxForTests() {
     memoryOutbox = null;
     loadPromise = null;
+    writeTail = Promise.resolve();
 }

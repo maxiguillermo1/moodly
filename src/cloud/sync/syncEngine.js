@@ -8,6 +8,7 @@ import { getCachedAuthSession } from '../auth/authSessionCache';
 import { isSupabaseConfigured } from '../supabase/client';
 import { pullCloudDataToLocal } from './cloudPull';
 import { pushOutboxToCloud } from './cloudPush';
+import { reconcileOutboxAfterPull } from './outboxReconcile';
 import { clearOutbox } from './syncOutbox';
 import { setSyncStatus } from './syncStatusStore';
 let cloudPullActive = false;
@@ -55,6 +56,7 @@ export async function runSyncCycle(session) {
         try {
             await runWithPullGuard(async () => {
                 await pullCloudDataToLocal(session.user, applier);
+                await reconcileOutboxAfterPull(applier);
             });
             const { remaining } = await pushOutboxToCloud(session.user);
             if (remaining > 0) {
@@ -89,6 +91,7 @@ export async function runInitialCloudRestore(user) {
     setSyncStatus('syncing');
     await runWithPullGuard(async () => {
         await pullCloudDataToLocal(user, applier);
+        await reconcileOutboxAfterPull(applier);
     });
     await pushOutboxToCloud(user);
     setSyncStatus('saved');

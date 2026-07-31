@@ -63,6 +63,7 @@ export async function clearMoodEntriesOnDisk() {
         await withKairoSqliteWriteLock(async () => {
             await clearMoodEntriesSqlite(db);
         });
+        await storage.removeItem(MOOD_ENTRIES_STORAGE_KEY);
         return;
     }
     await storage.removeItem(MOOD_ENTRIES_STORAGE_KEY);

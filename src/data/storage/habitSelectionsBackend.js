@@ -35,6 +35,7 @@ export async function clearHabitSelectionsOnDisk() {
         await withKairoSqliteWriteLock(async () => {
             await clearHabitSelectionsSqlite(db);
         });
+        await storage.removeItem(HABIT_SELECTIONS_STORAGE_KEY);
         return;
     }
     await storage.removeItem(HABIT_SELECTIONS_STORAGE_KEY);
