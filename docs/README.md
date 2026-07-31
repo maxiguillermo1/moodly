@@ -62,4 +62,18 @@ Developer guides live in **`docs/`**. The repo root keeps **`README.md`** and **
 |-----|---------|
 | [summary.md](./summary.md) | Milestone-sized engineering notes |
 
+## Engineering reference (`docs/engineering/`)
+
+Focused, measured engineering artifacts — toolchain baselines, performance budgets, navigation invariants, and audit notes. Root [TECHNICAL.md](../TECHNICAL.md) and [ARCHITECTURE.md](../ARCHITECTURE.md) summarize these; this folder holds the detail.
+
+| Doc | Purpose |
+|-----|---------|
+| [engineering/TOOLCHAIN_BASELINE.md](./engineering/TOOLCHAIN_BASELINE.md) | Host + package versions (measured snapshot) |
+| [engineering/DATA_MODEL.md](./engineering/DATA_MODEL.md) | Current data model reference |
+| [engineering/NAVIGATION_INVARIANTS.md](./engineering/NAVIGATION_INVARIANTS.md) | Navigation behavior contracts |
+| [engineering/PERFORMANCE_BASELINE.md](./engineering/PERFORMANCE_BASELINE.md) | Performance baseline capture |
+| [engineering/PERFORMANCE_BUDGETS.md](./engineering/PERFORMANCE_BUDGETS.md) | Release performance budgets |
+| [engineering/SECURITY_AUDIT.md](./engineering/SECURITY_AUDIT.md) | Security audit notes |
+| [engineering/VISUAL_REGRESSION.md](./engineering/VISUAL_REGRESSION.md) | Visual regression testing notes |
+
 Further files in this folder cover decisions, web deployment sequencing, App Store readiness, data safety, and change checklists.
