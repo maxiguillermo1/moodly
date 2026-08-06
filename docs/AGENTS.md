@@ -423,3 +423,44 @@ npm run typecheck && npm run lint && npm test
 - **Document cross-cutting changes** — update this file, `DATA_CONTRACT`, or `architecture.md` when you introduce a **new persistent key**, **migration**, or **navigation/tab pattern**.
 
 When in doubt, re-read **§ Non-negotiables** and match the **simplest existing pattern** in the same feature folder.
+
+---
+
+## Cursor Cloud specific instructions
+
+Kairo is a **single Expo/React Native app** (no monorepo, no in-repo backend). Cloud VMs are suitable for **Node gates**, **Metro**, and **native bundle export**; **interactive UI** needs Expo Go, a simulator, or a physical device.
+
+### Services
+
+| Service | Required in cloud? | Start | Notes |
+|--------|-------------------|-------|-------|
+| **npm deps** | Yes | `npm ci` (matches CI) | Node **20+** (CI uses 20). |
+| **Metro / Expo dev server** | Yes (dev) | `npm run start` | Default **http://localhost:8081**; `/status` → `packager-status:running`. Use a **tmux** session for long-running Metro. |
+| **Jest** | Yes (gates) | `npm test` / `npm run validate` | No Metro or env vars required for core tests. |
+| **Supabase** | No | Hosted project + `.env` | Optional cloud sync only — see [`SUPABASE.md`](./SUPABASE.md). |
+| **iOS/Android simulators** | No (not in cloud) | Local Xcode / Android Studio | Cloud agents: use bundle export + Jest; pair with Expo Go on a device for manual E2E. |
+
+### Quality gates (same as CI)
+
+- Default: `npm run validate` (typecheck + lint + Jest).
+- Release / Metro config changes: `npm run validate:release`.
+- Storage work: add `npm run test:storage-stress`.
+- Quick native bundle smoke: `npm run export:ios-check`.
+
+### Running the app in a cloud VM
+
+1. **Metro:** `npm run start` (wrapper: `scripts/expo-start.mjs`). Confirm with `curl http://localhost:8081/status`.
+2. **Native bundle:** `curl "http://localhost:8081/node_modules/expo/AppEntry.bundle?platform=ios&dev=true&minify=false"` should return **200** once Metro is warm.
+3. **Static export:** `npm run export:ios-check` bundles **1678+ modules** to `.tmp-expo-export/`.
+4. **Web (`npm run web`):** not the primary target. Requires `npx expo install react-dom react-native-web @expo/metro-runtime` if not already present; Metro may fail on **`expo-sqlite`** WASM (`wa-sqlite.wasm`) in minimal cloud setups — prefer native export + Jest for persistence smoke tests.
+5. **Project path:** must **not contain spaces** (Expo Go on devices). Workspace `/workspace` is fine; use `npm run fix:dev-path` if relocated.
+
+### Core-flow smoke without a device
+
+Mood **upsert/read/delete** through the SQLite storage path:
+
+```bash
+npm test -- --testNamePattern="upsert and delete single rows"
+```
+
+See [`TESTING.md`](./TESTING.md) and [`README.md`](../README.md) § Quick start for full local dev with Expo Go.
